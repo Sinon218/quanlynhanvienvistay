@@ -113,6 +113,30 @@ function handleLocalMockCall(endpoint, method, body) {
     return Promise.resolve(joined);
   }
 
+  // PUT /work/:id/accept
+  if (endpoint.startsWith('/work/') && endpoint.endsWith('/accept') && method === 'PUT') {
+    const id = parseInt(endpoint.split('/')[2]);
+    localWork = localWork.map(w => w.id === id ? { ...w, status: 'accepted' } : w);
+    saveLocalData('vistay_mock_work', localWork);
+    return Promise.resolve({ message: 'Đã nhận việc.' });
+  }
+
+  // PUT /work/:id/reject
+  if (endpoint.startsWith('/work/') && endpoint.endsWith('/reject') && method === 'PUT') {
+    const id = parseInt(endpoint.split('/')[2]);
+    localWork = localWork.map(w => w.id === id ? { ...w, status: 'rejected' } : w);
+    saveLocalData('vistay_mock_work', localWork);
+    return Promise.resolve({ message: 'Đã từ chối công việc.' });
+  }
+
+  // PUT /work/:id/start
+  if (endpoint.startsWith('/work/') && endpoint.endsWith('/start') && method === 'PUT') {
+    const id = parseInt(endpoint.split('/')[2]);
+    localWork = localWork.map(w => w.id === id ? { ...w, status: 'in-progress' } : w);
+    saveLocalData('vistay_mock_work', localWork);
+    return Promise.resolve({ message: 'Bắt đầu làm việc.' });
+  }
+
   // PUT /work/:id/complete
   if (endpoint.startsWith('/work/') && endpoint.endsWith('/complete') && method === 'PUT') {
     const id = parseInt(endpoint.split('/')[2]);
@@ -121,7 +145,7 @@ function handleLocalMockCall(endpoint, method, body) {
         // Also update the apartment status to available (done cleaning)
         localRooms = localRooms.map(r => r.id === w.apartment_id ? { ...r, status: 'available' } : r);
         saveLocalData('vistay_mock_apartments', localRooms);
-        return { ...w, status: 'completed' };
+        return { ...w, status: 'completed', proof_image: '/uploads/mock-proof.jpg' };
       }
       return w;
     });
@@ -192,11 +216,39 @@ function handleLocalMockCall(endpoint, method, body) {
     return Promise.resolve(myTasks);
   }
 
+  // PUT /tasks/:id/accept
+  if (endpoint.startsWith('/tasks/') && endpoint.endsWith('/accept') && method === 'PUT') {
+    const id = parseInt(endpoint.split('/')[2]);
+    localTasksList = localTasksList.map(t => t.id === id ? { ...t, status: 'accepted' } : t);
+    saveLocalData('vistay_mock_tasks', localTasksList);
+    return Promise.resolve({ message: 'Đã nhận công việc.' });
+  }
+
+  // PUT /tasks/:id/reject
+  if (endpoint.startsWith('/tasks/') && endpoint.endsWith('/reject') && method === 'PUT') {
+    const id = parseInt(endpoint.split('/')[2]);
+    localTasksList = localTasksList.map(t => t.id === id ? { ...t, status: 'rejected' } : t);
+    saveLocalData('vistay_mock_tasks', localTasksList);
+    return Promise.resolve({ message: 'Đã từ chối công việc.' });
+  }
+
+  // PUT /tasks/:id/start
+  if (endpoint.startsWith('/tasks/') && endpoint.endsWith('/start') && method === 'PUT') {
+    const id = parseInt(endpoint.split('/')[2]);
+    localTasksList = localTasksList.map(t => t.id === id ? { ...t, status: 'in-progress' } : t);
+    saveLocalData('vistay_mock_tasks', localTasksList);
+    return Promise.resolve({ message: 'Bắt đầu làm việc.' });
+  }
+
   if (endpoint.startsWith('/tasks/') && endpoint.endsWith('/complete') && method === 'PUT') {
     const id = parseInt(endpoint.split('/')[2]);
-    localTasksList = localTasksList.map(t => t.id === id ? { ...t, status: 'completed' } : t);
+    localTasksList = localTasksList.map(t => t.id === id ? { ...t, status: 'completed', proof_image: '/uploads/mock-proof.jpg' } : t);
     saveLocalData('vistay_mock_tasks', localTasksList);
     return Promise.resolve({ message: 'Đã hoàn thành công việc!' });
+  }
+
+  if (endpoint === '/auth/change-password' && method === 'PUT') {
+    return Promise.resolve({ message: 'Đổi mật khẩu thành công.' });
   }
 
   return Promise.reject(new Error(`Endpoint mock ${endpoint} chưa được mô phỏng.`));
