@@ -4,8 +4,12 @@
 const sql = require('mssql');
 require('dotenv').config();
 
+const serverParts = (process.env.DB_SERVER || '').split('\\');
+const serverHost = serverParts[0] || 'localhost';
+const instanceName = serverParts[1] || null;
+
 const config = {
-  server: process.env.DB_SERVER,
+  server: serverHost,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
@@ -19,6 +23,10 @@ const config = {
     idleTimeoutMillis: 30000,
   },
 };
+
+if (instanceName) {
+  config.options.instanceName = instanceName;
+}
 
 let pool = null;
 
