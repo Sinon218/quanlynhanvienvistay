@@ -1,0 +1,8 @@
+node_modules/
+.env
+.vscode/
+.gemini/
+*package-lock.json
+*.log
+dist/
+build/

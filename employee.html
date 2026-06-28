@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Employee Portal - ViStay Portal</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏨</text></svg>">
+</head>
+<body>
+
+  <div class="app-container">
+
+    <!-- ===== HEADER ===== -->
+    <header class="app-header">
+      <div class="header-main-title">
+        <h1><span class="icon">🏨</span> ViStay Employee Portal</h1>
+        <div class="header-meta">
+          <div class="header-date">
+            <span>📅</span>
+            <span id="currentDate">—</span>
+          </div>
+        </div>
+      </div>
+      <div class="header-user-actions">
+        <div class="user-greeting">Xin chào, <strong id="employeeName">—</strong></div>
+        <button class="btn btn-logout" onclick="handleLogout()">🚪 Đăng xuất</button>
+      </div>
+    </header>
+
+    <!-- ===== STATS CARDS ===== -->
+    <div class="room-stats" style="margin-bottom: 24px;">
+      <div class="stat-item stat-total">
+        <span class="stat-num" id="statTodayTotal">0</span>
+        <span class="stat-label">Căn được giao (Hôm nay)</span>
+      </div>
+      <div class="stat-item stat-available">
+        <span class="stat-num" id="statTodayCompleted">0</span>
+        <span class="stat-label">🟢 Đã xong (Hôm nay)</span>
+      </div>
+      <div class="stat-item stat-cleaning">
+        <span class="stat-num" id="statMonthCompleted">0</span>
+        <span class="stat-label">🧹 Đã dọn (Tháng này)</span>
+      </div>
+    </div>
+
+    <!-- ===== TWO COLUMNS FOR WORK & ESTIMATE ===== -->
+    <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px; align-items: start;" class="employee-grid-layout">
+
+      <!-- Column 1: Daily Tasks -->
+      <section class="section">
+        <div class="section-header">
+          <span class="section-icon">📋</span>
+          <h2 class="section-title" style="color: var(--accent-purple);">Công Việc Được Giao Hôm Nay</h2>
+        </div>
+        <div class="employee-task-list" id="taskListContainer">
+          <!-- Rendered by JS -->
+        </div>
+      </section>
+
+      <!-- Column 2: Salary Estimation -->
+      <section class="section">
+        <div class="section-header">
+          <span class="section-icon">💰</span>
+          <h2 class="section-title" style="color: var(--role-main);">Lương Dự Kiến (Tháng này)</h2>
+        </div>
+        <div class="salary-estimate-card">
+          <div class="est-row">
+            <span>Lương cơ bản:</span>
+            <strong id="estBaseSalary">? VNĐ</strong>
+          </div>
+          <div class="est-row">
+            <span>Định mức/căn:</span>
+            <strong id="estPerRoomRate">? VNĐ</strong>
+          </div>
+          <div class="est-row">
+            <span>Số căn đã làm:</span>
+            <strong id="estRoomsCount">0 căn</strong>
+          </div>
+          <div class="est-row">
+            <span>Thưởng dọn phòng:</span>
+            <strong id="estRoomBonus" style="color: #22c55e;">+0 VNĐ</strong>
+          </div>
+          <div class="est-row">
+            <span>Thưởng khác:</span>
+            <strong id="estBonus" style="color: #22c55e;">+0 VNĐ</strong>
+          </div>
+          <div class="est-row">
+            <span>Khấu trừ:</span>
+            <strong id="estDeductions" style="color: #ef4444;">-0 VNĐ</strong>
+          </div>
+          <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 12px 0;">
+          <div class="est-row total">
+            <span>Tổng nhận dự kiến:</span>
+            <strong id="estTotalSalary">? VNĐ</strong>
+          </div>
+          <p class="est-note">* Số liệu trên mang tính chất ước tính dựa theo số phòng bạn đã hoàn thành thực tế được hệ thống ghi nhận.</p>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- ===== CUSTOM TASKS SECTION ===== -->
+    <section class="section" style="margin-top: 24px;">
+      <div class="section-header">
+        <span class="section-icon">📝</span>
+        <h2 class="section-title" style="color: var(--role-main);">Công Việc Khác Được Giao Hôm Nay</h2>
+      </div>
+      <div class="employee-task-list" id="customTaskListContainer">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ===== TOAST CONTAINER ===== -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="employee.js"></script>
+</body>
+</html>

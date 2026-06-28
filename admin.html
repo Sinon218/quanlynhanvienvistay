@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard - ViStay Portal</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏨</text></svg>">
+</head>
+<body>
+
+  <div class="app-container">
+
+    <!-- ===== HEADER ===== -->
+    <header class="app-header">
+      <div class="header-main-title">
+        <h1><span class="icon">🏨</span> ViStay Admin Portal</h1>
+        <div class="header-meta">
+          <div class="header-date">
+            <span>📅</span>
+            <span id="currentDate">—</span>
+          </div>
+          <button class="btn-reset-all" onclick="resetAllPartTimeNames()">
+            🔄 Reset tên Part-time
+          </button>
+        </div>
+      </div>
+      <div class="header-user-actions">
+        <div class="user-greeting">Xin chào, <strong id="adminName">Admin</strong></div>
+        <button class="btn btn-logout" onclick="handleLogout()">🚪 Đăng xuất</button>
+      </div>
+    </header>
+
+    <!-- ===== NAVIGATION TABS ===== -->
+    <nav class="admin-tabs">
+      <button class="tab-btn active" onclick="switchTab('assignment')">📋 Phân công ngày</button>
+      <button class="tab-btn" onclick="switchTab('apartments')">🏠 Căn hộ & MK</button>
+      <button class="tab-btn" onclick="switchTab('tasks')">📝 Giao việc</button>
+      <button class="tab-btn" onclick="switchTab('stats')">📊 Thống kê</button>
+      <button class="tab-btn" onclick="switchTab('salary')">💰 Bảng lương</button>
+    </nav>
+
+    <!-- ==================== TAB 1: ASSIGNMENT ==================== -->
+    <div id="tab-assignment" class="tab-content active">
+      <!-- Legend -->
+      <div class="legend">
+        <div class="legend-item">
+          <span class="legend-dot main"></span>
+          <span>1 — Chính</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot sub"></span>
+          <span>2 — Phụ</span>
+        </div>
+        <div class="legend-item">
+          <span class="legend-dot none"></span>
+          <span>0 — Không</span>
+        </div>
+      </div>
+
+      <!-- Buồng phòng Section -->
+      <section class="section room">
+        <div class="section-header">
+          <span class="section-icon">🛏️</span>
+          <h2 class="section-title">Khu Vực Buồng Phòng</h2>
+          <span class="section-badge">Housekeeping</span>
+        </div>
+        <div class="staff-grid" id="roomGrid">
+          <!-- Rendered by JS -->
+        </div>
+      </section>
+
+      <!-- Kỹ thuật Section -->
+      <section class="section tech">
+        <div class="section-header">
+          <span class="section-icon">🔧</span>
+          <h2 class="section-title">Khu Vực Kỹ Thuật</h2>
+          <span class="section-badge">Technical</span>
+        </div>
+        <div class="staff-grid" id="techGrid">
+          <!-- Rendered by JS -->
+        </div>
+      </section>
+    </div>
+
+    <!-- ==================== TAB: TASKS ==================== -->
+    <div id="tab-tasks" class="tab-content">
+      <section class="section">
+        <div class="section-header">
+          <span class="section-icon">📝</span>
+          <h2 class="section-title" style="color: var(--accent-purple);">Giao Công Việc Cho Nhân Viên</h2>
+        </div>
+
+        <!-- Form giao việc -->
+        <div class="task-form-card">
+          <div class="task-form-grid">
+            <div class="rename-input-group">
+              <label for="taskStaffSelect">👤 Chọn nhân viên</label>
+              <select id="taskStaffSelect" class="room-filter-select" style="width: 100%;">
+                <option value="">-- Chọn nhân viên --</option>
+              </select>
+            </div>
+            <div class="rename-input-group">
+              <label for="taskTitleInput">📌 Tiêu đề công việc</label>
+              <input type="text" id="taskTitleInput" placeholder="VD: Thay bóng đèn S2-1110...">
+            </div>
+            <div class="rename-input-group">
+              <label for="taskDescInput">📝 Mô tả (tùy chọn)</label>
+              <input type="text" id="taskDescInput" placeholder="Chi tiết thêm...">
+            </div>
+            <div class="rename-input-group" style="display: flex; align-items: flex-end;">
+              <button class="btn btn-save" onclick="createTask()" style="width: 100%; padding: 10px;">➕ Giao việc</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Danh sách tasks hôm nay -->
+        <div class="section-header" style="margin-top: 24px;">
+          <span class="section-icon">📋</span>
+          <h2 class="section-title">Danh Sách Công Việc Hôm Nay</h2>
+        </div>
+        <div class="stats-table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Nhân viên</th>
+                <th>Tiêu đề</th>
+                <th>Mô tả</th>
+                <th>Trạng thái</th>
+                <th>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody id="tasksTableBody">
+              <!-- Rendered by JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <!-- ==================== TAB 2: APARTMENTS ==================== -->
+    <div id="tab-apartments" class="tab-content">
+      <section class="section rooms-list">
+        <div class="section-header">
+          <span class="section-icon">🏠</span>
+          <h2 class="section-title">Quản Lý Mật Khẩu & Trạng Thái</h2>
+          <span class="section-badge rooms-badge">150 Căn Hộ</span>
+        </div>
+
+        <!-- Stats Bar -->
+        <div class="room-stats" id="roomStats">
+          <!-- Rendered by JS -->
+        </div>
+
+        <!-- Building Tabs -->
+        <div class="floor-tabs-wrapper">
+          <div class="floor-tabs" id="buildingTabs">
+            <button class="floor-tab active" onclick="setBuildingFilter('all')">Tất cả tòa</button>
+            <button class="floor-tab" onclick="setBuildingFilter('S1')">Tòa S1 (14)</button>
+            <button class="floor-tab" onclick="setBuildingFilter('S2')">Tòa S2 (26)</button>
+            <button class="floor-tab" onclick="setBuildingFilter('S3')">Tòa S3 (17)</button>
+            <button class="floor-tab" onclick="setBuildingFilter('B')">Tòa B (1)</button>
+            <button class="floor-tab" onclick="setBuildingFilter('R6A')">Tòa R6A (2)</button>
+          </div>
+        </div>
+
+        <!-- Filters & Search -->
+        <div class="room-filters">
+          <div class="room-search">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="roomSearchInput" placeholder="Tìm mã căn...">
+          </div>
+          <select id="roomStatusFilter" class="room-filter-select">
+            <option value="all">Tất cả trạng thái</option>
+            <option value="available">🟢 Trống</option>
+            <option value="occupied">🔴 Có khách</option>
+            <option value="cleaning">🧹 Đang dọn</option>
+            <option value="maintenance">🔧 Bảo trì</option>
+          </select>
+          <span class="filtered-count" id="filteredRoomCount"></span>
+        </div>
+
+        <!-- Room Grid -->
+        <div class="room-grid" id="roomListGrid">
+          <!-- Rendered by JS -->
+        </div>
+      </section>
+    </div>
+
+    <!-- ==================== TAB 3: STATS ==================== -->
+    <div id="tab-stats" class="tab-content">
+      <section class="section">
+        <div class="section-header">
+          <span class="section-icon">📊</span>
+          <h2 class="section-title" style="color: var(--accent-purple);">Thống Kê Hoàn Thành Công Việc</h2>
+          <span class="section-badge" style="background: rgba(167, 139, 250, 0.1); color: var(--accent-purple); border: 1px solid rgba(167, 139, 250, 0.2);">Ngày & Tháng</span>
+        </div>
+
+        <div class="stats-table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Nhân viên</th>
+                <th>Phân loại</th>
+                <th>Hoàn thành hôm nay</th>
+                <th>Tổng giao hôm nay</th>
+                <th>Đã dọn (Tháng này)</th>
+              </tr>
+            </thead>
+            <tbody id="statsTableBody">
+              <!-- Rendered by JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <!-- ==================== TAB 4: SALARY ==================== -->
+    <div id="tab-salary" class="tab-content">
+      <section class="section">
+        <div class="section-header">
+          <span class="section-icon">💰</span>
+          <h2 class="section-title" style="color: var(--role-main);">Bảng Lương Nhân Viên</h2>
+          <div class="salary-filters" style="margin-left: auto; display: flex; gap: 8px;">
+            <select id="salaryMonth" class="room-filter-select" onchange="loadSalaryData()"></select>
+            <select id="salaryYear" class="room-filter-select" onchange="loadSalaryData()"></select>
+          </div>
+        </div>
+
+        <div class="stats-table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Nhân viên</th>
+                <th>Loại hình</th>
+                <th>Lương cơ bản</th>
+                <th>Định mức thưởng/căn</th>
+                <th>Số căn đã làm</th>
+                <th>Thưởng căn</th>
+                <th>Thưởng khác</th>
+                <th>Khấu trừ</th>
+                <th>Tổng nhận</th>
+                <th>Ghi chú</th>
+                <th>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody id="salaryTableBody">
+              <!-- Rendered by JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+  </div>
+
+  <!-- ===== MODAL: PHÂN VAI TRÒ ===== -->
+  <div class="modal-overlay" id="assignModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>📋 Phân Công Vai Trò</h2>
+        <button class="modal-close" onclick="closeAssignModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-staff-preview">
+          <div class="staff-avatar fulltime" id="modalAvatar">—</div>
+          <div class="preview-info">
+            <div class="preview-name" id="modalName">—</div>
+            <div class="preview-type" id="modalType">—</div>
+          </div>
+        </div>
+
+        <!-- Buồng Phòng -->
+        <div class="role-group">
+          <div class="role-group-label"><span>🛏️</span> Buồng Phòng</div>
+          <div class="role-options">
+            <div class="role-option">
+              <input type="radio" name="roomRole" id="room1" value="1">
+              <label for="room1">
+                <span class="option-num">1</span>
+                <span class="option-text">Chính</span>
+              </label>
+            </div>
+            <div class="role-option opt-sub">
+              <input type="radio" name="roomRole" id="room2" value="2">
+              <label for="room2">
+                <span class="option-num">2</span>
+                <span class="option-text">Phụ</span>
+              </label>
+            </div>
+            <div class="role-option opt-none">
+              <input type="radio" name="roomRole" id="room0" value="0">
+              <label for="room0">
+                <span class="option-num">0</span>
+                <span class="option-text">Không</span>
+              </label>
+            </div>
+          </div>
+          <div class="role-auto-note" id="roomAutoNote"></div>
+        </div>
+
+        <!-- Kỹ Thuật -->
+        <div class="role-group">
+          <div class="role-group-label"><span>🔧</span> Kỹ Thuật</div>
+          <div class="role-options">
+            <div class="role-option">
+              <input type="radio" name="techRole" id="tech1" value="1">
+              <label for="tech1">
+                <span class="option-num">1</span>
+                <span class="option-text">Chính</span>
+              </label>
+            </div>
+            <div class="role-option opt-sub">
+              <input type="radio" name="techRole" id="tech2" value="2">
+              <label for="tech2">
+                <span class="option-num">2</span>
+                <span class="option-text">Phụ</span>
+              </label>
+            </div>
+            <div class="role-option opt-none">
+              <input type="radio" name="techRole" id="tech0" value="0">
+              <label for="tech0">
+                <span class="option-num">0</span>
+                <span class="option-text">Không</span>
+              </label>
+            </div>
+          </div>
+          <div class="role-auto-note" id="techAutoNote"></div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-cancel" onclick="closeAssignModal()">Đóng</button>
+        <button class="btn btn-save" onclick="saveAssignment()">💾 Lưu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: ĐỔI TÊN PART-TIME ===== -->
+  <div class="modal-overlay" id="renameModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>✏️ Đổi Tên Nhân Viên</h2>
+        <button class="modal-close" onclick="closeRenameModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="rename-input-group">
+          <label id="renameLabel">Đổi tên cho:</label>
+          <input type="text" id="renameInput" placeholder="Nhập tên mới...">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-cancel" onclick="closeRenameModal()">Đóng</button>
+        <button class="btn btn-save" onclick="saveRename()">💾 Lưu tên</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: CẬP NHẬT TRẠNG THÁI PHÒNG ===== -->
+  <div class="modal-overlay" id="roomStatusModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>🏠 Cập Nhật Trạng Thái Phòng</h2>
+        <button class="modal-close" onclick="closeRoomStatusModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-staff-preview">
+          <div class="staff-avatar" style="background: linear-gradient(135deg, #0ea5e9, #6366f1); font-size: 0.8rem;">🚪</div>
+          <div class="preview-info">
+            <div class="preview-name" id="roomModalNumber">—</div>
+            <div class="preview-type"><span id="roomModalType">—</span> · <span id="roomModalFloor">—</span></div>
+          </div>
+        </div>
+
+        <div class="role-group">
+          <div class="role-group-label"><span>📋</span> Trạng thái phòng</div>
+          <div class="role-options room-status-options">
+            <div class="role-option opt-room-available">
+              <input type="radio" name="roomStatus" id="rsAvailable" value="available">
+              <label for="rsAvailable">
+                <span class="option-num">🟢</span>
+                <span class="option-text">Trống</span>
+              </label>
+            </div>
+            <div class="role-option opt-room-occupied">
+              <input type="radio" name="roomStatus" id="rsOccupied" value="occupied">
+              <label for="rsOccupied">
+                <span class="option-num">🔴</span>
+                <span class="option-text">Có khách</span>
+              </label>
+            </div>
+            <div class="role-option opt-room-cleaning">
+              <input type="radio" name="roomStatus" id="rsCleaning" value="cleaning">
+              <label for="rsCleaning">
+                <span class="option-num">🧹</span>
+                <span class="option-text">Đang dọn</span>
+              </label>
+            </div>
+            <div class="role-option opt-room-maintenance">
+              <input type="radio" name="roomStatus" id="rsMaintenance" value="maintenance">
+              <label for="rsMaintenance">
+                <span class="option-num">🔧</span>
+                <span class="option-text">Bảo trì</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Loại nhiệm vụ -->
+        <div class="role-group" style="margin-top: 15px;">
+          <div class="role-group-label"><span>📋</span> Loại nhiệm vụ</div>
+          <div class="role-options task-type-options">
+            <div class="role-option opt-task-ss">
+              <input type="radio" name="taskType" id="ttSsLuu" value="ss_luu">
+              <label for="ttSsLuu">
+                <span class="option-num">🔄</span>
+                <span class="option-text">SS/Lưu</span>
+              </label>
+            </div>
+            <div class="role-option opt-task-out">
+              <input type="radio" name="taskType" id="ttOut" value="out" checked>
+              <label for="ttOut">
+                <span class="option-num">🚪</span>
+                <span class="option-text">Out</span>
+              </label>
+            </div>
+            <div class="role-option opt-task-tvs">
+              <input type="radio" name="taskType" id="ttTvs" value="tong_ve_sinh">
+              <label for="ttTvs">
+                <span class="option-num">🧹</span>
+                <span class="option-text">Tổng VS</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Assign Task Quick Section -->
+        <div class="role-group" style="margin-top: 15px;">
+          <div class="role-group-label"><span>👤</span> Giao phòng cho nhân viên dọn</div>
+          <select id="assignStaffSelect" class="room-filter-select" style="width: 100%; margin-top: 6px;">
+            <option value="">-- Chọn nhân viên để giao phòng --</option>
+          </select>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-cancel" onclick="closeRoomStatusModal()">Đóng</button>
+        <button class="btn btn-save" onclick="saveRoomStatus()">💾 Lưu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: SỬA MẬT KHẨU CĂN HỘ ===== -->
+  <div class="modal-overlay" id="roomPasswordModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>🔑 Đổi Mật Khẩu Căn Hộ</h2>
+        <button class="modal-close" onclick="closeRoomPasswordModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-staff-preview">
+          <div class="staff-avatar" style="background: linear-gradient(135deg, #eab308, #f97316); font-size: 0.8rem;">🔑</div>
+          <div class="preview-info">
+            <div class="preview-name" id="roomPwModalNumber">—</div>
+            <div class="preview-type">Mật khẩu hiện tại: <span id="roomPwModalOld">—</span></div>
+          </div>
+        </div>
+        <div class="rename-input-group">
+          <label for="roomNewPassword">Mật khẩu mới</label>
+          <input type="text" id="roomNewPassword" placeholder="Nhập mật khẩu mới...">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-cancel" onclick="closeRoomPasswordModal()">Đóng</button>
+        <button class="btn btn-save" onclick="saveRoomPassword()">💾 Cập nhật</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: CHỈNH SỬA CHI TIẾT LƯƠNG ===== -->
+  <div class="modal-overlay" id="salaryModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>💰 Chỉnh Sửa Chi Tiết Lương</h2>
+        <button class="modal-close" onclick="closeSalaryModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-staff-preview">
+          <div class="staff-avatar fulltime" id="salModalAvatar">NV</div>
+          <div class="preview-info">
+            <div class="preview-name" id="salModalName">—</div>
+            <div class="preview-type" id="salModalType">—</div>
+          </div>
+        </div>
+        
+        <div class="rename-input-group">
+          <label>Lương cơ bản (VNĐ)</label>
+          <input type="number" id="salBaseInput" min="0" step="1000">
+        </div>
+        <div class="rename-input-group">
+          <label>Định mức thưởng/căn (VNĐ)</label>
+          <input type="number" id="salRateInput" min="0" step="1000">
+        </div>
+        <div class="rename-input-group">
+          <label>Số căn hoàn thành (Thực tế tự động)</label>
+          <input type="number" id="salRoomsInput" min="0" disabled>
+        </div>
+        <div class="rename-input-group">
+          <label>Thưởng thêm khác (VNĐ)</label>
+          <input type="number" id="salBonusInput" min="0" step="1000">
+        </div>
+        <div class="rename-input-group">
+          <label>Khấu trừ / Phạt (VNĐ)</label>
+          <input type="number" id="salDeductionInput" min="0" step="1000">
+        </div>
+        <div class="rename-input-group">
+          <label>Ghi chú bảng lương</label>
+          <input type="text" id="salNotesInput" placeholder="Lý do thưởng/phạt...">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-cancel" onclick="closeSalaryModal()">Đóng</button>
+        <button class="btn btn-save" onclick="saveSalaryRecord()">💾 Lưu lương</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TOAST CONTAINER ===== -->
+  <div class="toast-container" id="toastContainer"></div>
+
+  <script src="admin.js"></script>
+</body>
+</html>
