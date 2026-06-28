@@ -27,6 +27,7 @@
       </div>
       <div class="header-user-actions">
         <div class="user-greeting">Xin chào, <strong id="adminName">Admin</strong></div>
+        <button class="btn btn-save" onclick="openChangePasswordModal()" style="padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #475569, #334155);">🔑 Đổi MK</button>
         <button class="btn btn-logout" onclick="handleLogout()">🚪 Đăng xuất</button>
       </div>
     </header>
@@ -42,6 +43,9 @@
 
     <!-- ==================== TAB 1: ASSIGNMENT ==================== -->
     <div id="tab-assignment" class="tab-content active">
+      <!-- Rejected assignments alert -->
+      <div id="rejectedAssignmentsContainer" style="margin-bottom: 16px;"></div>
+
       <!-- Legend -->
       <div class="legend">
         <div class="legend-item">
@@ -81,10 +85,39 @@
           <!-- Rendered by JS -->
         </div>
       </section>
+
+      <!-- Danh sách phân công phòng hôm nay -->
+      <section class="section" style="margin-top: 24px;">
+        <div class="section-header">
+          <span class="section-icon">🧹</span>
+          <h2 class="section-title">Phân Công Dọn Phòng Hôm Nay</h2>
+        </div>
+        <div class="stats-table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Căn hộ</th>
+                <th>Tòa</th>
+                <th>Nhân viên</th>
+                <th>Nhiệm vụ</th>
+                <th>Trạng thái</th>
+                <th>Minh chứng</th>
+                <th>Thao tác</th>
+              </tr>
+            </thead>
+            <tbody id="roomAssignmentsTableBody">
+              <!-- Rendered by JS -->
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
 
     <!-- ==================== TAB: TASKS ==================== -->
     <div id="tab-tasks" class="tab-content">
+      <!-- Rejected tasks alert -->
+      <div id="rejectedTasksContainer" style="margin-bottom: 16px;"></div>
+
       <section class="section">
         <div class="section-header">
           <span class="section-icon">📝</span>
@@ -519,6 +552,48 @@
       <div class="modal-footer">
         <button class="btn btn-cancel" onclick="closeSalaryModal()">Đóng</button>
         <button class="btn btn-save" onclick="saveSalaryRecord()">💾 Lưu lương</button>
+      </div>
+    </div>
+  <!-- ===== MODAL: XEM ẢNH MINH CHỨNG ===== -->
+  <div class="modal-overlay" id="viewProofModal">
+    <div class="modal" style="max-width: 500px;">
+      <div class="modal-header">
+        <h2 id="proofModalTitle">🖼️ Ảnh Minh Chứng Hoàn Thành</h2>
+        <button class="modal-close" onclick="closeViewProofModal()">✕</button>
+      </div>
+      <div class="modal-body" style="text-align: center;">
+        <img id="proofModalImage" src="" alt="Minh chứng" style="max-width: 100%; max-height: 400px; border-radius: var(--radius-md); box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-cancel" onclick="closeViewProofModal()">Đóng</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: ĐỔI MẬT KHẨU ===== -->
+  <div class="modal-overlay" id="changePasswordModal">
+    <div class="modal" style="max-width: 400px;">
+      <div class="modal-header">
+        <h2>🔑 Thay Đổi Mật Khẩu</h2>
+        <button class="modal-close" onclick="closeChangePasswordModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="rename-input-group" style="margin-bottom: 12px;">
+          <label for="currentPasswordInput">Mật khẩu hiện tại</label>
+          <input type="password" id="currentPasswordInput" placeholder="Nhập mật khẩu hiện tại...">
+        </div>
+        <div class="rename-input-group" style="margin-bottom: 12px;">
+          <label for="newPasswordInput">Mật khẩu mới</label>
+          <input type="password" id="newPasswordInput" placeholder="Mật khẩu mới (tối thiểu 6 ký tự)...">
+        </div>
+        <div class="rename-input-group">
+          <label for="confirmPasswordInput">Xác nhận mật khẩu mới</label>
+          <input type="password" id="confirmPasswordInput" placeholder="Xác nhận lại mật khẩu mới...">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-cancel" onclick="closeChangePasswordModal()">Đóng</button>
+        <button class="btn btn-save" onclick="saveChangePassword()">💾 Cập nhật</button>
       </div>
     </div>
   </div>

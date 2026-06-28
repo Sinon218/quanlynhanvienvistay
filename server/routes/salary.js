@@ -7,12 +7,80 @@ const { authenticate, requireAdmin, requireSelfOrAdmin } = require('../middlewar
 
 const router = express.Router();
 
+// Helper to calculate room shares dynamically
+async function calculateDynamicRooms(month, year) {
+  const pool = await getPool();
+  const res = await pool.request()
+    .input('month', sql.Int, month)
+    .input('year', sql.Int, year)
+    .query(`
+      SELECT id, staff_id, apartment_id, assigned_date, assigned_role
+      FROM WorkAssignments
+      WHERE status = 'completed'
+        AND MONTH(assigned_date) = @month
+        AND YEAR(assigned_date) = @year
+    `);
+
+  const assignments = res.recordset;
+  // Group by date and apartment
+  const groups = {};
+  assignments.forEach(a => {
+    const dateStr = new Date(a.assigned_date).toISOString().split('T')[0];
+    const key = `${a.apartment_id}_${dateStr}`;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(a);
+  });
+
+  const shares = {}; // wa.id -> share factor
+  Object.values(groups).forEach(group => {
+    if (group.length === 1) {
+      shares[group[0].id] = 1.0;
+    } else if (group.length === 2) {
+      const a1 = group[0];
+      const a2 = group[1];
+      const r1 = a1.assigned_role;
+      const r2 = a2.assigned_role;
+
+      if (r1 === r2) {
+        shares[a1.id] = 0.5;
+        shares[a2.id] = 0.5;
+      } else if (r1 === 1 && (r2 === 2 || r2 === 0)) {
+        shares[a1.id] = 2/3;
+        shares[a2.id] = 1/3;
+      } else if (r2 === 1 && (r1 === 2 || r1 === 0)) {
+        shares[a1.id] = 1/3;
+        shares[a2.id] = 2/3;
+      } else {
+        shares[a1.id] = 0.5;
+        shares[a2.id] = 0.5;
+      }
+    } else {
+      // More than 2, split equally
+      const shareVal = 1 / group.length;
+      group.forEach(a => {
+        shares[a.id] = shareVal;
+      });
+    }
+  });
+
+  // Sum by staff_id
+  const staffRooms = {};
+  assignments.forEach(a => {
+    const share = shares[a.id] || 0;
+    staffRooms[a.staff_id] = (staffRooms[a.staff_id] || 0) + share;
+  });
+
+  return staffRooms;
+}
+
 // GET /api/salary — Bảng lương toàn bộ nhân viên (Admin only)
 router.get('/', authenticate, requireAdmin, async (req, res) => {
   try {
     const { month, year } = req.query;
     const currentMonth = month ? parseInt(month) : new Date().getMonth() + 1;
     const currentYear = year ? parseInt(year) : new Date().getFullYear();
+
+    const staffRooms = await calculateDynamicRooms(currentMonth, currentYear);
 
     const pool = await getPool();
     const result = await pool.request()
@@ -25,13 +93,7 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
           s.type,
           ISNULL(sr.base_salary, s.base_salary) as base_salary,
           ISNULL(sr.per_room_rate, s.per_room_rate) as per_room_rate,
-          ISNULL(sr.total_rooms, (
-            SELECT COUNT(*) FROM WorkAssignments wa 
-            WHERE wa.staff_id = s.id 
-              AND MONTH(wa.assigned_date) = @month 
-              AND YEAR(wa.assigned_date) = @year 
-              AND wa.status = 'completed'
-          )) as total_rooms,
+          sr.total_rooms as saved_total_rooms,
           ISNULL(sr.bonus, 0) as bonus,
           ISNULL(sr.deductions, 0) as deductions,
           sr.id as record_id,
@@ -45,7 +107,13 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
     const salaryTable = result.recordset.map(row => {
       const baseSalary = row.base_salary || 0;
       const rate = row.per_room_rate || 50000; // Mặc định 50k/căn nếu chưa cấu hình
-      const roomBonus = row.total_rooms * rate;
+      
+      // Nếu có total_rooms lưu trong DB thì dùng, không thì lấy từ tính toán động
+      const calculatedRooms = staffRooms[row.staff_id] || 0;
+      const totalRooms = row.saved_total_rooms !== null ? parseFloat(row.saved_total_rooms) : calculatedRooms;
+      const roundedRooms = Math.round(totalRooms * 100) / 100;
+
+      const roomBonus = roundedRooms * rate;
       const totalSalary = baseSalary + roomBonus + row.bonus - row.deductions;
 
       return {
@@ -54,7 +122,7 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
         type: row.type,
         base_salary: baseSalary,
         per_room_rate: rate,
-        total_rooms: row.total_rooms,
+        total_rooms: roundedRooms,
         bonus: row.bonus,
         deductions: row.deductions,
         room_bonus: roomBonus,
@@ -79,6 +147,8 @@ router.get('/:staffId', authenticate, requireSelfOrAdmin, async (req, res) => {
     const currentMonth = month ? parseInt(month) : new Date().getMonth() + 1;
     const currentYear = year ? parseInt(year) : new Date().getFullYear();
 
+    const staffRooms = await calculateDynamicRooms(currentMonth, currentYear);
+
     const pool = await getPool();
     const result = await pool.request()
       .input('staffId', sql.Int, staffId)
@@ -91,13 +161,7 @@ router.get('/:staffId', authenticate, requireSelfOrAdmin, async (req, res) => {
           s.type,
           ISNULL(sr.base_salary, s.base_salary) as base_salary,
           ISNULL(sr.per_room_rate, s.per_room_rate) as per_room_rate,
-          ISNULL(sr.total_rooms, (
-            SELECT COUNT(*) FROM WorkAssignments wa 
-            WHERE wa.staff_id = s.id 
-              AND MONTH(wa.assigned_date) = @month 
-              AND YEAR(wa.assigned_date) = @year 
-              AND wa.status = 'completed'
-          )) as total_rooms,
+          sr.total_rooms as saved_total_rooms,
           ISNULL(sr.bonus, 0) as bonus,
           ISNULL(sr.deductions, 0) as deductions,
           sr.notes
@@ -113,7 +177,12 @@ router.get('/:staffId', authenticate, requireSelfOrAdmin, async (req, res) => {
     const row = result.recordset[0];
     const baseSalary = row.base_salary || 0;
     const rate = row.per_room_rate || 50000;
-    const roomBonus = row.total_rooms * rate;
+    
+    const calculatedRooms = staffRooms[row.staff_id] || 0;
+    const totalRooms = row.saved_total_rooms !== null ? parseFloat(row.saved_total_rooms) : calculatedRooms;
+    const roundedRooms = Math.round(totalRooms * 100) / 100;
+
+    const roomBonus = roundedRooms * rate;
     const totalSalary = baseSalary + roomBonus + row.bonus - row.deductions;
 
     res.json({
@@ -122,7 +191,7 @@ router.get('/:staffId', authenticate, requireSelfOrAdmin, async (req, res) => {
       type: row.type,
       base_salary: baseSalary,
       per_room_rate: rate,
-      total_rooms: row.total_rooms,
+      total_rooms: roundedRooms,
       room_bonus: roomBonus,
       bonus: row.bonus,
       deductions: row.deductions,
@@ -167,7 +236,7 @@ router.post('/save', authenticate, requireAdmin, async (req, res) => {
         .input('year', sql.Int, year)
         .input('base', sql.Decimal(12,0), base)
         .input('rate', sql.Decimal(10,0), rate)
-        .input('rooms', sql.Int, rooms)
+        .input('rooms', sql.Decimal(6,2), rooms)
         .input('bonus', sql.Decimal(12,0), bon)
         .input('deductions', sql.Decimal(12,0), ded)
         .input('total', sql.Decimal(12,0), total)
@@ -186,7 +255,7 @@ router.post('/save', authenticate, requireAdmin, async (req, res) => {
         .input('year', sql.Int, year)
         .input('base', sql.Decimal(12,0), base)
         .input('rate', sql.Decimal(10,0), rate)
-        .input('rooms', sql.Int, rooms)
+        .input('rooms', sql.Decimal(6,2), rooms)
         .input('bonus', sql.Decimal(12,0), bon)
         .input('deductions', sql.Decimal(12,0), ded)
         .input('total', sql.Decimal(12,0), total)

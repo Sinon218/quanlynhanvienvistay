@@ -55,10 +55,12 @@ CREATE TABLE WorkAssignments (
     apartment_id INT NOT NULL FOREIGN KEY REFERENCES Apartments(id),
     task_type VARCHAR(20) NOT NULL DEFAULT 'out'
         CHECK (task_type IN ('ss_luu', 'out', 'tong_ve_sinh')),
+    assigned_role INT NOT NULL DEFAULT 1 CHECK (assigned_role IN (0, 1, 2)),
     assigned_date DATE NOT NULL DEFAULT CAST(GETDATE() AS DATE),
     status VARCHAR(20) NOT NULL DEFAULT 'pending' 
-        CHECK (status IN ('pending', 'in-progress', 'completed')),
+        CHECK (status IN ('pending', 'accepted', 'in-progress', 'completed', 'rejected')),
     completed_at DATETIME NULL,
+    proof_image NVARCHAR(MAX) NULL,
     notes NVARCHAR(500) NULL,
     created_at DATETIME DEFAULT GETDATE()
 );
@@ -100,8 +102,9 @@ CREATE TABLE Tasks (
     description NVARCHAR(1000) NULL,
     assigned_date DATE NOT NULL DEFAULT CAST(GETDATE() AS DATE),
     status VARCHAR(20) NOT NULL DEFAULT 'pending' 
-        CHECK (status IN ('pending', 'completed')),
+        CHECK (status IN ('pending', 'accepted', 'in-progress', 'completed', 'rejected')),
     completed_at DATETIME NULL,
+    proof_image NVARCHAR(MAX) NULL,
     created_at DATETIME DEFAULT GETDATE()
 );
 GO

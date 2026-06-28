@@ -295,28 +295,62 @@ function handleLocalMockCall(endpoint, method, body) {
   if (endpoint === '/work/assign' && method === 'POST') {
     const { staff_id, apartment_id, task_type } = body;
     
+    // Check limit of 2 assignees per day
+    const date = new Date().toISOString().split('T')[0];
+    const count = localWork.filter(w => w.apartment_id === apartment_id && w.assigned_date === date && w.status !== 'rejected').length;
+    if (count >= 2) {
+      return Promise.reject(new Error('Căn hộ này đã được giao cho tối đa 2 nhân viên trong ngày.'));
+    }
+
     // Check duplication
-    const duplicate = localWork.some(w => w.staff_id === staff_id && w.apartment_id === apartment_id);
+    const duplicate = localWork.some(w => w.staff_id === staff_id && w.apartment_id === apartment_id && w.assigned_date === date && w.status !== 'rejected');
     if (duplicate) {
       return Promise.reject(new Error('Phòng này đã được giao cho nhân viên này.'));
     }
 
+    const staffObj = localStaff.find(s => s.id === staff_id) || {};
     localWork.push({
       id: localWork.length + 1,
       staff_id,
       apartment_id,
       task_type: task_type || 'out',
+      assigned_role: staffObj.room_role || 1,
       status: 'pending',
-      assigned_date: new Date().toISOString().split('T')[0]
+      assigned_date: date
     });
     saveLocalData('vistay_mock_work', localWork);
     return Promise.resolve({ message: 'Giao việc thành công.' });
   }
 
+  if (endpoint === '/work/today' && method === 'GET') {
+    const todayStr = new Date().toISOString().split('T')[0];
+    const joined = localWork
+      .filter(w => w.assigned_date === todayStr)
+      .map(w => {
+        const room = localRooms.find(r => r.id === w.apartment_id) || {};
+        const staff = localStaff.find(s => s.id === w.staff_id) || {};
+        return {
+          ...w,
+          code: room.code || '???',
+          building: room.building || '???',
+          is_samsung: room.is_samsung || false,
+          staff_name: staff.name || ''
+        };
+      });
+    return Promise.resolve(joined);
+  }
+
+  if (endpoint.startsWith('/work/') && method === 'DELETE') {
+    const id = parseInt(endpoint.split('/')[2]);
+    localWork = localWork.filter(w => w.id !== id);
+    saveLocalData('vistay_mock_work', localWork);
+    return Promise.resolve({ message: 'Đã hủy phân công.' });
+  }
+
   if (endpoint === '/work/all-stats' && method === 'GET') {
     const todayStr = new Date().toISOString().split('T')[0];
     const statsList = localStaff.map(s => {
-      const todayTotal = localWork.filter(w => w.staff_id === s.id && w.assigned_date === todayStr).length;
+      const todayTotal = localWork.filter(w => w.staff_id === s.id && w.assigned_date === todayStr && w.status !== 'rejected').length;
       const todayDone = localWork.filter(w => w.staff_id === s.id && w.assigned_date === todayStr && w.status === 'completed').length;
       const monthDone = localWork.filter(w => w.staff_id === s.id && w.status === 'completed').length;
 
@@ -425,6 +459,10 @@ function handleLocalMockCall(endpoint, method, body) {
     return Promise.resolve({ message: 'Đã xóa công việc.' });
   }
 
+  if (endpoint === '/auth/change-password' && method === 'PUT') {
+    return Promise.resolve({ message: 'Đổi mật khẩu thành công.' });
+  }
+
   return Promise.reject(new Error(`Endpoint mock ${endpoint} chưa được mô phỏng.`));
 }
 
@@ -472,8 +510,86 @@ async function loadAssignmentTab() {
   try {
     staffList = await apiCall('/staff');
     renderStaffGrids();
+
+    const roomAssignments = await apiCall('/work/today');
+    renderRoomAssignmentsTable(roomAssignments);
+    renderRejectedAssignments(roomAssignments);
   } catch (err) {
     showToast(err.message, 'warning');
+  }
+}
+
+function renderRoomAssignmentsTable(assignments) {
+  const tbody = document.getElementById('roomAssignmentsTableBody');
+  if (!assignments || assignments.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 20px;">Hôm nay chưa có phân công dọn phòng nào.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = assignments.map(wa => {
+    const statusBadge = getStatusBadgeHtml(wa.status);
+    const proofLink = wa.proof_image 
+      ? `<button class="btn btn-save" onclick="viewProof('${wa.proof_image}', 'Căn ${wa.code}')" style="padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #10b981, #059669);">👁️ Xem ảnh</button>`
+      : '<span style="color: var(--text-muted); font-size: 0.8rem;">Chưa có</span>';
+    
+    return `
+      <tr>
+        <td style="font-weight: 800; color: var(--text-primary);">${wa.code}</td>
+        <td>${wa.building}</td>
+        <td style="font-weight: 700;">${wa.staff_name}</td>
+        <td><span class="task-type-tag ${getTaskTypeClass(wa.task_type)}">${getTaskTypeLabel(wa.task_type)}</span></td>
+        <td>${statusBadge}</td>
+        <td>${proofLink}</td>
+        <td>
+          <button class="btn btn-cancel" onclick="deleteAssignment(${wa.id})" style="padding: 4px 8px; font-size: 0.75rem;">🗑️ Hủy</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+function renderRejectedAssignments(assignments) {
+  const container = document.getElementById('rejectedAssignmentsContainer');
+  const rejected = assignments.filter(wa => wa.status === 'rejected');
+  
+  if (rejected.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = rejected.map(wa => `
+    <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; padding: 12px 16px; border-radius: var(--radius-md); margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; animation: pulse 2s infinite;">
+      <span>⚠️ Nhân viên <strong>${wa.staff_name}</strong> từ chối dọn căn <strong>${wa.code}</strong> (${getTaskTypeLabel(wa.task_type)}).</span>
+      <button class="btn btn-cancel" onclick="deleteAssignment(${wa.id})" style="padding: 4px 10px; font-size: 0.75rem;">Xóa và phân công lại</button>
+    </div>
+  `).join('');
+}
+
+async function deleteAssignment(id) {
+  if (!confirm('Bạn có chắc chắn muốn hủy phân công này?')) return;
+  try {
+    const res = await apiCall(`/work/${id}`, 'DELETE');
+    showToast(res.message, 'success');
+    loadAssignmentTab();
+  } catch (err) {
+    showToast(err.message, 'warning');
+  }
+}
+
+function getStatusBadgeHtml(status) {
+  switch (status) {
+    case 'pending':
+      return '<span class="role-badge none" style="font-size: 0.75rem; padding: 4px 10px; color: #fbbf24; background: rgba(251, 191, 36, 0.12); border-color: rgba(251, 191, 36, 0.3);">⏳ Chờ nhận</span>';
+    case 'accepted':
+      return '<span class="role-badge sub" style="font-size: 0.75rem; padding: 4px 10px; color: #60a5fa; background: rgba(59, 130, 246, 0.12); border-color: rgba(59, 130, 246, 0.3);">✓ Đã nhận</span>';
+    case 'in-progress':
+      return '<span class="role-badge none" style="font-size: 0.75rem; padding: 4px 10px; color: #a78bfa; background: rgba(167, 139, 250, 0.12); border-color: rgba(167, 139, 250, 0.3);">🧹 Đang làm</span>';
+    case 'completed':
+      return '<span class="role-badge main" style="font-size: 0.75rem; padding: 4px 10px; color: #22c55e; background: rgba(34, 197, 94, 0.12); border-color: rgba(34, 197, 94, 0.3);">🟢 Đã xong</span>';
+    case 'rejected':
+      return '<span class="role-badge none" style="font-size: 0.75rem; padding: 4px 10px; color: #ef4444; background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.3);">❌ Từ chối</span>';
+    default:
+      return `<span class="role-badge none" style="font-size: 0.75rem; padding: 4px 10px;">${status}</span>`;
   }
 }
 
@@ -1073,6 +1189,7 @@ function formatDate() {
 }
 
 // ==================== TAB: TASKS ====================
+// ==================== TAB: TASKS ====================
 async function loadTasksTab() {
   try {
     // Populate staff select
@@ -1086,6 +1203,7 @@ async function loadTasksTab() {
     // Load today's tasks
     const tasks = await apiCall('/tasks/today');
     renderTasksTable(tasks);
+    renderRejectedTasks(tasks);
   } catch (err) {
     showToast(err.message, 'warning');
   }
@@ -1099,13 +1217,12 @@ function renderTasksTable(tasks) {
   }
 
   tbody.innerHTML = tasks.map(task => {
-    const statusBadge = task.status === 'completed'
-      ? '<span class="role-badge main" style="font-size: 0.75rem; padding: 4px 10px;">✓ Xong</span>'
-      : '<span class="role-badge sub" style="font-size: 0.75rem; padding: 4px 10px;">⏳ Chờ</span>';
+    const statusBadge = getStatusBadgeHtml(task.status);
+    const proofLink = task.proof_image 
+      ? `<button class="btn btn-save" onclick="viewProof('${task.proof_image}', 'Công việc: ${task.title}')" style="padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #10b981, #059669);">👁️ Xem ảnh</button>`
+      : '<span style="color: var(--text-muted); font-size: 0.8rem;">Chưa có</span>';
     
-    const deleteBtn = task.status !== 'completed'
-      ? `<button class="btn btn-cancel" onclick="deleteTask(${task.id})" style="padding: 4px 8px; font-size: 0.75rem;">🗑️ Xóa</button>`
-      : '';
+    const deleteBtn = `<button class="btn btn-cancel" onclick="deleteTask(${task.id})" style="padding: 4px 8px; font-size: 0.75rem;">🗑️ Xóa</button>`;
 
     return `
       <tr>
@@ -1113,10 +1230,27 @@ function renderTasksTable(tasks) {
         <td style="font-weight: 600;">${task.title}</td>
         <td style="color: var(--text-secondary); font-size: 0.85rem;">${task.description || '—'}</td>
         <td>${statusBadge}</td>
-        <td>${deleteBtn}</td>
+        <td><div style="display: flex; gap: 6px; align-items: center;">${proofLink} ${deleteBtn}</div></td>
       </tr>
     `;
   }).join('');
+}
+
+function renderRejectedTasks(tasks) {
+  const container = document.getElementById('rejectedTasksContainer');
+  const rejected = tasks.filter(t => t.status === 'rejected');
+  
+  if (rejected.length === 0) {
+    container.innerHTML = '';
+    return;
+  }
+
+  container.innerHTML = rejected.map(t => `
+    <div style="background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.3); color: #f87171; padding: 12px 16px; border-radius: var(--radius-md); margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; animation: pulse 2s infinite;">
+      <span>⚠️ Nhân viên <strong>${t.staff_name}</strong> từ chối công việc: <strong>${t.title}</strong>.</span>
+      <button class="btn btn-cancel" onclick="deleteTask(${t.id})" style="padding: 4px 10px; font-size: 0.75rem;">Xóa và phân công lại</button>
+    </div>
+  `).join('');
 }
 
 async function createTask() {
@@ -1163,6 +1297,58 @@ async function deleteTask(taskId) {
   }
 }
 
+// ===== VIEW PROOF MODAL =====
+function viewProof(url, title) {
+  const modal = document.getElementById('viewProofModal');
+  document.getElementById('proofModalTitle').textContent = `🖼️ Ảnh Minh Chứng - ${title}`;
+  document.getElementById('proofModalImage').src = url.startsWith('http') ? url : `http://localhost:3000${url}`;
+  modal.classList.add('active');
+}
+
+function closeViewProofModal() {
+  document.getElementById('viewProofModal').classList.remove('active');
+}
+
+// ===== CHANGE PASSWORD MODAL =====
+function openChangePasswordModal() {
+  const modal = document.getElementById('changePasswordModal');
+  document.getElementById('currentPasswordInput').value = '';
+  document.getElementById('newPasswordInput').value = '';
+  document.getElementById('confirmPasswordInput').value = '';
+  modal.classList.add('active');
+}
+
+function closeChangePasswordModal() {
+  document.getElementById('changePasswordModal').classList.remove('active');
+}
+
+async function saveChangePassword() {
+  const currentPassword = document.getElementById('currentPasswordInput').value;
+  const newPassword = document.getElementById('newPasswordInput').value;
+  const confirmPassword = document.getElementById('confirmPasswordInput').value;
+
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    showToast('Vui lòng điền đầy đủ các thông tin.', 'warning');
+    return;
+  }
+  if (newPassword.length < 6) {
+    showToast('Mật khẩu mới phải có tối thiểu 6 ký tự.', 'warning');
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    showToast('Xác nhận mật khẩu mới không khớp.', 'warning');
+    return;
+  }
+
+  try {
+    const res = await apiCall('/auth/change-password', 'PUT', { currentPassword, newPassword });
+    showToast(res.message, 'success');
+    closeChangePasswordModal();
+  } catch (err) {
+    showToast(err.message, 'warning');
+  }
+}
+
 // ===== EVENT BINDINGS =====
 document.addEventListener('DOMContentLoaded', () => {
   checkAuth();
@@ -1191,6 +1377,8 @@ document.addEventListener('DOMContentLoaded', () => {
         closeRoomStatusModal();
         closeRoomPasswordModal();
         closeSalaryModal();
+        closeViewProofModal();
+        closeChangePasswordModal();
       }
     });
   });

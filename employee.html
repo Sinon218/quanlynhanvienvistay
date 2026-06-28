@@ -24,6 +24,7 @@
       </div>
       <div class="header-user-actions">
         <div class="user-greeting">Xin chào, <strong id="employeeName">—</strong></div>
+        <button class="btn btn-save" onclick="openChangePasswordModal()" style="padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #475569, #334155);">🔑 Đổi MK</button>
         <button class="btn btn-logout" onclick="handleLogout()">🚪 Đăng xuất</button>
       </div>
     </header>
@@ -111,6 +112,34 @@
       </div>
     </section>
 
+  </div>
+
+  <!-- ===== MODAL: ĐỔI MẬT KHẨU ===== -->
+  <div class="modal-overlay" id="changePasswordModal">
+    <div class="modal" style="max-width: 400px;">
+      <div class="modal-header">
+        <h2>🔑 Thay Đổi Mật Khẩu</h2>
+        <button class="modal-close" onclick="closeChangePasswordModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="rename-input-group" style="margin-bottom: 12px;">
+          <label for="currentPasswordInput">Mật khẩu hiện tại</label>
+          <input type="password" id="currentPasswordInput" placeholder="Nhập mật khẩu hiện tại...">
+        </div>
+        <div class="rename-input-group" style="margin-bottom: 12px;">
+          <label for="newPasswordInput">Mật khẩu mới</label>
+          <input type="password" id="newPasswordInput" placeholder="Mật khẩu mới (tối thiểu 6 ký tự)...">
+        </div>
+        <div class="rename-input-group">
+          <label for="confirmPasswordInput">Xác nhận mật khẩu mới</label>
+          <input type="password" id="confirmPasswordInput" placeholder="Xác nhận lại mật khẩu mới...">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-cancel" onclick="closeChangePasswordModal()">Đóng</button>
+        <button class="btn btn-save" onclick="saveChangePassword()">💾 Cập nhật</button>
+      </div>
+    </div>
   </div>
 
   <!-- ===== TOAST CONTAINER ===== -->

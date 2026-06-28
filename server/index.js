@@ -18,6 +18,10 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+const path = require('path');
+const uploadDir = 'E:\\quanlynhanvien\\ảnh dọn phòng của nhân viên';
+app.use('/uploads', express.static(uploadDir));
+
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/staff', staffRoutes);

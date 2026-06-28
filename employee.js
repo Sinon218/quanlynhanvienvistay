@@ -41,14 +41,14 @@ async function apiCall(endpoint, method = 'GET', body = null) {
     const headers = {
       'Authorization': `Bearer ${token}`
     };
-    if (body) {
+    if (body && !(body instanceof FormData)) {
       headers['Content-Type'] = 'application/json';
     }
 
     const options = {
       method,
       headers,
-      body: body ? JSON.stringify(body) : null
+      body: body instanceof FormData ? body : (body ? JSON.stringify(body) : null)
     };
 
     const response = await fetch(`${API_URL}${endpoint}`, options);
@@ -257,17 +257,41 @@ function renderTaskList(tasks) {
   }
 
   container.innerHTML = tasks.map(task => {
-    const isCompleted = task.status === 'completed';
-    const btnHtml = isCompleted 
-      ? `<span class="role-badge main" style="font-size: 0.8rem; padding: 6px 12px;">✓ Đã hoàn thành</span>`
-      : `<button class="btn btn-save" onclick="completeTask(${task.id})" style="padding: 6px 12px; font-size: 0.8rem; background: linear-gradient(135deg, #3b82f6, #2563eb); box-shadow: 0 2px 8px rgba(59, 130, 246, 0.25);">✓ Đánh dấu xong</button>`;
-
     const sstnBadge = task.is_samsung ? '<span class="samsung-badge" style="background: #3b82f6; color: white; padding: 2px 6px; font-size: 0.6rem; border-radius: 4px; font-weight: 700; margin-left: 10px;">SSTN</span>' : '';
 
     // Task type tag
     const taskTypeLabel = getTaskTypeLabel(task.task_type);
     const taskTypeClass = getTaskTypeClass(task.task_type);
     const taskTypeTag = `<span class="task-type-tag ${taskTypeClass}">${taskTypeLabel}</span>`;
+
+    // Render action buttons based on status
+    let actionHtml = '';
+    if (task.status === 'pending') {
+      actionHtml = `
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-save" onclick="updateWorkStatus(${task.id}, 'accept')" style="padding: 6px 12px; font-size: 0.8rem; background: linear-gradient(135deg, #10b981, #059669);">Nhận</button>
+          <button class="btn btn-cancel" onclick="updateWorkStatus(${task.id}, 'reject')" style="padding: 6px 12px; font-size: 0.8rem; background: linear-gradient(135deg, #ef4444, #dc2626);">Từ chối</button>
+        </div>
+      `;
+    } else if (task.status === 'accepted') {
+      actionHtml = `
+        <button class="btn btn-save" onclick="updateWorkStatus(${task.id}, 'start')" style="padding: 6px 12px; font-size: 0.8rem; background: linear-gradient(135deg, #a78bfa, #7c3aed);">Bắt đầu làm</button>
+      `;
+    } else if (task.status === 'in-progress') {
+      actionHtml = `
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <input type="file" id="file-${task.id}" accept="image/*" capture="environment" style="display: none;" onchange="onFileSelected(${task.id})">
+          <button class="btn btn-save" onclick="document.getElementById('file-${task.id}').click()" style="padding: 6px 10px; font-size: 0.75rem; background: linear-gradient(135deg, #eab308, #ca8a04); border: none;">
+            <span id="lbl-${task.id}">📸 Chụp ảnh</span>
+          </button>
+          <button class="btn btn-save" onclick="completeWork(${task.id})" style="padding: 6px 10px; font-size: 0.75rem; background: linear-gradient(135deg, #10b981, #059669);">✓ Hoàn thành</button>
+        </div>
+      `;
+    } else if (task.status === 'completed') {
+      actionHtml = `<span class="role-badge main" style="font-size: 0.8rem; padding: 6px 12px;">✓ Đã hoàn thành</span>`;
+    } else if (task.status === 'rejected') {
+      actionHtml = `<span class="role-badge none" style="font-size: 0.8rem; padding: 6px 12px; color: #ef4444; border-color: rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.12);">Đã từ chối</span>`;
+    }
 
     return `
       <div class="staff-card" style="flex-direction: row; justify-content: space-between; align-items: center; text-align: left; cursor: default; width: 100%; animation: none;">
@@ -283,17 +307,46 @@ function renderTaskList(tasks) {
           </div>
         </div>
         <div>
-          ${btnHtml}
+          ${actionHtml}
         </div>
       </div>
     `;
   }).join('');
 }
 
-async function completeTask(assignmentId) {
+async function updateWorkStatus(id, action) {
   try {
-    const data = await apiCall(`/work/${assignmentId}/complete`, 'PUT');
-    showToast('Đã đánh dấu hoàn thành phòng!', 'success');
+    const data = await apiCall(`/work/${id}/${action}`, 'PUT');
+    showToast(data.message, 'success');
+    loadDashboard();
+  } catch (err) {
+    showToast(err.message, 'warning');
+  }
+}
+
+function onFileSelected(id) {
+  const fileInput = document.getElementById(`file-${id}`);
+  const label = document.getElementById(`lbl-${id}`);
+  if (fileInput.files.length > 0) {
+    label.textContent = `📁 ${fileInput.files[0].name.substring(0, 10)}...`;
+  } else {
+    label.textContent = `📸 Chụp ảnh`;
+  }
+}
+
+async function completeWork(id) {
+  const fileInput = document.getElementById(`file-${id}`);
+  if (fileInput.files.length === 0) {
+    showToast('Vui lòng chụp hoặc chọn ảnh minh chứng trước khi bấm Hoàn thành.', 'warning');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('proof', fileInput.files[0]);
+
+  try {
+    const data = await apiCall(`/work/${id}/complete`, 'PUT', formData);
+    showToast(data.message, 'success');
     loadDashboard();
   } catch (err) {
     showToast(err.message, 'warning');
@@ -361,10 +414,33 @@ function renderCustomTaskList(tasks) {
   }
 
   container.innerHTML = tasks.map(task => {
-    const isCompleted = task.status === 'completed';
-    const btnHtml = isCompleted
-      ? `<span class="role-badge main" style="font-size: 0.8rem; padding: 6px 12px;">✓ Xong</span>`
-      : `<button class="btn btn-save" onclick="completeCustomTask(${task.id})" style="padding: 6px 12px; font-size: 0.8rem; background: linear-gradient(135deg, #a78bfa, #7c3aed); box-shadow: 0 2px 8px rgba(167, 139, 250, 0.25);">✓ Hoàn thành</button>`;
+    let actionHtml = '';
+    if (task.status === 'pending') {
+      actionHtml = `
+        <div style="display: flex; gap: 8px;">
+          <button class="btn btn-save" onclick="updateCustomTaskStatus(${task.id}, 'accept')" style="padding: 6px 12px; font-size: 0.8rem; background: linear-gradient(135deg, #10b981, #059669);">Nhận</button>
+          <button class="btn btn-cancel" onclick="updateCustomTaskStatus(${task.id}, 'reject')" style="padding: 6px 12px; font-size: 0.8rem; background: linear-gradient(135deg, #ef4444, #dc2626);">Từ chối</button>
+        </div>
+      `;
+    } else if (task.status === 'accepted') {
+      actionHtml = `
+        <button class="btn btn-save" onclick="updateCustomTaskStatus(${task.id}, 'start')" style="padding: 6px 12px; font-size: 0.8rem; background: linear-gradient(135deg, #a78bfa, #7c3aed);">Bắt đầu làm</button>
+      `;
+    } else if (task.status === 'in-progress') {
+      actionHtml = `
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <input type="file" id="tfile-${task.id}" accept="image/*" capture="environment" style="display: none;" onchange="onTaskFileSelected(${task.id})">
+          <button class="btn btn-save" onclick="document.getElementById('tfile-${task.id}').click()" style="padding: 6px 10px; font-size: 0.75rem; background: linear-gradient(135deg, #eab308, #ca8a04); border: none;">
+            <span id="tlbl-${task.id}">📸 Chụp ảnh</span>
+          </button>
+          <button class="btn btn-save" onclick="completeCustomTask(${task.id})" style="padding: 6px 10px; font-size: 0.75rem; background: linear-gradient(135deg, #10b981, #059669);">✓ Hoàn thành</button>
+        </div>
+      `;
+    } else if (task.status === 'completed') {
+      actionHtml = `<span class="role-badge main" style="font-size: 0.8rem; padding: 6px 12px;">✓ Đã hoàn thành</span>`;
+    } else if (task.status === 'rejected') {
+      actionHtml = `<span class="role-badge none" style="font-size: 0.8rem; padding: 6px 12px; color: #ef4444; border-color: rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.12);">Đã từ chối</span>`;
+    }
 
     return `
       <div class="staff-card" style="flex-direction: row; justify-content: space-between; align-items: center; text-align: left; cursor: default; width: 100%; animation: none;">
@@ -376,18 +452,87 @@ function renderCustomTaskList(tasks) {
           </div>
         </div>
         <div>
-          ${btnHtml}
+          ${actionHtml}
         </div>
       </div>
     `;
   }).join('');
 }
 
-async function completeCustomTask(taskId) {
+async function updateCustomTaskStatus(id, action) {
   try {
-    const data = await apiCall(`/tasks/${taskId}/complete`, 'PUT');
-    showToast('Đã hoàn thành công việc!', 'success');
+    const data = await apiCall(`/tasks/${id}/${action}`, 'PUT');
+    showToast(data.message, 'success');
     loadDashboard();
+  } catch (err) {
+    showToast(err.message, 'warning');
+  }
+}
+
+function onTaskFileSelected(id) {
+  const fileInput = document.getElementById(`tfile-${id}`);
+  const label = document.getElementById(`tlbl-${id}`);
+  if (fileInput.files.length > 0) {
+    label.textContent = `📁 ${fileInput.files[0].name.substring(0, 10)}...`;
+  } else {
+    label.textContent = `📸 Chụp ảnh`;
+  }
+}
+
+async function completeCustomTask(id) {
+  const fileInput = document.getElementById(`tfile-${id}`);
+  if (fileInput.files.length === 0) {
+    showToast('Vui lòng chụp hoặc chọn ảnh minh chứng trước khi bấm Hoàn thành.', 'warning');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('proof', fileInput.files[0]);
+
+  try {
+    const data = await apiCall(`/tasks/${id}/complete`, 'PUT', formData);
+    showToast(data.message, 'success');
+    loadDashboard();
+  } catch (err) {
+    showToast(err.message, 'warning');
+  }
+}
+
+// ===== CHANGE PASSWORD MODAL =====
+function openChangePasswordModal() {
+  const modal = document.getElementById('changePasswordModal');
+  document.getElementById('currentPasswordInput').value = '';
+  document.getElementById('newPasswordInput').value = '';
+  document.getElementById('confirmPasswordInput').value = '';
+  modal.classList.add('active');
+}
+
+function closeChangePasswordModal() {
+  document.getElementById('changePasswordModal').classList.remove('active');
+}
+
+async function saveChangePassword() {
+  const currentPassword = document.getElementById('currentPasswordInput').value;
+  const newPassword = document.getElementById('newPasswordInput').value;
+  const confirmPassword = document.getElementById('confirmPasswordInput').value;
+
+  if (!currentPassword || !newPassword || !confirmPassword) {
+    showToast('Vui lòng điền đầy đủ các thông tin.', 'warning');
+    return;
+  }
+  if (newPassword.length < 6) {
+    showToast('Mật khẩu mới phải có tối thiểu 6 ký tự.', 'warning');
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    showToast('Xác nhận mật khẩu mới không khớp.', 'warning');
+    return;
+  }
+
+  try {
+    const res = await apiCall('/auth/change-password', 'PUT', { currentPassword, newPassword });
+    showToast(res.message, 'success');
+    closeChangePasswordModal();
   } catch (err) {
     showToast(err.message, 'warning');
   }
@@ -398,4 +543,13 @@ document.addEventListener('DOMContentLoaded', () => {
   checkAuth();
   document.getElementById('currentDate').textContent = formatDate();
   loadDashboard();
+
+  // Close modals on backdrop click
+  document.querySelectorAll('.modal-overlay').forEach(overlay => {
+    overlay.addEventListener('click', (e) => {
+      if (e.target === e.currentTarget) {
+        closeChangePasswordModal();
+      }
+    });
+  });
 });
