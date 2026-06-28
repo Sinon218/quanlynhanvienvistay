@@ -30,6 +30,9 @@ app.use('/api/work', workRoutes);
 app.use('/api/salary', salaryRoutes);
 app.use('/api/tasks', taskRoutes);
 
+// Serve Frontend Static Files
+app.use(express.static(path.join(__dirname, '..')));
+
 // Error Handler
 app.use((err, req, res, next) => {
   console.error('Unhandled server error:', err);
