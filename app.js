@@ -6,27 +6,26 @@
 const DEFAULT_STAFF = [
   { id: 1, name: 'Liên',   defaultName: 'Liên',   type: 'full-time', roomRole: 1, techRole: 0 },
   { id: 2, name: 'Thiên',  defaultName: 'Thiên',  type: 'full-time', roomRole: 2, techRole: 1 },
-  { id: 3, name: 'Thương', defaultName: 'Thương', type: 'full-time', roomRole: 1, techRole: 0 },
-  { id: 4, name: 'Vân',    defaultName: 'Vân',    type: 'full-time', roomRole: 2, techRole: 0 },
-  { id: 5, name: 'Diệu',  defaultName: 'Diệu',  type: 'full-time', roomRole: 2, techRole: 0 },
+  { id: 3, name: 'Thương', defaultName: 'Thương', type: 'full-time', roomRole: 2, techRole: 1 },
+  { id: 4, name: 'Vân',    defaultName: 'Vân',    type: 'full-time', roomRole: 1, techRole: 0 },
+  { id: 5, name: 'Diệu',  defaultName: 'Diệu',  type: 'full-time', roomRole: 1, techRole: 0 },
   { id: 6, name: 'Hoàn',   defaultName: 'Hoàn',   type: 'full-time', roomRole: 1, techRole: 0 },
   { id: 7, name: 'Nhân viên Part-time 1', defaultName: 'Nhân viên Part-time 1', type: 'part-time', roomRole: 2, techRole: 0 },
-  { id: 8, name: 'Nhân viên Part-time 2', defaultName: 'Nhân viên Part-time 2', type: 'part-time', roomRole: 0, techRole: 0 },
+  { id: 8, name: 'Nhân viên Part-time 2', defaultName: 'Nhân viên Part-time 2', type: 'part-time', roomRole: 2, techRole: 0 },
+  { id: 9, name: 'Lộc',    defaultName: 'Lộc',    type: 'full-time', roomRole: 1, techRole: 0 },
 ];
 
 // ===== ROOM DATABASE (150 Rooms) =====
 const ROOM_TYPES = ['Standard', 'Superior', 'Deluxe', 'Suite', 'VIP'];
-const ROOM_STATUSES = ['available', 'occupied', 'cleaning', 'maintenance'];
+const ROOM_STATUSES = ['available', 'occupied', 'maintenance'];
 const ROOM_STATUS_LABELS = {
   available: 'Trống',
   occupied: 'Có khách',
-  cleaning: 'Đang dọn',
-  maintenance: 'Bảo trì',
+  maintenance: 'Sửa chữa',
 };
 const ROOM_STATUS_ICONS = {
   available: '🟢',
   occupied: '🔴',
-  cleaning: '🧹',
   maintenance: '🔧',
 };
 

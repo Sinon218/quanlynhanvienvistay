@@ -16,7 +16,7 @@ async function calculateDynamicRooms(month, year) {
     .query(`
       SELECT id, staff_id, apartment_id, assigned_date, assigned_role
       FROM WorkAssignments
-      WHERE status = 'completed'
+      WHERE status = 'approved'
         AND MONTH(assigned_date) = @month
         AND YEAR(assigned_date) = @year
     `);

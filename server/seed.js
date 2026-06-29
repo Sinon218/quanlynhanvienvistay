@@ -87,36 +87,39 @@ const providedRooms = [
   { code: 'R6A-2806', building: 'R6A', password: '2222.333.333', is_samsung: 0 }
 ];
 
-// Generate 90 placeholder rooms to reach exactly 150
+// Generate 90 placeholder rooms for Hồ Chí Minh to reach exactly 150
 const placeholderRooms = [];
 const targetTotal = 150;
 const missingCount = targetTotal - providedRooms.length;
 
-// Spread placeholders across S1, S2, S3
-const buildings = ['S1', 'S2', 'S3'];
 for (let i = 1; i <= missingCount; i++) {
-  const b = buildings[(i - 1) % buildings.length];
-  // Pads number (e.g. S1-P001)
   const roomNum = String(i).padStart(3, '0');
   placeholderRooms.push({
-    code: `${b}-P${roomNum}`,
-    building: b,
+    code: `HCM-${roomNum}`,
+    building: 'HCM',
     password: '???',
     is_samsung: 0
   });
 }
 
-const allRooms = [...providedRooms, ...placeholderRooms];
+const allRooms = [...providedRooms, ...placeholderRooms].map((room, idx) => {
+  const roomTypes = ['1 ngủ', '2 ngủ', '3 ngủ', '4 ngủ'];
+  return {
+    ...room,
+    room_type: roomTypes[idx % roomTypes.length]
+  };
+});
 
 const staffData = [
   { name: 'Liên',   default_name: 'Liên',   type: 'full-time', room_role: 1, tech_role: 0 },
   { name: 'Thiên',  default_name: 'Thiên',  type: 'full-time', room_role: 2, tech_role: 1 },
-  { name: 'Thương', default_name: 'Thương', type: 'full-time', room_role: 1, tech_role: 0 },
-  { name: 'Vân',    default_name: 'Vân',    type: 'full-time', room_role: 2, tech_role: 0 },
-  { name: 'Diệu',  default_name: 'Diệu',  type: 'full-time', room_role: 2, tech_role: 0 },
+  { name: 'Thương', default_name: 'Thương', type: 'full-time', room_role: 2, tech_role: 1 },
+  { name: 'Vân',    default_name: 'Vân',    type: 'full-time', room_role: 1, tech_role: 0 },
+  { name: 'Diệu',  default_name: 'Diệu',  type: 'full-time', room_role: 1, tech_role: 0 },
   { name: 'Hoàn',   default_name: 'Hoàn',   type: 'full-time', room_role: 1, tech_role: 0 },
+  { name: 'Lộc',    default_name: 'Lộc',    type: 'full-time', room_role: 1, tech_role: 0 },
   { name: 'Nhân viên Part-time 1', default_name: 'Nhân viên Part-time 1', type: 'part-time', room_role: 2, tech_role: 0 },
-  { name: 'Nhân viên Part-time 2', default_name: 'Nhân viên Part-time 2', type: 'part-time', room_role: 0, tech_role: 0 }
+  { name: 'Nhân viên Part-time 2', default_name: 'Nhân viên Part-time 2', type: 'part-time', room_role: 2, tech_role: 0 }
 ];
 
 async function seed() {
@@ -192,9 +195,10 @@ async function seed() {
         .input('building', sql.NVarChar, room.building)
         .input('password', sql.NVarChar, room.password)
         .input('is_samsung', sql.Bit, room.is_samsung)
+        .input('room_type', sql.NVarChar, room.room_type)
         .query(`
-          INSERT INTO Apartments (code, building, password, is_samsung, status)
-          VALUES (@code, @building, @password, @is_samsung, 'available')
+          INSERT INTO Apartments (code, building, password, is_samsung, room_type, status)
+          VALUES (@code, @building, @password, @is_samsung, @room_type, 'available')
         `);
     }
 

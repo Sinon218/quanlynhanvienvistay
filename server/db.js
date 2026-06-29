@@ -2,7 +2,7 @@
 // SQL Server Connection Pool
 // ===================================================================
 const sql = require('mssql');
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 const serverParts = (process.env.DB_SERVER || '').split('\\');
 const serverHost = serverParts[0] || 'localhost';
@@ -24,7 +24,9 @@ const config = {
   },
 };
 
-if (instanceName) {
+if (process.env.DB_PORT) {
+  config.port = parseInt(process.env.DB_PORT, 10);
+} else if (instanceName) {
   config.options.instanceName = instanceName;
 }
 

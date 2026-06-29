@@ -3,7 +3,7 @@
 // ===================================================================
 const express = require('express');
 const cors = require('cors');
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 const authRoutes = require('./routes/auth');
 const staffRoutes = require('./routes/staff');
@@ -19,7 +19,7 @@ app.use(cors());
 app.use(express.json());
 
 const path = require('path');
-const uploadDir = 'E:\\quanlynhanvien\\ảnh dọn phòng của nhân viên';
+const uploadDir = path.join(__dirname, '..', 'ảnh dọn phòng của nhân viên');
 app.use('/uploads', express.static(uploadDir));
 
 // Routes
@@ -42,5 +42,5 @@ app.use((err, req, res, next) => {
 // Start Server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server is running on port ${PORT}`);
+  console.log(`🚀 Server is running on: http://localhost:${PORT}`);
 });

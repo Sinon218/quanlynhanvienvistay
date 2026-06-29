@@ -5,16 +5,17 @@
 USE ungdungquanlynhanvienvistay;
 GO
 
--- ===== NHÂN VIÊN (8 người) =====
+-- ===== NHÂN VIÊN (9 người) =====
 INSERT INTO Staff (name, default_name, type, room_role, tech_role, base_salary, per_room_rate) VALUES
 (N'Liên',   N'Liên',   'full-time', 1, 0, NULL, NULL),
 (N'Thiên',  N'Thiên',  'full-time', 2, 1, NULL, NULL),
-(N'Thương', N'Thương', 'full-time', 1, 0, NULL, NULL),
-(N'Vân',    N'Vân',    'full-time', 2, 0, NULL, NULL),
-(N'Diệu',  N'Diệu',  'full-time', 2, 0, NULL, NULL),
+(N'Thương', N'Thương', 'full-time', 2, 1, NULL, NULL),
+(N'Vân',    N'Vân',    'full-time', 1, 0, NULL, NULL),
+(N'Diệu',  N'Diệu',  'full-time', 1, 0, NULL, NULL),
 (N'Hoàn',   N'Hoàn',   'full-time', 1, 0, NULL, NULL),
+(N'Lộc',    N'Lộc',    'full-time', 1, 0, NULL, NULL),
 (N'Nhân viên Part-time 1', N'Nhân viên Part-time 1', 'part-time', 2, 0, NULL, NULL),
-(N'Nhân viên Part-time 2', N'Nhân viên Part-time 2', 'part-time', 0, 0, NULL, NULL);
+(N'Nhân viên Part-time 2', N'Nhân viên Part-time 2', 'part-time', 2, 0, NULL, NULL);
 GO
 
 -- ===== TÀI KHOẢN ĐĂNG NHẬP =====

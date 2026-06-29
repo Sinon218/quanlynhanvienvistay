@@ -3,7 +3,7 @@
 // ===================================================================
 const express = require('express');
 const { sql, getPool } = require('../db');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin, requireManagerOrAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -54,8 +54,8 @@ router.get('/:id', authenticate, async (req, res) => {
   }
 });
 
-// PUT /api/staff/:id/role — Cập nhật vai trò (Admin only)
-router.put('/:id/role', authenticate, requireAdmin, async (req, res) => {
+// PUT /api/staff/:id/role — Cập nhật vai trò (Admin/Manager)
+router.put('/:id/role', authenticate, requireManagerOrAdmin, async (req, res) => {
   try {
     let { room_role, tech_role } = req.body;
 
@@ -81,8 +81,8 @@ router.put('/:id/role', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
-// PUT /api/staff/:id/name — Đổi tên part-time (Admin only)
-router.put('/:id/name', authenticate, requireAdmin, async (req, res) => {
+// PUT /api/staff/:id/name — Đổi tên part-time (Admin/Manager)
+router.put('/:id/name', authenticate, requireManagerOrAdmin, async (req, res) => {
   try {
     const { name } = req.body;
     const pool = await getPool();

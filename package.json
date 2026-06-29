@@ -1,0 +1,10 @@
+{
+  "name": "quanlynhanvien-root",
+  "version": "1.0.0",
+  "description": "Root scripts for Vistay Employee Management System",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "seed": "node server/seed.js"
+  }
+}

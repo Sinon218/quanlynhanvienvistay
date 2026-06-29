@@ -42,6 +42,7 @@ CREATE TABLE Apartments (
     building NVARCHAR(10) NOT NULL,
     password NVARCHAR(50) NOT NULL,
     is_samsung BIT NOT NULL DEFAULT 0,
+    room_type NVARCHAR(20) NOT NULL DEFAULT N'2 ngủ',
     status VARCHAR(20) NOT NULL DEFAULT 'available' 
         CHECK (status IN ('available', 'occupied', 'cleaning', 'maintenance')),
     created_at DATETIME DEFAULT GETDATE()

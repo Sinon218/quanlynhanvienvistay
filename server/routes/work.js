@@ -3,7 +3,7 @@
 // ===================================================================
 const express = require('express');
 const { sql, getPool } = require('../db');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin, requireManagerOrAdmin } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 
 const router = express.Router();
@@ -16,8 +16,8 @@ function getLocalDate() {
   return local.toISOString().split('T')[0];
 }
 
-// POST /api/work/assign — Giao căn hộ cho NV (Admin only)
-router.post('/assign', authenticate, requireAdmin, async (req, res) => {
+// POST /api/work/assign — Giao căn hộ cho NV (Admin/Manager)
+router.post('/assign', authenticate, requireManagerOrAdmin, async (req, res) => {
   try {
     const { staff_id, apartment_id, assigned_date, task_type } = req.body;
     if (!staff_id || !apartment_id) {
@@ -30,7 +30,21 @@ router.post('/assign', authenticate, requireAdmin, async (req, res) => {
     const pool = await getPool();
     const date = assigned_date || getLocalDate();
 
-    // 1. Kiểm tra giới hạn 2 người/ngày cho căn hộ này
+    // 0. Lấy thông tin loại phòng để xác định giới hạn dọn dẹp
+    const aptRes = await pool.request()
+      .input('apartmentId', sql.Int, apartment_id)
+      .query('SELECT room_type FROM Apartments WHERE id = @apartmentId');
+
+    if (aptRes.recordset.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy căn hộ.' });
+    }
+
+    const roomType = aptRes.recordset[0].room_type;
+    let limit = 2; // Mặc định 2 người dọn cho 1~2 ngủ
+    if (roomType === '3 ngủ') limit = 3;
+    if (roomType === '4 ngủ') limit = 4;
+
+    // 1. Kiểm tra giới hạn người/ngày cho căn hộ này
     const countCheck = await pool.request()
       .input('apartmentId', sql.Int, apartment_id)
       .input('date', sql.Date, date)
@@ -39,8 +53,8 @@ router.post('/assign', authenticate, requireAdmin, async (req, res) => {
         WHERE apartment_id = @apartmentId AND assigned_date = @date AND status <> 'rejected'
       `);
 
-    if (countCheck.recordset[0].count >= 2) {
-      return res.status(400).json({ error: 'Căn hộ này đã được giao cho tối đa 2 nhân viên trong ngày.' });
+    if (countCheck.recordset[0].count >= limit) {
+      return res.status(400).json({ error: `Căn hộ này đã được giao cho tối đa ${limit} nhân viên trong ngày.` });
     }
 
     // 2. Kiểm tra trùng lặp cho nhân viên này
@@ -82,8 +96,8 @@ router.post('/assign', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
-// DELETE /api/work/:id — Hủy phân công (Admin only)
-router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
+// DELETE /api/work/:id — Hủy phân công (Admin/Manager)
+router.delete('/:id', authenticate, requireManagerOrAdmin, async (req, res) => {
   try {
     const pool = await getPool();
     await pool.request()
@@ -237,7 +251,7 @@ router.get('/today', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/work/stats/:staffId — Thống kê ngày/tháng
+// GET /api/work/stats/:staffId — Thống kê ngày/tháng (chỉ tính những phòng đã duyệt - approved)
 router.get('/stats/:staffId', authenticate, async (req, res) => {
   try {
     const staffId = parseInt(req.params.staffId);
@@ -248,7 +262,7 @@ router.get('/stats/:staffId', authenticate, async (req, res) => {
     const pool = await getPool();
     const date = getLocalDate();
 
-    // Số căn hoàn thành hôm nay
+    // Số căn đã duyệt hôm nay
     const today = await pool.request()
       .input('staffId', sql.Int, staffId)
       .input('date', sql.Date, date)
@@ -256,10 +270,10 @@ router.get('/stats/:staffId', authenticate, async (req, res) => {
         SELECT COUNT(*) as count FROM WorkAssignments 
         WHERE staff_id = @staffId 
           AND assigned_date = @date
-          AND status = 'completed'
+          AND status = 'approved'
       `);
 
-    // Số căn hoàn thành tháng này
+    // Số căn đã duyệt tháng này
     const month = await pool.request()
       .input('staffId', sql.Int, staffId)
       .query(`
@@ -267,7 +281,7 @@ router.get('/stats/:staffId', authenticate, async (req, res) => {
         WHERE staff_id = @staffId 
           AND MONTH(assigned_date) = MONTH(GETDATE()) 
           AND YEAR(assigned_date) = YEAR(GETDATE()) 
-          AND status = 'completed'
+          AND status = 'approved'
       `);
 
     // Số căn được giao hôm nay (không tính bị từ chối)
@@ -292,8 +306,8 @@ router.get('/stats/:staffId', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/work/all-stats — Thống kê tất cả NV (Admin only)
-router.get('/all-stats', authenticate, requireAdmin, async (req, res) => {
+// GET /api/work/all-stats — Thống kê tất cả NV (Admin/Manager)
+router.get('/all-stats', authenticate, requireManagerOrAdmin, async (req, res) => {
   try {
     const pool = await getPool();
     const date = getLocalDate();
@@ -309,7 +323,7 @@ router.get('/all-stats', authenticate, requireAdmin, async (req, res) => {
         FROM Staff s
         LEFT JOIN (
           SELECT staff_id, 
-            SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed,
+            SUM(CASE WHEN status = 'approved' THEN 1 ELSE 0 END) as completed,
             SUM(CASE WHEN status <> 'rejected' THEN 1 ELSE 0 END) as total
           FROM WorkAssignments 
           WHERE assigned_date = @date
@@ -320,7 +334,7 @@ router.get('/all-stats', authenticate, requireAdmin, async (req, res) => {
           FROM WorkAssignments 
           WHERE MONTH(assigned_date) = MONTH(GETDATE()) 
             AND YEAR(assigned_date) = YEAR(GETDATE()) 
-            AND status = 'completed'
+            AND status = 'approved'
           GROUP BY staff_id
         ) monthly ON s.id = monthly.staff_id
         ORDER BY s.id
@@ -329,6 +343,42 @@ router.get('/all-stats', authenticate, requireAdmin, async (req, res) => {
     res.json(result.recordset);
   } catch (err) {
     console.error('Get all stats error:', err);
+    res.status(500).json({ error: 'Lỗi server.' });
+  }
+});
+
+// PUT /api/work/:id/approve — Phê duyệt công việc hoàn thành (Admin/Manager only)
+router.put('/:id/approve', authenticate, requireManagerOrAdmin, async (req, res) => {
+  try {
+    const pool = await getPool();
+    
+    // Kiểm tra xem phân công có tồn tại và đang ở trạng thái completed không
+    const check = await pool.request()
+      .input('id', sql.Int, req.params.id)
+      .query('SELECT status, apartment_id FROM WorkAssignments WHERE id = @id');
+      
+    if (check.recordset.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy phân công.' });
+    }
+    
+    const wa = check.recordset[0];
+    if (wa.status !== 'completed') {
+      return res.status(400).json({ error: 'Chỉ có thể duyệt những công việc đã báo hoàn thành.' });
+    }
+    
+    // Cập nhật trạng thái thành approved và căn hộ thành available
+    await pool.request()
+      .input('id', sql.Int, req.params.id)
+      .query(`
+        UPDATE WorkAssignments SET status = 'approved' WHERE id = @id;
+        UPDATE Apartments 
+        SET status = 'available' 
+        WHERE id = (SELECT apartment_id FROM WorkAssignments WHERE id = @id);
+      `);
+      
+    res.json({ message: 'Đã phê duyệt hoàn thành căn hộ và cập nhật trạng thái phòng thành Trống.' });
+  } catch (err) {
+    console.error('Approve work error:', err);
     res.status(500).json({ error: 'Lỗi server.' });
   }
 });

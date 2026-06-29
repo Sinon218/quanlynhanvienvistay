@@ -2,7 +2,7 @@
 // EMPLOYEE PORTAL JS - employee.js
 // ===================================================================
 
-const API_URL = 'http://localhost:3000/api';
+const API_URL = `${window.location.origin}/api`;
 let token = localStorage.getItem('vistay_token');
 let currentUser = null;
 
@@ -15,10 +15,16 @@ function checkAuth() {
   }
   try {
     currentUser = JSON.parse(userStr);
-    if (currentUser.role !== 'employee') {
+    if (currentUser.role !== 'employee' && currentUser.role !== 'manager') {
       window.location.href = 'admin.html';
     }
     document.getElementById('employeeName').textContent = currentUser.staffName || currentUser.username;
+    
+    // Show "Giao diện QL" button for managers
+    if (currentUser.role === 'manager') {
+      const switchBtn = document.getElementById('btnSwitchToAdmin');
+      if (switchBtn) switchBtn.style.display = 'inline-block';
+    }
   } catch (e) {
     handleLogout();
   }
@@ -55,11 +61,16 @@ async function apiCall(endpoint, method = 'GET', body = null) {
     
     if (!response.ok) {
       const data = await response.json();
-      throw new Error(data.error || 'Đã xảy ra lỗi khi gọi API.');
+      const apiErr = new Error(data.error || 'Đã xảy ra lỗi khi gọi API.');
+      apiErr.isApiError = true;
+      throw apiErr;
     }
     
     return await response.json();
   } catch (err) {
+    if (err.isApiError) {
+      throw err;
+    }
     console.warn(`API call to ${endpoint} failed: ${err.message}. Falling back to local offline mode.`);
     localStorage.setItem('vistay_mode', 'local');
     setTimeout(() => {
@@ -142,9 +153,6 @@ function handleLocalMockCall(endpoint, method, body) {
     const id = parseInt(endpoint.split('/')[2]);
     localWork = localWork.map(w => {
       if (w.id === id) {
-        // Also update the apartment status to available (done cleaning)
-        localRooms = localRooms.map(r => r.id === w.apartment_id ? { ...r, status: 'available' } : r);
-        saveLocalData('vistay_mock_apartments', localRooms);
         return { ...w, status: 'completed', proof_image: '/uploads/mock-proof.jpg' };
       }
       return w;
@@ -159,8 +167,8 @@ function handleLocalMockCall(endpoint, method, body) {
     const todayStr = new Date().toISOString().split('T')[0];
 
     const todayTotal = localWork.filter(w => w.staff_id === staffId && w.assigned_date === todayStr).length;
-    const todayDone = localWork.filter(w => w.staff_id === staffId && w.assigned_date === todayStr && w.status === 'completed').length;
-    const monthDone = localWork.filter(w => w.staff_id === staffId && w.status === 'completed').length;
+    const todayDone = localWork.filter(w => w.staff_id === staffId && w.assigned_date === todayStr && w.status === 'approved').length;
+    const monthDone = localWork.filter(w => w.staff_id === staffId && w.status === 'approved').length;
 
     return Promise.resolve({
       today_total: todayTotal,
@@ -340,7 +348,9 @@ function renderTaskList(tasks) {
         </div>
       `;
     } else if (task.status === 'completed') {
-      actionHtml = `<span class="role-badge main" style="font-size: 0.8rem; padding: 6px 12px;">✓ Đã hoàn thành</span>`;
+      actionHtml = `<span class="role-badge none" style="font-size: 0.8rem; padding: 6px 12px; color: #fbbf24; border-color: rgba(251, 191, 36, 0.3); background: rgba(251, 191, 36, 0.12);">⏳ Chờ duyệt</span>`;
+    } else if (task.status === 'approved') {
+      actionHtml = `<span class="role-badge main" style="font-size: 0.8rem; padding: 6px 12px; color: #10b981; border-color: rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.12);">✓ Đã duyệt</span>`;
     } else if (task.status === 'rejected') {
       actionHtml = `<span class="role-badge none" style="font-size: 0.8rem; padding: 6px 12px; color: #ef4444; border-color: rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.12);">Đã từ chối</span>`;
     }
@@ -593,6 +603,23 @@ async function saveChangePassword() {
 // ===== EVENT BINDINGS =====
 document.addEventListener('DOMContentLoaded', () => {
   checkAuth();
+
+  // Auto-recovery: If we are in local mode but server is online, switch back to backend
+  if (localStorage.getItem('vistay_mode') === 'local' && token) {
+    fetch(`${API_URL}/auth/me`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${token}` }
+    }).then(res => {
+      if (res.ok) {
+        console.log("Server is online. Switching back to backend mode.");
+        localStorage.setItem('vistay_mode', 'backend');
+        window.location.reload();
+      }
+    }).catch(err => {
+      console.log("Server is offline. Staying in local mode.");
+    });
+  }
+
   document.getElementById('currentDate').textContent = formatDate();
   loadDashboard();
 

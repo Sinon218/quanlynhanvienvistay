@@ -2,7 +2,7 @@
 // ADMIN PORTAL JS - admin.js
 // ===================================================================
 
-const API_URL = 'http://localhost:3000/api';
+const API_URL = `${window.location.origin}/api`;
 let token = localStorage.getItem('vistay_token');
 let currentUser = null;
 
@@ -14,6 +14,7 @@ let salaryData = [];
 
 // Filtering state
 let apartmentFilters = {
+  city: 'all',
   building: 'all',
   status: 'all',
   search: ''
@@ -33,10 +34,21 @@ function checkAuth() {
   }
   try {
     currentUser = JSON.parse(userStr);
-    if (currentUser.role !== 'admin') {
+    if (currentUser.role !== 'admin' && currentUser.role !== 'manager') {
       window.location.href = 'employee.html';
     }
     document.getElementById('adminName').textContent = currentUser.staffName || currentUser.username;
+    
+    // Hide administrative tabs for managers (assistant admins)
+    if (currentUser.role === 'manager') {
+      const statsBtn = document.getElementById('tabBtnStats');
+      const salaryBtn = document.getElementById('tabBtnSalary');
+      if (statsBtn) statsBtn.style.display = 'none';
+      if (salaryBtn) salaryBtn.style.display = 'none';
+      
+      const switchBtn = document.getElementById('btnSwitchToEmployee');
+      if (switchBtn) switchBtn.style.display = 'inline-block';
+    }
   } catch (e) {
     handleLogout();
   }
@@ -73,11 +85,16 @@ async function apiCall(endpoint, method = 'GET', body = null) {
     
     if (!response.ok) {
       const data = await response.json();
-      throw new Error(data.error || 'Đã xảy ra lỗi khi gọi API.');
+      const apiErr = new Error(data.error || 'Đã xảy ra lỗi khi gọi API.');
+      apiErr.isApiError = true;
+      throw apiErr;
     }
     
     return await response.json();
   } catch (err) {
+    if (err.isApiError) {
+      throw err;
+    }
     console.warn(`API call to ${endpoint} failed: ${err.message}. Falling back to local offline mode.`);
     localStorage.setItem('vistay_mode', 'local');
     // We delay the toast slightly to let DOM load if called during init
@@ -92,12 +109,13 @@ async function apiCall(endpoint, method = 'GET', body = null) {
 const MOCK_STAFF = [
   { id: 1, name: 'Liên',   default_name: 'Liên',   type: 'full-time', room_role: 1, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
   { id: 2, name: 'Thiên',  default_name: 'Thiên',  type: 'full-time', room_role: 2, tech_role: 1, base_salary: 0, per_room_rate: 50000 },
-  { id: 3, name: 'Thương', default_name: 'Thương', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
-  { id: 4, name: 'Vân',    default_name: 'Vân',    type: 'full-time', room_role: 2, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
-  { id: 5, name: 'Diệu',  default_name: 'Diệu',  type: 'full-time', room_role: 2, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
+  { id: 3, name: 'Thương', default_name: 'Thương', type: 'full-time', room_role: 2, tech_role: 1, base_salary: 0, per_room_rate: 50000 },
+  { id: 4, name: 'Vân',    default_name: 'Vân',    type: 'full-time', room_role: 1, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
+  { id: 5, name: 'Diệu',  default_name: 'Diệu',  type: 'full-time', room_role: 1, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
   { id: 6, name: 'Hoàn',   default_name: 'Hoàn',   type: 'full-time', room_role: 1, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
   { id: 7, name: 'Nhân viên Part-time 1', default_name: 'Nhân viên Part-time 1', type: 'part-time', room_role: 2, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
-  { id: 8, name: 'Nhân viên Part-time 2', default_name: 'Nhân viên Part-time 2', type: 'part-time', room_role: 0, tech_role: 0, base_salary: 0, per_room_rate: 50000 }
+  { id: 8, name: 'Nhân viên Part-time 2', default_name: 'Nhân viên Part-time 2', type: 'part-time', room_role: 2, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
+  { id: 9, name: 'Lộc',    default_name: 'Lộc',    type: 'full-time', room_role: 1, tech_role: 0, base_salary: 0, per_room_rate: 50000 }
 ];
 
 const PROVIDED_ROOMS = [
@@ -277,8 +295,16 @@ function handleLocalMockCall(endpoint, method, body) {
 
   if (endpoint.startsWith('/apartments/') && endpoint.endsWith('/status') && method === 'PUT') {
     const id = parseInt(endpoint.split('/')[2]);
-    const { status } = body;
-    localRooms = localRooms.map(r => r.id === id ? { ...r, status } : r);
+    const { status, room_type } = body;
+    localRooms = localRooms.map(r => {
+      if (r.id === id) {
+        const updated = { ...r };
+        if (status) updated.status = status;
+        if (room_type) updated.room_type = room_type;
+        return updated;
+      }
+      return r;
+    });
     saveLocalData('vistay_mock_apartments', localRooms);
     return Promise.resolve({ message: 'Cập nhật trạng thái thành công.' });
   }
@@ -295,11 +321,16 @@ function handleLocalMockCall(endpoint, method, body) {
   if (endpoint === '/work/assign' && method === 'POST') {
     const { staff_id, apartment_id, task_type } = body;
     
-    // Check limit of 2 assignees per day
+    // Check limit of assignees based on room type
     const date = new Date().toISOString().split('T')[0];
+    const roomObj = localRooms.find(r => r.id === apartment_id) || {};
+    let limit = 2; // Mặc định 2 người dọn cho 1~2 ngủ
+    if (roomObj.room_type === '3 ngủ') limit = 3;
+    if (roomObj.room_type === '4 ngủ') limit = 4;
+
     const count = localWork.filter(w => w.apartment_id === apartment_id && w.assigned_date === date && w.status !== 'rejected').length;
-    if (count >= 2) {
-      return Promise.reject(new Error('Căn hộ này đã được giao cho tối đa 2 nhân viên trong ngày.'));
+    if (count >= limit) {
+      return Promise.reject(new Error(`Căn hộ này đã được giao cho tối đa ${limit} nhân viên trong ngày.`));
     }
 
     // Check duplication
@@ -351,8 +382,8 @@ function handleLocalMockCall(endpoint, method, body) {
     const todayStr = new Date().toISOString().split('T')[0];
     const statsList = localStaff.map(s => {
       const todayTotal = localWork.filter(w => w.staff_id === s.id && w.assigned_date === todayStr && w.status !== 'rejected').length;
-      const todayDone = localWork.filter(w => w.staff_id === s.id && w.assigned_date === todayStr && w.status === 'completed').length;
-      const monthDone = localWork.filter(w => w.staff_id === s.id && w.status === 'completed').length;
+      const todayDone = localWork.filter(w => w.staff_id === s.id && w.assigned_date === todayStr && w.status === 'approved').length;
+      const monthDone = localWork.filter(w => w.staff_id === s.id && w.status === 'approved').length;
 
       return {
         id: s.id,
@@ -364,6 +395,18 @@ function handleLocalMockCall(endpoint, method, body) {
       };
     });
     return Promise.resolve(statsList);
+  }
+
+  if (endpoint.startsWith('/work/') && endpoint.endsWith('/approve') && method === 'PUT') {
+    const id = parseInt(endpoint.split('/')[2]);
+    const wa = localWork.find(w => w.id === id);
+    if (wa) {
+      localRooms = localRooms.map(r => r.id === wa.apartment_id ? { ...r, status: 'available' } : r);
+      saveLocalData('vistay_mock_apartments', localRooms);
+    }
+    localWork = localWork.map(w => w.id === id ? { ...w, status: 'approved' } : w);
+    saveLocalData('vistay_mock_work', localWork);
+    return Promise.resolve({ message: 'Phê duyệt hoàn thành căn hộ thành công và cập nhật trạng thái phòng thành Trống.' });
   }
 
   // 4. Salary endpoints
@@ -514,6 +557,8 @@ async function loadAssignmentTab() {
     const roomAssignments = await apiCall('/work/today');
     renderRoomAssignmentsTable(roomAssignments);
     renderRejectedAssignments(roomAssignments);
+
+    populateQuickAssignSelects();
   } catch (err) {
     showToast(err.message, 'warning');
   }
@@ -526,11 +571,18 @@ function renderRoomAssignmentsTable(assignments) {
     return;
   }
 
+  const isManagerOrAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'manager');
+
   tbody.innerHTML = assignments.map(wa => {
     const statusBadge = getStatusBadgeHtml(wa.status);
     const proofLink = wa.proof_image 
       ? `<button class="btn btn-save" onclick="viewProof('${wa.proof_image}', 'Căn ${wa.code}')" style="padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #10b981, #059669);">👁️ Xem ảnh</button>`
       : '<span style="color: var(--text-muted); font-size: 0.8rem;">Chưa có</span>';
+    
+    let approveBtn = '';
+    if (wa.status === 'completed' && isManagerOrAdmin) {
+      approveBtn = `<button class="btn" onclick="approveAssignment(${wa.id})" style="padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 4px; margin-right: 4px; cursor: pointer;">🟢 Duyệt</button>`;
+    }
     
     return `
       <tr>
@@ -541,6 +593,7 @@ function renderRoomAssignmentsTable(assignments) {
         <td>${statusBadge}</td>
         <td>${proofLink}</td>
         <td>
+          ${approveBtn}
           <button class="btn btn-cancel" onclick="deleteAssignment(${wa.id})" style="padding: 4px 8px; font-size: 0.75rem;">🗑️ Hủy</button>
         </td>
       </tr>
@@ -586,6 +639,8 @@ function getStatusBadgeHtml(status) {
       return '<span class="role-badge none" style="font-size: 0.75rem; padding: 4px 10px; color: #a78bfa; background: rgba(167, 139, 250, 0.12); border-color: rgba(167, 139, 250, 0.3);">🧹 Đang làm</span>';
     case 'completed':
       return '<span class="role-badge main" style="font-size: 0.75rem; padding: 4px 10px; color: #22c55e; background: rgba(34, 197, 94, 0.12); border-color: rgba(34, 197, 94, 0.3);">🟢 Đã xong</span>';
+    case 'approved':
+      return '<span class="role-badge main" style="font-size: 0.75rem; padding: 4px 10px; color: #10b981; background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.3);">🟢 Đã duyệt</span>';
     case 'rejected':
       return '<span class="role-badge none" style="font-size: 0.75rem; padding: 4px 10px; color: #ef4444; background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.3);">❌ Từ chối</span>';
     default:
@@ -755,13 +810,10 @@ async function loadApartmentsTab() {
     renderApartmentStats(stats.totals);
     renderApartmentGrid();
 
-    // Populate assignment staff list
+    // Load staff list if not loaded
     if (staffList.length === 0) {
       staffList = await apiCall('/staff');
     }
-    const select = document.getElementById('assignStaffSelect');
-    select.innerHTML = '<option value="">-- Chọn nhân viên để giao phòng --</option>' + 
-      staffList.map(s => `<option value="${s.id}">${s.name} (${s.type === 'full-time' ? 'FT' : 'PT'})</option>`).join('');
 
   } catch (err) {
     showToast(err.message, 'warning');
@@ -783,13 +835,9 @@ function renderApartmentStats(totals) {
       <span class="stat-num">${totals.occupied}</span>
       <span class="stat-label">🔴 Có khách</span>
     </div>
-    <div class="stat-item stat-cleaning">
-      <span class="stat-num">${totals.cleaning}</span>
-      <span class="stat-label">🧹 Đang dọn</span>
-    </div>
     <div class="stat-item stat-maintenance">
       <span class="stat-num">${totals.maintenance}</span>
-      <span class="stat-label">🔧 Bảo trì</span>
+      <span class="stat-label">🔧 Sửa chữa</span>
     </div>
   `;
 }
@@ -852,14 +900,36 @@ function openRoomStatusModal(roomId) {
 
   const modal = document.getElementById('roomStatusModal');
   document.getElementById('roomModalNumber').textContent = `Căn ${room.code}`;
-  document.getElementById('roomModalType').textContent = room.is_samsung ? 'Thiết bị Samsung (SSTN)' : 'Mật khẩu thường';
+  document.getElementById('roomModalType').textContent = `${room.room_type} · ${room.is_samsung ? 'Thiết bị Samsung (SSTN)' : 'Mật khẩu thường'}`;
   document.getElementById('roomModalFloor').textContent = `Tòa: ${room.building}`;
+
+  // Select the room type radio
+  const typeRadio = document.querySelector(`input[name="roomTypeEdit"][value="${room.room_type}"]`);
+  if (typeRadio) typeRadio.checked = true;
 
   const radio = document.querySelector(`input[name="roomStatus"][value="${room.status}"]`);
   if (radio) radio.checked = true;
 
-  // Clear assignment select
-  document.getElementById('assignStaffSelect').value = '';
+  // Generate dynamic dropdowns based on room type
+  const container = document.getElementById('assignStaffSelectContainer');
+  let selectCount = 2; // Mặc định 2 người dọn cho 1~2 ngủ
+  if (room.room_type === '3 ngủ') selectCount = 3;
+  if (room.room_type === '4 ngủ') selectCount = 4;
+
+  let html = '';
+  for (let i = 1; i <= selectCount; i++) {
+    const labelText = selectCount > 1 ? `Người dọn ${i}` : 'Người dọn';
+    html += `
+      <div style="margin-top: 8px;">
+        <span style="font-size: 0.8rem; color: var(--text-muted);">${labelText}:</span>
+        <select id="assignStaffSelect_${i}" class="room-filter-select" style="width: 100%; margin-top: 4px;">
+          <option value="">-- Chọn nhân viên để giao phòng --</option>
+          ${staffList.map(s => `<option value="${s.id}">${s.name} (${s.type === 'full-time' ? 'FT' : 'PT'})</option>`).join('')}
+        </select>
+      </div>
+    `;
+  }
+  container.innerHTML = html;
 
   modal.classList.add('active');
 }
@@ -872,23 +942,41 @@ function closeRoomStatusModal() {
 async function saveRoomStatus() {
   if (selectedRoomId === null) return;
   const status = document.querySelector('input[name="roomStatus"]:checked').value;
-  const staffId = document.getElementById('assignStaffSelect').value;
   const taskTypeEl = document.querySelector('input[name="taskType"]:checked');
   const taskType = taskTypeEl ? taskTypeEl.value : 'out';
 
-  try {
-    // 1. Update status
-    await apiCall(`/apartments/${selectedRoomId}/status`, 'PUT', { status });
+  // Read multiple staff dropdowns
+  const staffIds = [];
+  const container = document.getElementById('assignStaffSelectContainer');
+  const selects = container.querySelectorAll('select');
+  selects.forEach(sel => {
+    if (sel.value) {
+      const id = parseInt(sel.value);
+      if (!staffIds.includes(id)) {
+        staffIds.push(id);
+      }
+    }
+  });
 
-    // 2. If staff selected, assign work with task_type
-    if (staffId) {
-      await apiCall('/work/assign', 'POST', {
-        staff_id: parseInt(staffId),
-        apartment_id: selectedRoomId,
-        task_type: taskType
-      });
+  // Get selected room type
+  const roomTypeEl = document.querySelector('input[name="roomTypeEdit"]:checked');
+  const room_type = roomTypeEl ? roomTypeEl.value : null;
+
+  try {
+    // 1. Update status and room type
+    await apiCall(`/apartments/${selectedRoomId}/status`, 'PUT', { status, room_type });
+
+    // 2. If staff selected, assign work with task_type for each staff member
+    if (staffIds.length > 0) {
+      for (const staffId of staffIds) {
+        await apiCall('/work/assign', 'POST', {
+          staff_id: staffId,
+          apartment_id: selectedRoomId,
+          task_type: taskType
+        });
+      }
       const taskLabel = getTaskTypeLabel(taskType);
-      showToast(`Đã giao việc [${taskLabel}] thành công!`, 'success');
+      showToast(`Đã giao việc [${taskLabel}] cho ${staffIds.length} nhân viên thành công!`, 'success');
     } else {
       showToast('Cập nhật trạng thái thành công!', 'success');
     }
@@ -953,12 +1041,62 @@ async function saveRoomPassword() {
   }
 }
 
-function setBuildingFilter(b) {
-  apartmentFilters.building = b;
-  document.querySelectorAll('#buildingTabs .floor-tab').forEach(btn => {
+function setCityFilter(cityCode) {
+  apartmentFilters.city = cityCode;
+  apartmentFilters.building = 'all'; // reset complex when city changes
+  
+  document.querySelectorAll('#cityTabs .floor-tab').forEach(btn => {
     btn.classList.remove('active');
   });
   event.currentTarget.classList.add('active');
+  
+  renderComplexTabs();
+  loadApartmentsTab();
+}
+
+function renderComplexTabs() {
+  const wrapper = document.getElementById('complexTabsWrapper');
+  const container = document.getElementById('complexTabs');
+  if (!container) return;
+  
+  const city = apartmentFilters.city;
+  
+  if (city === 'all') {
+    wrapper.style.display = 'none';
+    return;
+  }
+  
+  wrapper.style.display = 'block';
+  let html = '';
+  
+  if (city === 'HN') {
+    html = `
+      <button class="floor-tab ${apartmentFilters.building === 'all' ? 'active' : ''}" onclick="setComplexFilter('all')">Tất cả khu HN</button>
+      <button class="floor-tab ${apartmentFilters.building === 'SkyLake' ? 'active' : ''}" onclick="setComplexFilter('SkyLake')">SkyLake (S1, S2, S3)</button>
+      <button class="floor-tab ${apartmentFilters.building === 'Royal' ? 'active' : ''}" onclick="setComplexFilter('Royal')">Royal City (R6A)</button>
+      <button class="floor-tab ${apartmentFilters.building === 'Imperia' ? 'active' : ''}" onclick="setComplexFilter('Imperia')">Imperia Garden (B)</button>
+    `;
+  } else if (city === 'HCM') {
+    html = `
+      <button class="floor-tab active" onclick="setComplexFilter('HCM')">Hồ Chí Minh (Căn chưa có mã)</button>
+    `;
+    apartmentFilters.building = 'HCM'; // Force building HCM since there's only one complex
+  }
+  
+  container.innerHTML = html;
+}
+
+function setComplexFilter(b) {
+  apartmentFilters.building = b;
+  document.querySelectorAll('#complexTabs .floor-tab').forEach(btn => {
+    btn.classList.remove('active');
+  });
+  event.currentTarget.classList.add('active');
+  loadApartmentsTab();
+}
+
+function setBuildingFilter(b) {
+  apartmentFilters.building = b;
   loadApartmentsTab();
 }
 
@@ -1141,7 +1279,6 @@ function getRoomStatusClass(status) {
   switch (status) {
     case 'available': return 'status-available';
     case 'occupied': return 'status-occupied';
-    case 'cleaning': return 'status-cleaning';
     case 'maintenance': return 'status-maintenance';
     default: return '';
   }
@@ -1151,8 +1288,7 @@ function getRoomStatusLabel(status) {
   switch (status) {
     case 'available': return 'Trống';
     case 'occupied': return 'Có khách';
-    case 'cleaning': return 'Đang dọn';
-    case 'maintenance': return 'Bảo trì';
+    case 'maintenance': return 'Sửa chữa';
     default: return '';
   }
 }
@@ -1161,7 +1297,6 @@ function getRoomStatusIcon(status) {
   switch (status) {
     case 'available': return '🟢';
     case 'occupied': return '🔴';
-    case 'cleaning': return '🧹';
     case 'maintenance': return '🔧';
     default: return '';
   }
@@ -1199,6 +1334,14 @@ async function loadTasksTab() {
     const select = document.getElementById('taskStaffSelect');
     select.innerHTML = '<option value="">-- Chọn nhân viên --</option>' +
       staffList.map(s => `<option value="${s.id}">${s.name} (${s.type === 'full-time' ? 'FT' : 'PT'})</option>`).join('');
+
+    // Populate tech staff select
+    const techSelect = document.getElementById('techTaskStaffSelect');
+    if (techSelect) {
+      const techStaff = staffList.filter(s => s.tech_role === 1);
+      techSelect.innerHTML = '<option value="">-- Chọn nhân viên kỹ thuật --</option>' +
+        techStaff.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
+    }
 
     // Load today's tasks
     const tasks = await apiCall('/tasks/today');
@@ -1301,7 +1444,7 @@ async function deleteTask(taskId) {
 function viewProof(url, title) {
   const modal = document.getElementById('viewProofModal');
   document.getElementById('proofModalTitle').textContent = `🖼️ Ảnh Minh Chứng - ${title}`;
-  document.getElementById('proofModalImage').src = url.startsWith('http') ? url : `http://localhost:3000${url}`;
+  document.getElementById('proofModalImage').src = url.startsWith('http') ? url : `${window.location.origin}${url}`;
   modal.classList.add('active');
 }
 
@@ -1352,6 +1495,34 @@ async function saveChangePassword() {
 // ===== EVENT BINDINGS =====
 document.addEventListener('DOMContentLoaded', () => {
   checkAuth();
+
+  // Auto-recovery: If we are in local mode but server is online, switch back to backend
+  if (localStorage.getItem('vistay_mode') === 'local' && token) {
+    fetch(`${API_URL}/auth/me`, {
+      method: 'GET',
+      headers: { 'Authorization': `Bearer ${token}` }
+    }).then(res => {
+      if (res.ok) {
+        console.log("Server is online. Switching back to backend mode.");
+        localStorage.setItem('vistay_mode', 'backend');
+        window.location.reload();
+      }
+    }).catch(err => {
+      console.log("Server is offline. Staying in local mode.");
+    });
+  }
+
+  // Check if there is offline data and show sync button
+  const hasOfflineData = localStorage.getItem('vistay_mock_staff') || localStorage.getItem('vistay_mock_apartments');
+  const currentMode = localStorage.getItem('vistay_mode') || 'backend';
+  const btnSync = document.getElementById('btnSyncOffline');
+  if (btnSync) {
+    if (hasOfflineData && currentMode === 'local') {
+      btnSync.style.display = 'inline-block';
+    } else {
+      btnSync.style.display = 'none';
+    }
+  }
   document.getElementById('currentDate').textContent = formatDate();
 
   // Load first tab data
@@ -1388,3 +1559,142 @@ document.addEventListener('DOMContentLoaded', () => {
     radio.addEventListener('change', updateAutoNotes);
   });
 });
+
+async function syncOfflineData() {
+  if (!confirm('Bạn có muốn đồng bộ toàn bộ dữ liệu Offline (Nhân viên, Căn hộ, Phân công) từ điện thoại này lên Server máy tính không? Dữ liệu trên Server sẽ được cập nhật.')) {
+    return;
+  }
+
+  const btn = document.getElementById('btnSyncOffline');
+  const originalText = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '⏳ Đang đồng bộ...';
+
+  try {
+    const staff = JSON.parse(localStorage.getItem('vistay_mock_staff') || '[]');
+    const apartments = JSON.parse(localStorage.getItem('vistay_mock_apartments') || '[]');
+    const work = JSON.parse(localStorage.getItem('vistay_mock_work') || '[]');
+    const tasks = JSON.parse(localStorage.getItem('vistay_mock_tasks_list') || '[]');
+
+    // Make direct fetch call to bypass the apiCall interceptor when in local mode
+    const response = await fetch(`${API_URL}/auth/migrate-offline`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`
+      },
+      body: JSON.stringify({ staff, apartments, work, tasks })
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Lỗi đồng bộ dữ liệu.');
+    }
+
+    showToast(`Đồng bộ dữ liệu thành công! Ứng dụng đã chuyển sang chế độ Online (Database).`, 'success');
+    localStorage.setItem('vistay_mode', 'backend');
+    
+    setTimeout(() => {
+      window.location.reload();
+    }, 1500);
+
+  } catch (err) {
+    showToast(`Đồng bộ thất bại: ${err.message}`, 'warning');
+    btn.disabled = false;
+    btn.innerHTML = originalText;
+  }
+}
+
+async function approveAssignment(id) {
+  if (!confirm('Bạn có chắc chắn muốn duyệt hoàn thành căn hộ này không?')) return;
+  try {
+    const res = await apiCall(`/work/${id}/approve`, 'PUT');
+    showToast(res.message, 'success');
+    loadAssignmentTab();
+  } catch (err) {
+    showToast(err.message, 'warning');
+  }
+}
+
+async function quickAssignRoom() {
+  const roomId = document.getElementById('quickRoomSelect').value;
+  const staffId = document.getElementById('quickStaffSelect').value;
+  const taskType = document.getElementById('quickTaskTypeSelect').value;
+
+  if (!roomId || !staffId) {
+    showToast('Vui lòng chọn đầy đủ căn hộ và nhân viên.', 'warning');
+    return;
+  }
+
+  try {
+    const data = await apiCall('/work/assign', 'POST', {
+      staff_id: parseInt(staffId),
+      apartment_id: parseInt(roomId),
+      task_type: taskType
+    });
+    
+    showToast(data.message, 'success');
+    
+    // Clear selects
+    document.getElementById('quickRoomSelect').value = '';
+    document.getElementById('quickStaffSelect').value = '';
+    
+    // Reload data
+    loadAssignmentTab();
+  } catch (err) {
+    showToast(err.message, 'warning');
+  }
+}
+
+async function createTechTask() {
+  const staffId = document.getElementById('techTaskStaffSelect').value;
+  const title = document.getElementById('techTaskJobSelect').value;
+  const note = document.getElementById('techTaskDescInput').value.trim();
+
+  if (!staffId || !title) {
+    showToast('Vui lòng chọn nhân viên kỹ thuật và công việc.', 'warning');
+    return;
+  }
+
+  const description = note ? note : '';
+
+  try {
+    const data = await apiCall('/tasks', 'POST', {
+      staff_id: parseInt(staffId),
+      title: title,
+      description: description
+    });
+    
+    showToast(data.message, 'success');
+    
+    // Clear fields
+    document.getElementById('techTaskStaffSelect').value = '';
+    document.getElementById('techTaskJobSelect').value = 'Sơn nhà';
+    document.getElementById('techTaskDescInput').value = '';
+    
+    // Reload tasks
+    loadTasksTab();
+  } catch (err) {
+    showToast(err.message, 'warning');
+  }
+}
+
+async function populateQuickAssignSelects() {
+  const roomSelect = document.getElementById('quickRoomSelect');
+  const staffSelect = document.getElementById('quickStaffSelect');
+  
+  if (staffSelect) {
+    staffSelect.innerHTML = '<option value="">-- Chọn nhân viên --</option>' +
+      staffList.map(s => `<option value="${s.id}">${s.name} (${s.type === 'full-time' ? 'FT' : 'PT'})</option>`).join('');
+  }
+  
+  if (roomSelect) {
+    try {
+      const apartments = await apiCall('/apartments?building=all&status=all');
+      roomSelect.innerHTML = '<option value="">-- Chọn căn hộ --</option>' +
+        apartments.map(a => `<option value="${a.id}">${a.code} (${a.room_type})</option>`).join('');
+    } catch (e) {
+      console.error('Failed to load apartments for quick select', e);
+    }
+  }
+}

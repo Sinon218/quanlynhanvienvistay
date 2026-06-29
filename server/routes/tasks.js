@@ -3,7 +3,7 @@
 // ===================================================================
 const express = require('express');
 const { sql, getPool } = require('../db');
-const { authenticate, requireAdmin } = require('../middleware/auth');
+const { authenticate, requireAdmin, requireManagerOrAdmin } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 
 const router = express.Router();
@@ -16,8 +16,8 @@ function getLocalDate() {
   return local.toISOString().split('T')[0];
 }
 
-// POST /api/tasks — Admin tạo task mới
-router.post('/', authenticate, requireAdmin, async (req, res) => {
+// POST /api/tasks — Admin/Manager tạo task mới
+router.post('/', authenticate, requireManagerOrAdmin, async (req, res) => {
   try {
     const { staff_id, title, description, assigned_date } = req.body;
     if (!staff_id || !title) {
@@ -184,8 +184,8 @@ router.put('/:id/complete', authenticate, upload.single('proof'), async (req, re
   }
 });
 
-// DELETE /api/tasks/:id — Admin xóa task
-router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
+// DELETE /api/tasks/:id — Admin/Manager xóa task
+router.delete('/:id', authenticate, requireManagerOrAdmin, async (req, res) => {
   try {
     const pool = await getPool();
     await pool.request()

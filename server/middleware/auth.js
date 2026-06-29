@@ -28,6 +28,14 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// Check admin or manager role
+function requireManagerOrAdmin(req, res, next) {
+  if (req.user.role !== 'admin' && req.user.role !== 'manager') {
+    return res.status(403).json({ error: 'Bạn không có quyền truy cập chức năng này.' });
+  }
+  next();
+}
+
 // Check if user is accessing their own data or is admin
 function requireSelfOrAdmin(req, res, next) {
   const staffId = parseInt(req.params.staffId);
@@ -38,4 +46,4 @@ function requireSelfOrAdmin(req, res, next) {
   }
 }
 
-module.exports = { authenticate, requireAdmin, requireSelfOrAdmin };
+module.exports = { authenticate, requireAdmin, requireManagerOrAdmin, requireSelfOrAdmin };

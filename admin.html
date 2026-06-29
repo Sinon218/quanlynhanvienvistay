@@ -27,6 +27,8 @@
       </div>
       <div class="header-user-actions">
         <div class="user-greeting">Xin chào, <strong id="adminName">Admin</strong></div>
+        <button id="btnSyncOffline" class="btn" onclick="syncOfflineData()" style="display: none; padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">🔄 Đồng bộ lên Server</button>
+        <button id="btnSwitchToEmployee" class="btn" onclick="window.location.href='employee.html'" style="display: none; padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">📱 Giao diện NV</button>
         <button class="btn btn-save" onclick="openChangePasswordModal()" style="padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #475569, #334155);">🔑 Đổi MK</button>
         <button class="btn btn-logout" onclick="handleLogout()">🚪 Đăng xuất</button>
       </div>
@@ -37,14 +39,43 @@
       <button class="tab-btn active" onclick="switchTab('assignment')">📋 Phân công ngày</button>
       <button class="tab-btn" onclick="switchTab('apartments')">🏠 Căn hộ & MK</button>
       <button class="tab-btn" onclick="switchTab('tasks')">📝 Giao việc</button>
-      <button class="tab-btn" onclick="switchTab('stats')">📊 Thống kê</button>
-      <button class="tab-btn" onclick="switchTab('salary')">💰 Bảng lương</button>
+      <button class="tab-btn" id="tabBtnStats" onclick="switchTab('stats')">📊 Thống kê</button>
+      <button class="tab-btn" id="tabBtnSalary" onclick="switchTab('salary')">💰 Bảng lương</button>
     </nav>
 
     <!-- ==================== TAB 1: ASSIGNMENT ==================== -->
     <div id="tab-assignment" class="tab-content active">
       <!-- Rejected assignments alert -->
       <div id="rejectedAssignmentsContainer" style="margin-bottom: 16px;"></div>
+
+      <!-- Quick Assignment Form -->
+      <div class="task-form-card" style="margin-bottom: 20px; border-left: 4px solid var(--accent-green);">
+        <div class="task-form-grid" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; align-items: flex-end;">
+          <div class="rename-input-group">
+            <label for="quickRoomSelect">🏠 Chọn căn hộ</label>
+            <select id="quickRoomSelect" class="room-filter-select" style="width: 100%;">
+              <option value="">-- Chọn căn hộ --</option>
+            </select>
+          </div>
+          <div class="rename-input-group">
+            <label for="quickStaffSelect">👤 Chọn nhân viên</label>
+            <select id="quickStaffSelect" class="room-filter-select" style="width: 100%;">
+              <option value="">-- Chọn nhân viên --</option>
+            </select>
+          </div>
+          <div class="rename-input-group">
+            <label for="quickTaskTypeSelect">📋 Loại nhiệm vụ</label>
+            <select id="quickTaskTypeSelect" class="room-filter-select" style="width: 100%;">
+              <option value="out">Out</option>
+              <option value="ss_luu">SS/Lưu</option>
+              <option value="tong_ve_sinh">Tổng VS</option>
+            </select>
+          </div>
+          <div class="rename-input-group">
+            <button class="btn btn-save" onclick="quickAssignRoom()" style="width: 100%; padding: 10px; background: linear-gradient(135deg, #10b981, #059669);">➕ Phân công nhanh</button>
+          </div>
+        </div>
+      </div>
 
       <!-- Legend -->
       <div class="legend">
@@ -147,6 +178,39 @@
           </div>
         </div>
 
+        <!-- Form giao việc kỹ thuật -->
+        <div class="task-form-card" style="margin-top: 20px; border-top: 3px solid var(--accent-blue);">
+          <div class="section-header" style="margin-bottom: 12px; margin-top: 0; padding-top: 0;">
+            <span class="section-icon">🛠️</span>
+            <h3 style="font-size: 1.1rem; font-weight: 700; color: var(--accent-blue); margin: 0;">Giao Việc Cho Bên Kỹ Thuật</h3>
+          </div>
+          <div class="task-form-grid">
+            <div class="rename-input-group">
+              <label for="techTaskStaffSelect">👤 Chọn nhân viên kỹ thuật</label>
+              <select id="techTaskStaffSelect" class="room-filter-select" style="width: 100%;">
+                <option value="">-- Chọn nhân viên kỹ thuật --</option>
+              </select>
+            </div>
+            <div class="rename-input-group">
+              <label for="techTaskJobSelect">🔧 Chọn công việc</label>
+              <select id="techTaskJobSelect" class="room-filter-select" style="width: 100%;">
+                <option value="Sơn nhà">Sơn nhà</option>
+                <option value="Sửa điều hòa">Sửa điều hòa</option>
+                <option value="Sửa máy giặt">Sửa máy giặt</option>
+                <option value="Vệ sinh điều hòa">Vệ sinh điều hòa</option>
+                <option value="Sửa bàn ghế">Sửa bàn ghế</option>
+              </select>
+            </div>
+            <div class="rename-input-group">
+              <label for="techTaskDescInput">📝 Ghi chú chi tiết</label>
+              <input type="text" id="techTaskDescInput" placeholder="Vị trí, chi tiết thêm...">
+            </div>
+            <div class="rename-input-group" style="display: flex; align-items: flex-end;">
+              <button class="btn btn-save" onclick="createTechTask()" style="width: 100%; padding: 10px; background: linear-gradient(135deg, #0ea5e9, #0284c7);">➕ Giao việc KT</button>
+            </div>
+          </div>
+        </div>
+
         <!-- Danh sách tasks hôm nay -->
         <div class="section-header" style="margin-top: 24px;">
           <span class="section-icon">📋</span>
@@ -185,15 +249,17 @@
           <!-- Rendered by JS -->
         </div>
 
-        <!-- Building Tabs -->
+        <!-- City & Complex Filter Tabs -->
         <div class="floor-tabs-wrapper">
-          <div class="floor-tabs" id="buildingTabs">
-            <button class="floor-tab active" onclick="setBuildingFilter('all')">Tất cả tòa</button>
-            <button class="floor-tab" onclick="setBuildingFilter('S1')">Tòa S1 (14)</button>
-            <button class="floor-tab" onclick="setBuildingFilter('S2')">Tòa S2 (26)</button>
-            <button class="floor-tab" onclick="setBuildingFilter('S3')">Tòa S3 (17)</button>
-            <button class="floor-tab" onclick="setBuildingFilter('B')">Tòa B (1)</button>
-            <button class="floor-tab" onclick="setBuildingFilter('R6A')">Tòa R6A (2)</button>
+          <div class="floor-tabs" id="cityTabs">
+            <button class="floor-tab active" onclick="setCityFilter('all')">Tất cả Thành phố</button>
+            <button class="floor-tab" onclick="setCityFilter('HN')">Hà Nội</button>
+            <button class="floor-tab" onclick="setCityFilter('HCM')">Hồ Chí Minh</button>
+          </div>
+        </div>
+        <div class="floor-tabs-wrapper" id="complexTabsWrapper" style="margin-top: 10px; display: none;">
+          <div class="floor-tabs" id="complexTabs">
+            <!-- Rendered dynamically by JS based on City selection -->
           </div>
         </div>
 
@@ -207,8 +273,14 @@
             <option value="all">Tất cả trạng thái</option>
             <option value="available">🟢 Trống</option>
             <option value="occupied">🔴 Có khách</option>
-            <option value="cleaning">🧹 Đang dọn</option>
-            <option value="maintenance">🔧 Bảo trì</option>
+            <option value="maintenance">🔧 Sửa chữa</option>
+          </select>
+          <select id="roomTypeFilter" class="room-filter-select">
+            <option value="all">Tất cả loại phòng</option>
+            <option value="1 ngủ">🛌 1 ngủ</option>
+            <option value="2 ngủ">🛌 2 ngủ</option>
+            <option value="3 ngủ">🛌 3 ngủ</option>
+            <option value="4 ngủ">🛌 4 ngủ</option>
           </select>
           <span class="filtered-count" id="filteredRoomCount"></span>
         </div>
@@ -404,7 +476,38 @@
           </div>
         </div>
 
-        <div class="role-group">
+        <!-- Loại phòng -->
+        <div class="role-group" style="margin-top: 15px;">
+          <div class="role-group-label"><span>🛌</span> Loại phòng ngủ</div>
+          <div class="role-options room-type-options" style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 6px;">
+            <div class="role-option">
+              <input type="radio" name="roomTypeEdit" id="rt1Ngu" value="1 ngủ">
+              <label for="rt1Ngu" style="padding: 8px 4px; text-align: center;">
+                <span class="option-text" style="font-size: 0.85rem;">1 ngủ</span>
+              </label>
+            </div>
+            <div class="role-option">
+              <input type="radio" name="roomTypeEdit" id="rt2Ngu" value="2 ngủ">
+              <label for="rt2Ngu" style="padding: 8px 4px; text-align: center;">
+                <span class="option-text" style="font-size: 0.85rem;">2 ngủ</span>
+              </label>
+            </div>
+            <div class="role-option">
+              <input type="radio" name="roomTypeEdit" id="rt3Ngu" value="3 ngủ">
+              <label for="rt3Ngu" style="padding: 8px 4px; text-align: center;">
+                <span class="option-text" style="font-size: 0.85rem;">3 ngủ</span>
+              </label>
+            </div>
+            <div class="role-option">
+              <input type="radio" name="roomTypeEdit" id="rt4Ngu" value="4 ngủ">
+              <label for="rt4Ngu" style="padding: 8px 4px; text-align: center;">
+                <span class="option-text" style="font-size: 0.85rem;">4 ngủ</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="role-group" style="margin-top: 15px;">
           <div class="role-group-label"><span>📋</span> Trạng thái phòng</div>
           <div class="role-options room-status-options">
             <div class="role-option opt-room-available">
@@ -421,18 +524,11 @@
                 <span class="option-text">Có khách</span>
               </label>
             </div>
-            <div class="role-option opt-room-cleaning">
-              <input type="radio" name="roomStatus" id="rsCleaning" value="cleaning">
-              <label for="rsCleaning">
-                <span class="option-num">🧹</span>
-                <span class="option-text">Đang dọn</span>
-              </label>
-            </div>
             <div class="role-option opt-room-maintenance">
               <input type="radio" name="roomStatus" id="rsMaintenance" value="maintenance">
               <label for="rsMaintenance">
                 <span class="option-num">🔧</span>
-                <span class="option-text">Bảo trì</span>
+                <span class="option-text">Sửa chữa</span>
               </label>
             </div>
           </div>
@@ -469,9 +565,9 @@
         <!-- Assign Task Quick Section -->
         <div class="role-group" style="margin-top: 15px;">
           <div class="role-group-label"><span>👤</span> Giao phòng cho nhân viên dọn</div>
-          <select id="assignStaffSelect" class="room-filter-select" style="width: 100%; margin-top: 6px;">
-            <option value="">-- Chọn nhân viên để giao phòng --</option>
-          </select>
+          <div id="assignStaffSelectContainer">
+            <!-- Generated dynamically by JS based on room type -->
+          </div>
         </div>
       </div>
       <div class="modal-footer">
