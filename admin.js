@@ -286,7 +286,17 @@ function handleLocalMockCall(endpoint, method, body) {
     const search = params.get('search');
 
     let filtered = [...localRooms];
-    if (building && building !== 'all') filtered = filtered.filter(r => r.building === building);
+    if (building && building !== 'all') {
+      if (building === 'SkyLake') {
+        filtered = filtered.filter(r => ['S1', 'S2', 'S3'].includes(r.building));
+      } else if (building === 'Royal') {
+        filtered = filtered.filter(r => r.building === 'R6A');
+      } else if (building === 'Imperia') {
+        filtered = filtered.filter(r => r.building === 'B');
+      } else {
+        filtered = filtered.filter(r => r.building === building);
+      }
+    }
     if (status && status !== 'all') filtered = filtered.filter(r => r.status === status);
     if (search) filtered = filtered.filter(r => r.code.toLowerCase().includes(search.toLowerCase()));
 
@@ -1063,18 +1073,21 @@ function renderComplexTabs() {
   
   if (city === 'all') {
     wrapper.style.display = 'none';
+    renderBuildingTabs();
     return;
   }
   
   wrapper.style.display = 'block';
   let html = '';
+  const selectedBuilding = apartmentFilters.building;
+  const isSkyLakeActive = ['SkyLake', 'S1', 'S2', 'S3'].includes(selectedBuilding);
   
   if (city === 'HN') {
     html = `
-      <button class="floor-tab ${apartmentFilters.building === 'all' ? 'active' : ''}" onclick="setComplexFilter('all')">Tất cả khu HN</button>
-      <button class="floor-tab ${apartmentFilters.building === 'SkyLake' ? 'active' : ''}" onclick="setComplexFilter('SkyLake')">SkyLake (S1, S2, S3)</button>
-      <button class="floor-tab ${apartmentFilters.building === 'Royal' ? 'active' : ''}" onclick="setComplexFilter('Royal')">Royal City (R6A)</button>
-      <button class="floor-tab ${apartmentFilters.building === 'Imperia' ? 'active' : ''}" onclick="setComplexFilter('Imperia')">Imperia Garden (B)</button>
+      <button class="floor-tab ${selectedBuilding === 'all' ? 'active' : ''}" onclick="setComplexFilter('all')">Tất cả khu HN</button>
+      <button class="floor-tab ${isSkyLakeActive ? 'active' : ''}" onclick="setComplexFilter('SkyLake')">SkyLake</button>
+      <button class="floor-tab ${selectedBuilding === 'Royal' ? 'active' : ''}" onclick="setComplexFilter('Royal')">Royal City (R6A)</button>
+      <button class="floor-tab ${selectedBuilding === 'Imperia' ? 'active' : ''}" onclick="setComplexFilter('Imperia')">Imperia Garden (B)</button>
     `;
   } else if (city === 'HCM') {
     html = `
@@ -1084,14 +1097,41 @@ function renderComplexTabs() {
   }
   
   container.innerHTML = html;
+  renderBuildingTabs();
+}
+
+function renderBuildingTabs() {
+  const wrapper = document.getElementById('buildingTabsWrapper');
+  const container = document.getElementById('buildingTabs');
+  if (!container || !wrapper) return;
+
+  const selectedBuilding = apartmentFilters.building;
+  const isSkyLakeSelected = ['SkyLake', 'S1', 'S2', 'S3'].includes(selectedBuilding);
+
+  if (!isSkyLakeSelected) {
+    wrapper.style.display = 'none';
+    container.innerHTML = '';
+    return;
+  }
+
+  wrapper.style.display = 'block';
+  container.innerHTML = `
+    <button class="floor-tab ${selectedBuilding === 'SkyLake' ? 'active' : ''}" onclick="setBuildingSubFilter('SkyLake')">Tất cả SkyLake</button>
+    <button class="floor-tab ${selectedBuilding === 'S1' ? 'active' : ''}" onclick="setBuildingSubFilter('S1')">S1</button>
+    <button class="floor-tab ${selectedBuilding === 'S2' ? 'active' : ''}" onclick="setBuildingSubFilter('S2')">S2</button>
+    <button class="floor-tab ${selectedBuilding === 'S3' ? 'active' : ''}" onclick="setBuildingSubFilter('S3')">S3</button>
+  `;
 }
 
 function setComplexFilter(b) {
   apartmentFilters.building = b;
-  document.querySelectorAll('#complexTabs .floor-tab').forEach(btn => {
-    btn.classList.remove('active');
-  });
-  event.currentTarget.classList.add('active');
+  renderComplexTabs();
+  loadApartmentsTab();
+}
+
+function setBuildingSubFilter(b) {
+  apartmentFilters.building = b;
+  renderComplexTabs();
   loadApartmentsTab();
 }
 
