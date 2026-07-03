@@ -60,11 +60,11 @@
 
     <!-- ===== NAVIGATION TABS ===== -->
     <nav class="admin-tabs">
-      <button class="tab-btn active" onclick="switchTab('assignment')">📋 Phân công ngày</button>
-      <button class="tab-btn" onclick="switchTab('apartments')">🏠 Căn hộ & MK</button>
-      <button class="tab-btn" onclick="switchTab('tasks')">📝 Giao việc</button>
-      <button class="tab-btn" id="tabBtnStats" onclick="switchTab('stats')">📊 Thống kê</button>
-      <button class="tab-btn" id="tabBtnSalary" onclick="switchTab('salary')">💰 Bảng lương</button>
+      <button class="tab-btn active" onclick="switchTab(event, 'assignment')">📋 Phân công ngày</button>
+      <button class="tab-btn" onclick="switchTab(event, 'apartments')">🏠 Căn hộ & MK</button>
+      <button class="tab-btn" onclick="switchTab(event, 'tasks')">📝 Giao việc</button>
+      <button class="tab-btn" id="tabBtnStats" onclick="switchTab(event, 'stats')">📊 Thống kê</button>
+      <button class="tab-btn" id="tabBtnSalary" onclick="switchTab(event, 'salary')">💰 Bảng lương</button>
     </nav>
 
     <!-- ==================== TAB 1: ASSIGNMENT ==================== -->
@@ -80,7 +80,7 @@
         <div class="task-form-grid" style="display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end;">
           <div class="rename-input-group" style="flex: 1; min-width: 180px;">
             <label for="quickRoomInput">🏢 Nhập mã căn hộ</label>
-            <input type="text" id="quickRoomInput" list="quickRoomList" class="room-filter-select" style="width: 100%; padding: 8px;" placeholder="Gõ mã căn..." oninput="handleQuickRoomInput(this.value)">
+            <input type="text" id="quickRoomInput" list="quickRoomList" class="room-filter-select" style="width: 100%; padding: 8px;" placeholder="Gõ mã căn..." oninput="handleQuickRoomInput(this.value)" autocomplete="off">
             <datalist id="quickRoomList"></datalist>
           </div>
           <div class="rename-input-group" id="quickStaffSelectContainer" style="flex: 2; min-width: 250px; display: flex; flex-direction: column; gap: 4px;">
@@ -98,6 +98,14 @@
               <option value="ss_luu">SS/Lưu</option>
               <option value="tong_ve_sinh">Tổng VS</option>
             </select>
+          </div>
+          <div class="rename-input-group quick-tvs-time-group" style="flex: 1; min-width: 150px; display: none;">
+            <label for="quickTvsStartAt">⏰ Dự kiến bắt đầu</label>
+            <input type="datetime-local" id="quickTvsStartAt" class="room-filter-select" style="width: 100%;">
+          </div>
+          <div class="rename-input-group quick-tvs-time-group" style="flex: 1; min-width: 150px; display: none;">
+            <label for="quickTvsEndAt">✅ Dự kiến xong</label>
+            <input type="datetime-local" id="quickTvsEndAt" class="room-filter-select" style="width: 100%;">
           </div>
           <div class="rename-input-group" style="flex: 1; min-width: 140px;">
             <button class="btn btn-save" onclick="quickAssignRoom()" style="width: 100%; padding: 10px; background: linear-gradient(135deg, #10b981, #059669);">➕ Giao việc nhanh</button>
@@ -348,7 +356,7 @@
         <div class="room-filters">
           <div class="room-search">
             <span class="search-icon">🔍</span>
-            <input type="text" id="roomSearchInput" placeholder="Tìm mã căn...">
+            <input type="text" id="roomSearchInput" placeholder="Tìm mã căn..." autocomplete="off">
           </div>
           <select id="roomStatusFilter" class="room-filter-select">
             <option value="all">Tất cả trạng thái</option>
@@ -697,6 +705,19 @@
             <!-- Generated dynamically by JS based on room type -->
           </div>
         </div>
+        <div class="role-group" id="tvsTimeGroup" style="margin-top: 15px; display: none;">
+          <div class="role-group-label"><span>⏰</span> Thời gian dự kiến Tổng VS</div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div>
+              <label for="tvsStartAt" style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Mọi người có mặt</label>
+              <input type="datetime-local" id="tvsStartAt" class="form-control" style="width: 100%; padding: 6px; font-size: 0.85rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
+            </div>
+            <div>
+              <label for="tvsEndAt" style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Dự kiến xong</label>
+              <input type="datetime-local" id="tvsEndAt" class="form-control" style="width: 100%; padding: 6px; font-size: 0.85rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
+            </div>
+          </div>
+        </div>
       </div>
       <div class="modal-footer">
         <button class="btn btn-cancel" onclick="closeRoomStatusModal()">Đóng</button>
@@ -866,13 +887,6 @@
               <label for="soOccupied">
                 <span class="option-num">🔴</span>
                 <span class="option-text">Có khách</span>
-              </label>
-            </div>
-            <div class="role-option opt-room-maintenance">
-              <input type="radio" name="statusOnlyVal" id="soMaintenance" value="maintenance" onchange="toggleStatusModalFields('admin')">
-              <label for="soMaintenance">
-                <span class="option-num">🔧</span>
-                <span class="option-text">Sửa chữa / Bảo trì</span>
               </label>
             </div>
           </div>

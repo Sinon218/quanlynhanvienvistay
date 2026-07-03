@@ -1,4 +1,4 @@
-// ===================================================================
+﻿// ===================================================================
 // EMPLOYEE PORTAL JS - employee.js
 // ===================================================================
 
@@ -20,7 +20,7 @@ let apartmentFilters = {
 let selectedRoomId = null;
 
 // Bảng giá theo cấp độ kỹ thuật
-const TECH_LEVEL_PRICES = { 1: 50000, 2: 100000, 3: 150000, 4: 250000 };
+const TECH_LEVEL_PRICES = { 1: 20000, 2: 40000, 3: 800000, 4: 150000 };
 const TECH_LEVEL_NAMES = { 1: 'Dễ', 2: 'Trung bình', 3: 'Khó', 4: 'Cực khó' };
 const TECH_LEVEL_COLORS = { 1: '#22c55e', 2: '#f59e0b', 3: '#ef4444', 4: '#dc2626' };
 const TECH_LEVEL_BG = { 1: 'rgba(34,197,94,0.15)', 2: 'rgba(245,158,11,0.15)', 3: 'rgba(239,68,68,0.15)', 4: 'rgba(220,38,38,0.15)' };
@@ -35,7 +35,7 @@ function checkAuth() {
   }
   try {
     currentUser = JSON.parse(userStr);
-    
+
     // Ensure techRole is set for Thiên and Thương (IDs 2 & 3)
     if (currentUser.staffId === 2 || currentUser.staffId === 3 || currentUser.username === 'thien' || currentUser.username === 'thuong') {
       currentUser.techRole = 1;
@@ -45,7 +45,7 @@ function checkAuth() {
       window.location.href = 'admin.html';
     }
     document.getElementById('employeeName').textContent = currentUser.staffName || currentUser.username;
-    
+
     // Show "Giao diện QL" button for managers
     if (currentUser.role === 'manager') {
       const switchBtn = document.getElementById('btnSwitchToAdmin');
@@ -70,7 +70,7 @@ function handleLogout() {
 // ===== API REQUEST HELPER WITH OFFLINE FALLBACK =====
 async function apiCall(endpoint, method = 'GET', body = null) {
   let mode = localStorage.getItem('vistay_mode') || 'backend';
-  
+
   if (mode === 'local') {
     return handleLocalMockCall(endpoint, method, body);
   }
@@ -90,14 +90,14 @@ async function apiCall(endpoint, method = 'GET', body = null) {
     };
 
     const response = await fetch(`${API_URL}${endpoint}`, options);
-    
+
     if (!response.ok) {
       const data = await response.json();
       const apiErr = new Error(data.error || 'Đã xảy ra lỗi khi gọi API.');
       apiErr.isApiError = true;
       throw apiErr;
     }
-    
+
     return await response.json();
   } catch (err) {
     if (err.isApiError) {
@@ -138,7 +138,7 @@ function handleLocalMockCall(endpoint, method, body) {
     const todayStr = new Date().toISOString().split('T')[0];
     // Filter tasks assigned to current employee today
     const myTasks = localWork.filter(w => w.staff_id === currentUser.staffId && w.assigned_date === todayStr);
-    
+
     // Join with room info
     const joined = myTasks.map(task => {
       const room = localRooms.find(r => r.id === task.apartment_id) || {};
@@ -245,10 +245,10 @@ function handleLocalMockCall(endpoint, method, body) {
 
     const baseSalary = savedConfig.base_salary !== undefined ? savedConfig.base_salary : (staff.type === 'full-time' ? 6000000 : 0);
     const rate = savedConfig.per_room_rate !== undefined ? savedConfig.per_room_rate : 50000;
-    
+
     const totalRooms = localWork.filter(w => w.staff_id === staffId && w.status === 'completed').length;
     const roomBonus = totalRooms * rate;
-    
+
     // Tech tasks
     const localTasks = getLocalData('vistay_mock_tasks', []);
     const approvedTechTasks = localTasks.filter(t => t.staff_id === staffId && t.status === 'approved');
@@ -392,8 +392,8 @@ function handleLocalMockCall(endpoint, method, body) {
     const allowedUsernames = ['vistay', 'loc', 'dieu'];
     const allowedNames = ['Lộc', 'Diệu'];
     const isPrivileged = currentUser && (
-      currentUser.role === 'admin' || 
-      allowedUsernames.includes(currentUser.username) || 
+      currentUser.role === 'admin' ||
+      allowedUsernames.includes(currentUser.username) ||
       allowedNames.includes(currentUser.staffName)
     );
     if (!isPrivileged) {
@@ -588,7 +588,7 @@ function onFileSelected(id) {
 async function completeWork(id, needsPhoto) {
   const fileInput = document.getElementById(`file-${id}`);
   const formData = new FormData();
-  
+
   if (needsPhoto) {
     if (!fileInput || fileInput.files.length === 0) {
       showToast('Vui lòng chụp hoặc chọn ảnh minh chứng trước khi bấm Hoàn thành.', 'warning');
@@ -615,7 +615,7 @@ function renderSalaryEstimate(salary) {
   document.getElementById('estBaseSalary').textContent = formatCurrency(salary.base_salary);
   document.getElementById('estRoomsCount').textContent = `${salary.total_rooms} căn`;
   document.getElementById('estRoomBonus').textContent = `+${formatCurrency(salary.room_bonus)}`;
-  
+
   const techRow = document.getElementById('estTechRow');
   const techSalaryEl = document.getElementById('estTechSalary');
   if (techRow && techSalaryEl) {
@@ -649,7 +649,7 @@ function formatDate() {
 
 // ===== TASK TYPE HELPERS =====
 function getTaskTypeLabel(type) {
-  switch(type) {
+  switch (type) {
     case 'ss_luu': return '🔄 SS/Lưu';
     case 'out': return '🚪 Out';
     case 'tong_ve_sinh': return '🧹 Tổng VS';
@@ -658,7 +658,7 @@ function getTaskTypeLabel(type) {
 }
 
 function getTaskTypeClass(type) {
-  switch(type) {
+  switch (type) {
     case 'ss_luu': return 'task-tag-ss';
     case 'out': return 'task-tag-out';
     case 'tong_ve_sinh': return 'task-tag-tvs';
@@ -894,8 +894,8 @@ async function submitSelfAssignTask() {
   const techLevel = selectedOption ? selectedOption.getAttribute('data-level') : null;
 
   try {
-    const data = await apiCall('/tasks/self-assign', 'POST', { 
-      title, 
+    const data = await apiCall('/tasks/self-assign', 'POST', {
+      title,
       description,
       tech_level: techLevel ? parseInt(techLevel) : null
     });
@@ -1114,7 +1114,7 @@ async function loadEmployeeApartments() {
   try {
     const query = new URLSearchParams(apartmentFilters).toString();
     apartmentList = await apiCall(`/apartments?${query}`);
-    
+
     // Load stats
     const stats = await apiCall('/apartments/stats');
     apartmentStatsData = stats.byBuilding || [];
@@ -1167,7 +1167,7 @@ function renderEmployeeApartmentGrid() {
   const isPrivileged = currentUser && (
     currentUser.role === 'admin' ||
     currentUser.role === 'manager' ||
-    allowedUsernames.includes(currentUser.username) || 
+    allowedUsernames.includes(currentUser.username) ||
     allowedNames.includes(currentUser.staffName)
   );
 
@@ -1175,7 +1175,7 @@ function renderEmployeeApartmentGrid() {
     const statusClass = getRoomStatusClass(room.status);
     const statusLabel = getRoomStatusLabel(room.status);
     const statusIcon = getRoomStatusIcon(room.status);
-    
+
     // Show password block
     const pwHtml = room.password ? `
       <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px; background: rgba(0,0,0,0.15); padding: 4px 8px; border-radius: 4px;">
@@ -1244,12 +1244,12 @@ function renderEmployeeApartmentSummaryTable() {
           </td>
         </tr>
       `;
-      
+
       roomsInB.forEach(room => {
         const statusClass = getRoomStatusClass(room.status);
         const statusLabel = getRoomStatusLabel(room.status);
         const statusIcon = getRoomStatusIcon(room.status);
-        
+
         let stayInfo = '';
         if (room.status === 'occupied' && (room.checkin_date || room.checkout_date)) {
           const inDate = room.checkin_date ? new Date(room.checkin_date).toLocaleDateString('vi-VN') : '—';
@@ -1320,7 +1320,7 @@ function openEmpRoomStatusModal(roomId) {
   const checkinTimeEl = document.getElementById('ersCheckinTime');
   const checkoutDateEl = document.getElementById('ersCheckoutDate');
   const checkoutTimeEl = document.getElementById('ersCheckoutTime');
-  
+
   if (checkinDateEl) {
     if (room.checkin_date) {
       checkinDateEl.value = new Date(room.checkin_date).toISOString().split('T')[0];
@@ -1346,7 +1346,7 @@ function openEmpRoomStatusModal(roomId) {
   toggleStatusModalFields('employee');
 
   modal.classList.add('active');
-  
+
   const chartContainer = document.getElementById('empModalRoomChartContainer');
   if (chartContainer) {
     if (room.is_samsung) {
@@ -1373,10 +1373,10 @@ function toggleStatusModalFields(type) {
   if (type === 'admin') {
     const radio = document.querySelector('input[name="statusOnlyVal"]:checked');
     const status = radio ? radio.value : '';
-    
+
     const dtGroup = document.querySelector('#roomStatusEditOnlyModal .datetime-inputs-group');
     const mtGroup = document.getElementById('soMaintenanceGroup');
-    
+
     if (status === 'occupied') {
       if (dtGroup) dtGroup.style.display = 'block';
       if (mtGroup) mtGroup.style.display = 'none';
@@ -1390,10 +1390,10 @@ function toggleStatusModalFields(type) {
   } else if (type === 'employee') {
     const radio = document.querySelector('input[name="empRoomStatus"]:checked');
     const status = radio ? radio.value : '';
-    
+
     const dtGroup = document.querySelector('#empRoomStatusModal .datetime-inputs-group');
     const mtGroup = document.getElementById('ersMaintenanceGroup');
-    
+
     if (status === 'occupied') {
       if (dtGroup) dtGroup.style.display = 'block';
       if (mtGroup) mtGroup.style.display = 'none';
@@ -1419,7 +1419,7 @@ async function saveEmpRoomStatus() {
   const maintenance_duration = document.getElementById('ersMaintenanceDuration')?.value || null;
 
   try {
-    const res = await apiCall(`/apartments/${selectedRoomId}/status`, 'PUT', { 
+    const res = await apiCall(`/apartments/${selectedRoomId}/status`, 'PUT', {
       status,
       checkin_date,
       checkin_time,
@@ -1443,7 +1443,7 @@ function openEmpPasswordModal(roomId, code, password) {
   document.getElementById('empRoomPwModalNumber').textContent = `Căn ${code}`;
   document.getElementById('empRoomPwModalOld').textContent = password;
   document.getElementById('empRoomNewPassword').value = '';
-  
+
   modal.classList.add('active');
 }
 
@@ -1577,10 +1577,10 @@ function renderApartmentStatusChart(byBuilding) {
           titleFont: { size: 13, weight: '700' },
           bodyFont: { size: 12 },
           callbacks: {
-            title: function(context) {
+            title: function (context) {
               return `Cụm căn hộ: ${context[0].label}`;
             },
-            label: function(context) {
+            label: function (context) {
               return ` ${context.dataset.label}: ${context.parsed.y} căn`;
             }
           }
@@ -1856,7 +1856,7 @@ function renderEmpApartmentStatusTimeline(data) {
         const currentStatus = room.current_status || 'available';
         const statusClass = getRoomStatusClass(currentStatus);
         const statusIcon = getRoomStatusIcon(currentStatus);
-        
+
         const segmentsHtml = room.segments.map(segment => {
           const startLabel = labels[segment.start_index] || '';
           const endLabel = labels[segment.start_index + segment.span - 1] || '';
@@ -1866,8 +1866,8 @@ function renderEmpApartmentStatusTimeline(data) {
           if (startLabel === endLabel) {
             timeRangeStr = isHourly ? `lúc ${startLabel}` : `ngày ${startLabel}`;
           } else {
-            timeRangeStr = isHourly 
-              ? `từ ${startLabel} đến ${endLabel}` 
+            timeRangeStr = isHourly
+              ? `từ ${startLabel} đến ${endLabel}`
               : `từ ngày ${startLabel} đến ngày ${endLabel}`;
           }
 
@@ -1900,7 +1900,7 @@ function renderEmpApartmentStatusTimeline(data) {
           `;
         }).join('');
 
-        const labelOnClick = isPrivileged 
+        const labelOnClick = isPrivileged
           ? `onclick="openEmpRoomStatusModal(${room.id})"`
           : `style="cursor: default;"`;
 
@@ -1959,7 +1959,7 @@ function showTimelinePopover(element, roomCode, status, startLabel, endLabel, is
   if (!popover) return;
 
   document.getElementById('popoverTitle').textContent = `Căn ${roomCode}`;
-  
+
   const statusLabel = getRoomStatusLabel(status);
   const statusIcon = getRoomStatusIcon(status);
   const statusValEl = document.getElementById('popoverStatus');
@@ -1986,7 +1986,7 @@ function showTimelinePopover(element, roomCode, status, startLabel, endLabel, is
   }
 
   const footer = document.getElementById('popoverFooter');
-  
+
   if (isPrivileged) {
     footer.innerHTML = `
       <button class="btn btn-cancel" style="padding: 4px 10px; font-size: 0.75rem;" onclick="closeTimelinePopover()">Đóng</button>
@@ -2045,18 +2045,18 @@ function setupRealtimeEvents() {
   if (localStorage.getItem('vistay_mode') !== 'local') {
     if (eventSource) eventSource.close();
     eventSource = new EventSource(`${API_URL}/events`);
-    
+
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         console.log('📢 Received real-time event:', data);
-        
+
         // Hiển thị Toast thông báo cho nhân viên nếu có tin nhắn chi tiết
         if (data.message) {
           const type = (data.action === 'reject' || data.action === 'reject_completed') ? 'warning' : 'success';
           showToast(data.message, type);
         }
-        
+
         if (typeof loadDashboard === 'function') {
           console.log('🔄 Reloading dashboard...');
           loadDashboard();

@@ -44,6 +44,34 @@ const ROOM_TYPE_COLORS = {
   '3 ngủ': '#f59e0b',
   '4 ngủ': '#ef4444'
 };
+
+function getCleaningStaffLimit(roomType, taskType = 'out') {
+  if (taskType === 'tong_ve_sinh') return Infinity;
+  if (roomType === '3 ngủ') return 3;
+  if (roomType === '4 ngủ') return 4;
+  return 2;
+}
+
+function getCleaningSelectCount(roomType, taskType = 'out') {
+  if (taskType === 'tong_ve_sinh') return Math.max(staffList.length, 2);
+  const limit = getCleaningStaffLimit(roomType);
+  return Number.isFinite(limit) ? limit : 2;
+}
+
+function toDatetimeLocalValue(date = new Date()) {
+  const pad = value => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+function getDefaultTvsWindow() {
+  const start = new Date();
+  start.setMinutes(Math.ceil(start.getMinutes() / 30) * 30, 0, 0);
+  const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
+  return {
+    start: toDatetimeLocalValue(start),
+    end: toDatetimeLocalValue(end)
+  };
+}
 const COMPLEX_GROUPS = [
   { key: 'SkyLake', label: 'Skylake', buildings: ['S1', 'S2', 'S3'] },
   { key: 'Royal', label: 'Royal', buildings: ['R6A'] },
@@ -466,17 +494,15 @@ function handleLocalMockCall(endpoint, method, body) {
 
   // 3. Work assignments endpoints
   if (endpoint === '/work/assign' && method === 'POST') {
-    const { staff_id, apartment_id, task_type } = body;
+    const { staff_id, apartment_id, task_type, planned_start_at, planned_end_at } = body;
 
     // Check limit of assignees based on room type
     const date = new Date().toISOString().split('T')[0];
     const roomObj = localRooms.find(r => r.id === apartment_id) || {};
-    let limit = 2; // Mặc định 2 người dọn cho 1~2 ngủ
-    if (roomObj.room_type === '3 ngủ') limit = 3;
-    if (roomObj.room_type === '4 ngủ') limit = 4;
+    const limit = getCleaningStaffLimit(roomObj.room_type, task_type);
 
     const count = localWork.filter(w => w.apartment_id === apartment_id && w.assigned_date === date && w.status !== 'rejected').length;
-    if (count >= limit) {
+    if (Number.isFinite(limit) && count >= limit) {
       return Promise.reject(new Error(`Căn hộ này đã được giao cho tối đa ${limit} nhân viên trong ngày.`));
     }
 
@@ -492,9 +518,11 @@ function handleLocalMockCall(endpoint, method, body) {
       staff_id,
       apartment_id,
       task_type: task_type || 'out',
-      assigned_role: staffObj.room_role || 1,
+      assigned_role: task_type === 'tong_ve_sinh' ? 2 : (staffObj.room_role || 1),
       status: 'pending',
-      assigned_date: date
+      assigned_date: date,
+      planned_start_at: planned_start_at || null,
+      planned_end_at: planned_end_at || null
     });
     saveLocalData('vistay_mock_work', localWork);
     return Promise.resolve({ message: 'Giao việc thành công.' });
@@ -704,13 +732,25 @@ function showToast(message, type = 'success') {
 }
 
 // ===== TAB SWITCHING =====
-function switchTab(tabId) {
+function switchTab(e, tabId) {
   document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
 
-  event.currentTarget.classList.add('active');
+  if (e && e.currentTarget) {
+    e.currentTarget.classList.add('active');
+  } else if (window.event && window.event.currentTarget) {
+    window.event.currentTarget.classList.add('active');
+  } else {
+    // Fallback: active tab button based on tabId
+    const btn = Array.from(document.querySelectorAll('.tab-btn')).find(b => {
+      const onclick = b.getAttribute('onclick') || '';
+      return onclick.includes(`'${tabId}'`) || onclick.includes(`"${tabId}"`);
+    });
+    if (btn) btn.classList.add('active');
+  }
+
   const activeTab = document.getElementById(`tab-${tabId}`);
-  activeTab.classList.add('active');
+  if (activeTab) activeTab.classList.add('active');
 
   // Trigger loads based on active tab
   if (tabId === 'assignment') loadAssignmentTab();
@@ -1091,23 +1131,11 @@ function togglePasswordDisplay(roomId, password) {
 }
 
 // ===== ROOM STATUS / ASSIGNMENT MODAL =====
-function openRoomStatusModal(roomId) {
-  selectedRoomId = roomId;
-  const room = apartmentList.find(r => r.id === roomId);
-  if (!room) return;
-
-  const modal = document.getElementById('roomStatusModal');
-  document.getElementById('roomModalNumber').textContent = `Căn ${room.code}`;
-  document.getElementById('roomModalType').textContent = `${room.room_type} · ${room.is_samsung ? 'Thiết bị Samsung (SSTN)' : 'Mật khẩu thường'}`;
-  document.getElementById('roomModalFloor').textContent = `Tòa: ${room.building}`;
-
-  // Generate dynamic dropdowns based on room type
+function renderRoomAssignmentStaffSelects(room, taskType = 'out') {
   const container = document.getElementById('assignStaffSelectContainer');
-  let selectCount = 1;
-  if (room.room_type === '2 ngủ') selectCount = 2;
-  else if (room.room_type === '3 ngủ') selectCount = 3;
-  else if (room.room_type === '4 ngủ') selectCount = 4;
+  if (!container || !room) return;
 
+  const selectCount = getCleaningSelectCount(room.room_type, taskType);
   let html = '';
   for (let i = 1; i <= selectCount; i++) {
     const labelText = selectCount > 1 ? `Người dọn ${i}` : 'Người dọn';
@@ -1122,6 +1150,61 @@ function openRoomStatusModal(roomId) {
     `;
   }
   container.innerHTML = html;
+}
+
+function refreshRoomAssignmentStaffSelects() {
+  if (selectedRoomId === null) return;
+  const room = apartmentList.find(r => r.id === selectedRoomId);
+  const taskTypeEl = document.querySelector('input[name="taskType"]:checked');
+  const taskType = taskTypeEl ? taskTypeEl.value : 'out';
+  renderRoomAssignmentStaffSelects(room, taskType);
+  toggleTvsTimeFields(taskType);
+}
+
+function toggleTvsTimeFields(taskType) {
+  const isTvs = taskType === 'tong_ve_sinh';
+  const group = document.getElementById('tvsTimeGroup');
+  if (group) group.style.display = isTvs ? 'block' : 'none';
+
+  if (isTvs) {
+    const defaults = getDefaultTvsWindow();
+    const startEl = document.getElementById('tvsStartAt');
+    const endEl = document.getElementById('tvsEndAt');
+    if (startEl && !startEl.value) startEl.value = defaults.start;
+    if (endEl && !endEl.value) endEl.value = defaults.end;
+  }
+}
+
+function toggleQuickTvsTimeFields() {
+  const taskType = document.getElementById('quickTaskTypeSelect')?.value || 'out';
+  const isTvs = taskType === 'tong_ve_sinh';
+  document.querySelectorAll('.quick-tvs-time-group').forEach(el => {
+    el.style.display = isTvs ? 'block' : 'none';
+  });
+
+  if (isTvs) {
+    const defaults = getDefaultTvsWindow();
+    const startEl = document.getElementById('quickTvsStartAt');
+    const endEl = document.getElementById('quickTvsEndAt');
+    if (startEl && !startEl.value) startEl.value = defaults.start;
+    if (endEl && !endEl.value) endEl.value = defaults.end;
+  }
+}
+
+function openRoomStatusModal(roomId) {
+  selectedRoomId = roomId;
+  const room = apartmentList.find(r => r.id === roomId);
+  if (!room) return;
+
+  const modal = document.getElementById('roomStatusModal');
+  document.getElementById('roomModalNumber').textContent = `Căn ${room.code}`;
+  document.getElementById('roomModalType').textContent = `${room.room_type} · ${room.is_samsung ? 'Thiết bị Samsung (SSTN)' : 'Mật khẩu thường'}`;
+  document.getElementById('roomModalFloor').textContent = `Tòa: ${room.building}`;
+
+  const taskTypeEl = document.querySelector('input[name="taskType"]:checked');
+  const taskType = taskTypeEl ? taskTypeEl.value : 'out';
+  renderRoomAssignmentStaffSelects(room, taskType);
+  toggleTvsTimeFields(taskType);
 
   modal.classList.add('active');
 }
@@ -2597,6 +2680,17 @@ document.addEventListener('DOMContentLoaded', () => {
   document.querySelectorAll('input[name="roomRole"], input[name="techRole"]').forEach(radio => {
     radio.addEventListener('change', updateAutoNotes);
   });
+
+  document.querySelectorAll('input[name="taskType"]').forEach(radio => {
+    radio.addEventListener('change', refreshRoomAssignmentStaffSelects);
+  });
+
+  const quickTaskTypeSelect = document.getElementById('quickTaskTypeSelect');
+  if (quickTaskTypeSelect) {
+    quickTaskTypeSelect.addEventListener('change', () => {
+      handleQuickRoomInput(document.getElementById('quickRoomInput')?.value || '');
+    });
+  }
 });
 
 async function syncOfflineData() {
@@ -2691,7 +2785,7 @@ async function quickAssignRoom() {
       await apiCall('/work/assign', 'POST', {
         staff_id: staffId,
         apartment_id: room.id,
-        type: taskType
+        task_type: taskType
       });
     }
     showToast('Đã phân công dọn phòng thành công.', 'success');
@@ -2816,11 +2910,8 @@ function handleQuickRoomInput(val) {
   }
   const room = apartmentList.find(a => a.code.toLowerCase() === val.trim().toLowerCase());
   if (room) {
-    let selectCount = 1;
-    if (room.room_type === '2 ngủ') selectCount = 2;
-    else if (room.room_type === '3 ngủ') selectCount = 3;
-    else if (room.room_type === '4 ngủ') selectCount = 4;
-    renderQuickStaffSelects(selectCount);
+    const taskType = document.getElementById('quickTaskTypeSelect')?.value || 'out';
+    renderQuickStaffSelects(getCleaningSelectCount(room.room_type, taskType));
   } else {
     renderQuickStaffSelects(1);
   }
@@ -3042,4 +3133,3 @@ function refreshActiveTab() {
     }
   }
 }
-

@@ -464,6 +464,9 @@ body::before {
   border-radius: var(--radius-lg);
   width: 100%;
   max-width: 420px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
   box-shadow: var(--shadow-lg);
   transform: scale(0.9) translateY(20px);
@@ -514,6 +517,8 @@ body::before {
 
 .modal-body {
   padding: 24px;
+  overflow-y: auto;
+  flex: 1;
 }
 
 .modal-staff-preview {

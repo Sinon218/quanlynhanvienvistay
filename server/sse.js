@@ -20,7 +20,14 @@ function sseMiddleware(req, res) {
 
   // Send a keep-alive comment every 20 seconds to prevent connections from dropping
   const keepAliveInterval = setInterval(() => {
-    res.write(': keep-alive\n\n');
+    try {
+      if (!res.destroyed && res.writable) {
+        res.write(': keep-alive\n\n');
+      }
+    } catch (e) {
+      console.error('SSE keepAlive error:', e.message);
+      clearInterval(keepAliveInterval);
+    }
   }, 20000);
 
   req.on('close', () => {
@@ -34,7 +41,9 @@ function sendEventToAll(data) {
   console.log(`📢 Broadcasting SSE event:`, data);
   clients.forEach(client => {
     try {
-      client.res.write(`data: ${JSON.stringify(data)}\n\n`);
+      if (!client.res.destroyed && client.res.writable) {
+        client.res.write(`data: ${JSON.stringify(data)}\n\n`);
+      }
     } catch (err) {
       console.error(`❌ Failed to write to SSE client ${client.id}:`, err.message);
     }

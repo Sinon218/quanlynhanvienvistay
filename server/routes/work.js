@@ -17,6 +17,26 @@ function getLocalDate() {
   return formatter.format(new Date());
 }
 
+function getCleaningStaffLimit(roomType, taskType = 'out') {
+  if (taskType === 'tong_ve_sinh') return Infinity;
+  if (roomType === '3 ngủ') return 3;
+  if (roomType === '4 ngủ') return 4;
+  return 2;
+}
+
+async function ensureNotificationsTable(pool) {
+  await pool.request().query(`
+    IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Notifications')
+    BEGIN
+      CREATE TABLE Notifications (
+        id INT IDENTITY(1,1) PRIMARY KEY,
+        message NVARCHAR(500) NOT NULL,
+        created_at DATETIME DEFAULT GETDATE()
+      );
+    END
+  `);
+}
+
 // POST /api/work/assign — Giao căn hộ cho NV (Admin/Manager)
 router.post('/assign', authenticate, requireManagerOrAdmin, async (req, res) => {
   try {
@@ -41,9 +61,7 @@ router.post('/assign', authenticate, requireManagerOrAdmin, async (req, res) => 
     }
 
     const roomType = aptRes.recordset[0].room_type;
-    let limit = 2; // Mặc định 2 người dọn cho 1~2 ngủ
-    if (roomType === '3 ngủ') limit = 3;
-    if (roomType === '4 ngủ') limit = 4;
+    const limit = getCleaningStaffLimit(roomType, type);
 
     // 1. Kiểm tra giới hạn người/ngày cho căn hộ này
     const countCheck = await pool.request()
@@ -54,7 +72,7 @@ router.post('/assign', authenticate, requireManagerOrAdmin, async (req, res) => 
         WHERE apartment_id = @apartmentId AND assigned_date = @date AND status <> 'rejected'
       `);
 
-    if (countCheck.recordset[0].count >= limit) {
+    if (Number.isFinite(limit) && countCheck.recordset[0].count >= limit) {
       return res.status(400).json({ error: `Căn hộ này đã được giao cho tối đa ${limit} nhân viên trong ngày.` });
     }
 
@@ -76,7 +94,9 @@ router.post('/assign', authenticate, requireManagerOrAdmin, async (req, res) => 
     const staffRes = await pool.request()
       .input('staffId', sql.Int, staff_id)
       .query('SELECT room_role FROM Staff WHERE id = @staffId');
-    const assignedRole = staffRes.recordset.length > 0 ? staffRes.recordset[0].room_role : 1;
+    const assignedRole = type === 'tong_ve_sinh'
+      ? 2
+      : (staffRes.recordset.length > 0 ? staffRes.recordset[0].room_role : 1);
 
     // 4. Tạo phân công với trạng thái pending
     await pool.request()
@@ -106,6 +126,7 @@ router.post('/assign', authenticate, requireManagerOrAdmin, async (req, res) => 
     }
 
     // Ghi notification vào DB
+    await ensureNotificationsTable(pool);
     await pool.request()
       .input('msg', sql.NVarChar, msg)
       .query('INSERT INTO Notifications (message) VALUES (@msg)');
@@ -201,6 +222,7 @@ router.put('/:id/reject', authenticate, async (req, res) => {
     }
 
     // Ghi notification vào DB
+    await ensureNotificationsTable(pool);
     await pool.request()
       .input('msg', sql.NVarChar, msg)
       .query('INSERT INTO Notifications (message) VALUES (@msg)');
@@ -473,4 +495,3 @@ router.put('/:id/approve', authenticate, requireManagerOrAdmin, async (req, res)
 });
 
 module.exports = router;
-
