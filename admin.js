@@ -1078,6 +1078,37 @@ function renderApartmentStats(totals) {
   `;
 }
 
+function renderRoomCardHtml(room) {
+  const statusClass = getRoomStatusClass(room.status);
+  const statusLabel = getRoomStatusLabel(room.status);
+  const statusIcon = getRoomStatusIcon(room.status);
+  const sstnBadge = room.is_samsung ? '<span class="samsung-badge" style="background: #3b82f6; color: white; padding: 2px 6px; font-size: 0.6rem; border-radius: 4px; font-weight: 700; margin-left: auto;">SSTN</span>' : '';
+  const roomTypeBadge = `<span class="room-type-badge" style="background: ${ROOM_TYPE_COLORS[room.room_type] || '#64748b'}; color: white; padding: 2px 6px; font-size: 0.6rem; border-radius: 4px; font-weight: 700; white-space: nowrap;">${room.room_type || '—'}</span>`;
+
+  return `
+    <div class="room-card ${statusClass}" onclick="openRoomStatusModal(${room.id})" style="display: flex; flex-direction: column; align-items: stretch; text-align: left; padding: 12px 10px;">
+      <div style="display: flex; align-items: center; margin-bottom: 4px;">
+        <div class="room-number" style="font-size: 1rem; font-weight: 800;">${room.code}</div>
+        ${roomTypeBadge}
+        ${sstnBadge}
+      </div>
+      
+      <!-- Password block -->
+      <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px; background: rgba(0,0,0,0.15); padding: 4px 8px; border-radius: 4px;">
+        <span style="font-size: 0.72rem; color: var(--text-secondary);">MK:</span>
+        <span class="pw-text" id="pw-${room.id}" style="font-family: monospace; font-size: 0.8rem; font-weight: 700; flex: 1;">••••••</span>
+        <button class="pw-toggle-btn" onclick="event.stopPropagation(); togglePasswordDisplay(${room.id}, '${room.password}')" style="background: transparent; border: none; cursor: pointer; padding: 0 4px; font-size: 0.8rem;">👁️</button>
+        <button class="pw-edit-btn" onclick="event.stopPropagation(); openRoomPasswordModal(${room.id}, '${room.code}', '${room.password}')" style="background: transparent; border: none; cursor: pointer; padding: 0 4px; font-size: 0.75rem; color: var(--accent-amber);">✏️</button>
+      </div>
+
+      <div class="room-status-badge ${statusClass}" style="align-self: flex-start; margin-top: auto;">
+        <span>${statusIcon}</span>
+        <span>${statusLabel}</span>
+      </div>
+    </div>
+  `;
+}
+
 function renderApartmentGrid() {
   const grid = document.getElementById('roomListGrid');
   const countEl = document.getElementById('filteredRoomCount');
@@ -1089,36 +1120,30 @@ function renderApartmentGrid() {
     return;
   }
 
-  grid.innerHTML = apartmentList.map(room => {
-    const statusClass = getRoomStatusClass(room.status);
-    const statusLabel = getRoomStatusLabel(room.status);
-    const statusIcon = getRoomStatusIcon(room.status);
-    const sstnBadge = room.is_samsung ? '<span class="samsung-badge" style="background: #3b82f6; color: white; padding: 2px 6px; font-size: 0.6rem; border-radius: 4px; font-weight: 700; margin-left: auto;">SSTN</span>' : '';
-    const roomTypeBadge = `<span class="room-type-badge" style="background: ${ROOM_TYPE_COLORS[room.room_type] || '#64748b'}; color: white; padding: 2px 6px; font-size: 0.6rem; border-radius: 4px; font-weight: 700; white-space: nowrap;">${room.room_type || '—'}</span>`;
+  const hnRooms = apartmentList.filter(room => room.building !== 'HCM');
+  const hcmRooms = apartmentList.filter(room => room.building === 'HCM');
 
-    return `
-      <div class="room-card ${statusClass}" onclick="openRoomStatusModal(${room.id})" style="display: flex; flex-direction: column; align-items: stretch; text-align: left; padding: 12px 10px;">
-        <div style="display: flex; align-items: center; margin-bottom: 4px;">
-          <div class="room-number" style="font-size: 1rem; font-weight: 800;">${room.code}</div>
-          ${roomTypeBadge}
-          ${sstnBadge}
-        </div>
-        
-        <!-- Password block -->
-        <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px; background: rgba(0,0,0,0.15); padding: 4px 8px; border-radius: 4px;">
-          <span style="font-size: 0.72rem; color: var(--text-secondary);">MK:</span>
-          <span class="pw-text" id="pw-${room.id}" style="font-family: monospace; font-size: 0.8rem; font-weight: 700; flex: 1;">••••••</span>
-          <button class="pw-toggle-btn" onclick="event.stopPropagation(); togglePasswordDisplay(${room.id}, '${room.password}')" style="background: transparent; border: none; cursor: pointer; padding: 0 4px; font-size: 0.8rem;">👁️</button>
-          <button class="pw-edit-btn" onclick="event.stopPropagation(); openRoomPasswordModal(${room.id}, '${room.code}', '${room.password}')" style="background: transparent; border: none; cursor: pointer; padding: 0 4px; font-size: 0.75rem; color: var(--accent-amber);">✏️</button>
-        </div>
+  let html = '';
 
-        <div class="room-status-badge ${statusClass}" style="align-self: flex-start; margin-top: auto;">
-          <span>${statusIcon}</span>
-          <span>${statusLabel}</span>
-        </div>
+  if (hnRooms.length > 0) {
+    html += `
+      <div style="grid-column: 1 / -1; font-size: 1.05rem; font-weight: 800; color: var(--accent-purple); margin-top: 5px; margin-bottom: 5px; border-bottom: 1px solid var(--border-color); padding-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+        🏢 KHU VỰC HÀ NỘI
       </div>
     `;
-  }).join('');
+    html += hnRooms.map(room => renderRoomCardHtml(room)).join('');
+  }
+
+  if (hcmRooms.length > 0) {
+    html += `
+      <div style="grid-column: 1 / -1; font-size: 1.05rem; font-weight: 800; color: var(--accent-teal); margin-top: 20px; margin-bottom: 5px; border-bottom: 1px solid var(--border-color); padding-bottom: 6px; display: flex; align-items: center; gap: 6px;">
+        🌴 KHU VỰC HỒ CHÍ MINH (HCM)
+      </div>
+    `;
+    html += hcmRooms.map(room => renderRoomCardHtml(room)).join('');
+  }
+
+  grid.innerHTML = html;
 }
 
 function togglePasswordDisplay(roomId, password) {
@@ -1425,8 +1450,8 @@ function renderRoomSummaryTable() {
   const tbody = document.getElementById('roomSummaryTableBody');
   if (!tbody) return;
 
-  // Lọc các căn hộ: loại trừ HCM và SSTN + lọc theo tòa
-  let filtered = apartmentList.filter(a => a.building !== 'HCM' && !a.is_samsung);
+  // Lọc các căn hộ: loại trừ HCM và giữ lại SSTN + lọc theo tòa
+  let filtered = apartmentList.filter(a => a.building !== 'HCM');
   if (summaryBuildingFilter && summaryBuildingFilter !== 'all') {
     filtered = filtered.filter(a => a.building === summaryBuildingFilter);
   }
@@ -1459,17 +1484,39 @@ function renderRoomSummaryTable() {
       `;
 
       roomsInB.forEach(room => {
-        const statusClass = getRoomStatusClass(room.status);
-        const statusLabel = getRoomStatusLabel(room.status);
-        const statusIcon = getRoomStatusIcon(room.status);
+        const isSstn = room.is_samsung;
+        const displayStatus = isSstn ? 'occupied' : room.status;
+        const statusClass = getRoomStatusClass(displayStatus);
+        const statusLabel = getRoomStatusLabel(displayStatus);
+        const statusIcon = getRoomStatusIcon(displayStatus);
 
         let stayInfo = '';
-        if (room.status === 'occupied' && (room.checkin_date || room.checkout_date)) {
+        if (displayStatus === 'occupied' && (room.checkin_date || room.checkout_date)) {
           const inDate = room.checkin_date ? new Date(room.checkin_date).toLocaleDateString('vi-VN') : '—';
           const outDate = room.checkout_date ? new Date(room.checkout_date).toLocaleDateString('vi-VN') : '—';
           stayInfo = `<div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;">📅 ${inDate} ${room.checkin_time || ''} → ${outDate} ${room.checkout_time || ''}</div>`;
-        } else if (room.status === 'maintenance' && room.maintenance_duration) {
+        } else if (displayStatus === 'maintenance' && room.maintenance_duration) {
           stayInfo = `<div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;">⏰ Dự kiến: ${room.maintenance_duration} giờ</div>`;
+        }
+
+        let selectHtml = '';
+        if (isSstn) {
+          selectHtml = `
+            <select class="summary-status-select" disabled style="background: rgba(255,255,255,0.05); color: var(--text-muted); cursor: not-allowed; border-color: rgba(255,255,255,0.1);">
+              <option value="occupied" selected>🔒 Auto Có khách</option>
+            </select>
+          `;
+        } else {
+          selectHtml = `
+            <select
+              class="summary-status-select"
+              onchange="changeRoomStatusInline(${room.id}, this.value, this)"
+              data-room-id="${room.id}"
+            >
+              <option value="available" ${room.status === 'available' ? 'selected' : ''}>🟢 Trống</option>
+              <option value="occupied" ${room.status === 'occupied' ? 'selected' : ''}>🔴 Có khách</option>
+            </select>
+          `;
         }
 
         html += `
@@ -1488,15 +1535,7 @@ function renderRoomSummaryTable() {
               </div>
             </td>
             <td>
-              <select
-                class="summary-status-select"
-                onchange="changeRoomStatusInline(${room.id}, this.value, this)"
-                data-room-id="${room.id}"
-              >
-                <option value="available" ${room.status === 'available' ? 'selected' : ''}>🟢 Trống</option>
-                <option value="occupied" ${room.status === 'occupied' ? 'selected' : ''}>🔴 Có khách</option>
-                <option value="maintenance" ${room.status === 'maintenance' ? 'selected' : ''}>🔵 Bảo trì</option>
-              </select>
+              ${selectHtml}
             </td>
           </tr>
         `;
@@ -1516,7 +1555,10 @@ function changeRoomStatusInline(roomId, newStatus, selectEl) {
 
   setTimeout(() => {
     const radio = document.querySelector(`input[name="statusOnlyVal"][value="${newStatus}"]`);
-    if (radio) radio.checked = true;
+    if (radio) {
+      radio.checked = true;
+      toggleStatusModalFields('admin');
+    }
   }, 50);
 }
 
