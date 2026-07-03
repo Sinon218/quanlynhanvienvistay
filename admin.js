@@ -9,6 +9,7 @@ let currentUser = null;
 // State data
 let staffList = [];
 let apartmentList = [];
+let summaryApartmentList = [];
 let statsData = [];
 let salaryData = [];
 
@@ -1329,6 +1330,7 @@ async function saveRoomPassword() {
     showToast(data.message, 'success');
     closeRoomPasswordModal();
     loadApartmentsTab();
+    loadStatsTab();
   } catch (err) {
     showToast(err.message, 'warning');
   }
@@ -1427,7 +1429,7 @@ function setBuildingFilter(b) {
 async function loadStatsTab() {
   try {
     // Tải danh sách căn hộ để tổng hợp
-    apartmentList = await apiCall('/apartments?building=all&status=all');
+    summaryApartmentList = await apiCall('/apartments?building=all&status=all');
     renderRoomSummaryTable();
     renderStatsMatrix();
     loadApartmentStatusTimeline();
@@ -1548,7 +1550,7 @@ function renderRoomSummaryTable() {
 
 function changeRoomStatusInline(roomId, newStatus, selectEl) {
   if (selectEl) {
-    const room = apartmentList.find(r => r.id === roomId);
+    const room = apartmentList.find(r => r.id === roomId) || summaryApartmentList.find(r => r.id === roomId);
     if (room) selectEl.value = room.status;
   }
   openRoomStatusEditOnlyModal(roomId);
@@ -1567,7 +1569,7 @@ let selectedStatusRoomId = null;
 
 function openRoomStatusEditOnlyModal(roomId) {
   selectedStatusRoomId = roomId;
-  const room = apartmentList.find(r => r.id === roomId);
+  const room = apartmentList.find(r => r.id === roomId) || summaryApartmentList.find(r => r.id === roomId);
   if (!room) return;
 
   document.getElementById('statusOnlyModalNumber').textContent = `Cập Nhật Trạng Thái Căn ${room.code}`;
@@ -1713,7 +1715,7 @@ function renderStatsMatrix() {
   const tbody = document.getElementById('statsMatrixTableBody');
   if (!tbody) return;
 
-  const matrix = getComplexStatsMatrix(apartmentList.filter(room => room.building !== 'HCM'));
+  const matrix = getComplexStatsMatrix(summaryApartmentList.filter(room => room.building !== 'HCM'));
   if (matrix.length === 0) {
     tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Không có dữ liệu thống kê.</td></tr>';
     return;
