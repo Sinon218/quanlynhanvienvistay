@@ -33,9 +33,25 @@ if (process.env.DB_PORT) {
 let pool = null;
 
 async function getPool() {
-  if (!pool) {
-    pool = await sql.connect(config);
-    console.log('✅ Connected to SQL Server:', process.env.DB_NAME);
+  if (!pool || !pool.connected) {
+    try {
+      pool = new sql.ConnectionPool(config);
+      await pool.connect();
+      console.log('✅ Connected to SQL Server:', process.env.DB_NAME);
+
+      pool.on('error', err => {
+        console.error('📡 SQL Pool Error (Auto-closing):', err.message);
+        try {
+          pool.close();
+        } catch (closeErr) {
+          // ignore
+        }
+      });
+    } catch (err) {
+      console.error('❌ SQL Connection Error:', err.message);
+      pool = null;
+      throw err;
+    }
   }
   return pool;
 }
