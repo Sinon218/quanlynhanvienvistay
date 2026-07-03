@@ -95,7 +95,15 @@ CREATE TABLE AuditLog (
 );
 GO
 
--- ===== BẢNG 7: Tasks (Công việc tùy ý giao cho NV) =====
+-- ===== BẢNG 7: Notifications (Thông báo thay đổi mật khẩu) =====
+CREATE TABLE Notifications (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    message NVARCHAR(500) NOT NULL,
+    created_at DATETIME DEFAULT GETDATE()
+);
+GO
+
+-- ===== BẢNG 8: Tasks (Công việc tùy ý giao cho NV) =====
 CREATE TABLE Tasks (
     id INT IDENTITY(1,1) PRIMARY KEY,
     staff_id INT NOT NULL FOREIGN KEY REFERENCES Staff(id),
@@ -110,11 +118,21 @@ CREATE TABLE Tasks (
 );
 GO
 
+-- ===== BẢNG 9: ApartmentStatusHistory (Lịch sử trạng thái phòng) =====
+CREATE TABLE ApartmentStatusHistory (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    apartment_id INT NOT NULL FOREIGN KEY REFERENCES Apartments(id) ON DELETE CASCADE,
+    status VARCHAR(20) NOT NULL CHECK (status IN ('available', 'occupied', 'maintenance')),
+    recorded_at DATETIME NOT NULL DEFAULT GETDATE()
+);
+GO
+
 -- ===== INDEXES =====
 CREATE INDEX IX_WorkAssignments_StaffDate ON WorkAssignments(staff_id, assigned_date);
 CREATE INDEX IX_WorkAssignments_ApartmentDate ON WorkAssignments(apartment_id, assigned_date);
 CREATE INDEX IX_Apartments_Building ON Apartments(building);
 CREATE INDEX IX_SalaryRecords_StaffMonth ON SalaryRecords(staff_id, year, month);
+CREATE INDEX IX_ApartmentStatusHistory_AptDate ON ApartmentStatusHistory(apartment_id, recorded_at);
 GO
 
 PRINT N'✅ Schema created successfully!';

@@ -46,4 +46,18 @@ function requireSelfOrAdmin(req, res, next) {
   }
 }
 
-module.exports = { authenticate, requireAdmin, requireManagerOrAdmin, requireSelfOrAdmin };
+// Check if user is admin or special staff (Lộc, Diệu) for password/info management
+function requireAdminOrSpecialStaff(req, res, next) {
+  const allowedUsernames = ['vistay', 'loc', 'dieu'];
+  const allowedNames = ['Lộc', 'Diệu'];
+  if (req.user.role === 'admin' 
+      || req.user.role === 'manager'
+      || allowedUsernames.includes(req.user.username) 
+      || allowedNames.includes(req.user.staffName)) {
+    next();
+  } else {
+    return res.status(403).json({ error: 'Chỉ Admin, Admin phụ, Lộc và Diệu có quyền thay đổi thông tin căn hộ.' });
+  }
+}
+
+module.exports = { authenticate, requireAdmin, requireManagerOrAdmin, requireSelfOrAdmin, requireAdminOrSpecialStaff };

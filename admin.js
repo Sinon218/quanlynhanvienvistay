@@ -12,11 +12,17 @@ let apartmentList = [];
 let statsData = [];
 let salaryData = [];
 
+// Chart state
+let roomStatusChart = null;
+let modalRoomChart = null;
+let selectedChartRoomId = null;
+
 // Filtering state
 let apartmentFilters = {
   city: 'all',
   building: 'all',
   status: 'all',
+  room_type: 'all',
   search: ''
 };
 
@@ -24,6 +30,111 @@ let apartmentFilters = {
 let selectedStaffId = null;
 let selectedRoomId = null;
 let selectedSalaryId = null;
+
+// Bảng giá theo cấp độ kỹ thuật
+const TECH_LEVEL_PRICES = { 1: 50000, 2: 100000, 3: 150000, 4: 250000 };
+const TECH_LEVEL_NAMES = { 1: 'Dễ', 2: 'Trung bình', 3: 'Khó', 4: 'Cực khó' };
+const TECH_LEVEL_COLORS = { 1: '#22c55e', 2: '#f59e0b', 3: '#ef4444', 4: '#dc2626' };
+const TECH_LEVEL_BG = { 1: 'rgba(34,197,94,0.15)', 2: 'rgba(245,158,11,0.15)', 3: 'rgba(239,68,68,0.15)', 4: 'rgba(220,38,38,0.15)' };
+const TECH_LEVEL_STARS = { 1: '⭐', 2: '⭐⭐', 3: '⭐⭐⭐', 4: '⭐⭐⭐⭐' };
+const ROOM_TYPE_ORDER = ['1 ngủ', '2 ngủ', '3 ngủ', '4 ngủ'];
+const ROOM_TYPE_COLORS = {
+  '1 ngủ': '#22c55e',
+  '2 ngủ': '#0ea5e9',
+  '3 ngủ': '#f59e0b',
+  '4 ngủ': '#ef4444'
+};
+const COMPLEX_GROUPS = [
+  { key: 'SkyLake', label: 'Skylake', buildings: ['S1', 'S2', 'S3'] },
+  { key: 'Royal', label: 'Royal', buildings: ['R6A'] },
+  { key: 'Imperia', label: 'Imperia', buildings: ['B'] }
+];
+
+function getBuildingsForChartGroup(selectedGroup) {
+  if (selectedGroup === 'SkyLake') return ['S1', 'S2', 'S3'];
+  if (selectedGroup === 'Royal') return ['R6A'];
+  if (selectedGroup === 'Imperia') return ['B'];
+  if (selectedGroup && selectedGroup !== 'all') return [selectedGroup];
+  return [];
+}
+
+function getChartGroupDefs(selectedGroup) {
+  if (selectedGroup === 'SkyLake') {
+    return [
+      { label: 'S1', buildings: ['S1'] },
+      { label: 'S2', buildings: ['S2'] },
+      { label: 'S3', buildings: ['S3'] }
+    ];
+  }
+  if (selectedGroup === 'Royal') {
+    return [{ label: 'R6A', buildings: ['R6A'] }];
+  }
+  if (selectedGroup === 'Imperia') {
+    return [{ label: 'B', buildings: ['B'] }];
+  }
+  return COMPLEX_GROUPS.map(group => ({ label: group.label, buildings: group.buildings }));
+}
+
+function getRoomTypeSummary(apartments) {
+  const summary = {};
+  ROOM_TYPE_ORDER.forEach(type => {
+    summary[type] = apartments.filter(room => room.room_type === type);
+  });
+  return summary;
+}
+
+function getComplexStatsMatrix(apartments) {
+  return COMPLEX_GROUPS.map(group => {
+    const groupRooms = apartments
+      .filter(room => group.buildings.includes(room.building) && room.building !== 'HCM')
+      .sort((a, b) => a.code.localeCompare(b.code, 'vi'));
+
+    const byType = ROOM_TYPE_ORDER.map(roomType => {
+      const rooms = groupRooms.filter(room => room.room_type === roomType);
+      return {
+        roomType,
+        count: rooms.length,
+        rooms
+      };
+    });
+
+    return {
+      ...group,
+      total: groupRooms.length,
+      byType
+    };
+  });
+}
+
+function getChartBuckets(apartments, selectedGroup) {
+  const groups = getChartGroupDefs(selectedGroup);
+  return groups.map(group => {
+    const rooms = apartments
+      .filter(room => group.buildings.includes(room.building) && room.building !== 'HCM')
+      .sort((a, b) => a.code.localeCompare(b.code, 'vi'));
+
+    const roomTypes = ROOM_TYPE_ORDER.map(roomType => {
+      const typeRooms = rooms.filter(room => room.room_type === roomType);
+      const statuses = {
+        available: typeRooms.filter(room => room.status === 'available').length,
+        occupied: typeRooms.filter(room => room.status === 'occupied').length,
+        maintenance: typeRooms.filter(room => room.status === 'maintenance').length
+      };
+
+      return {
+        roomType,
+        count: typeRooms.length,
+        rooms: typeRooms,
+        statuses
+      };
+    });
+
+    return {
+      label: group.label,
+      roomTypes
+    };
+  });
+}
 
 // Auth check
 function checkAuth() {
@@ -38,14 +149,14 @@ function checkAuth() {
       window.location.href = 'employee.html';
     }
     document.getElementById('adminName').textContent = currentUser.staffName || currentUser.username;
-    
+
     // Hide administrative tabs for managers (assistant admins)
     if (currentUser.role === 'manager') {
       const statsBtn = document.getElementById('tabBtnStats');
       const salaryBtn = document.getElementById('tabBtnSalary');
       if (statsBtn) statsBtn.style.display = 'none';
       if (salaryBtn) salaryBtn.style.display = 'none';
-      
+
       const switchBtn = document.getElementById('btnSwitchToEmployee');
       if (switchBtn) switchBtn.style.display = 'inline-block';
     }
@@ -62,7 +173,7 @@ function handleLogout() {
 // ===== API REQUEST HELPER WITH OFFLINE FALLBACK =====
 async function apiCall(endpoint, method = 'GET', body = null) {
   let mode = localStorage.getItem('vistay_mode') || 'backend';
-  
+
   if (mode === 'local') {
     return handleLocalMockCall(endpoint, method, body);
   }
@@ -82,14 +193,14 @@ async function apiCall(endpoint, method = 'GET', body = null) {
     };
 
     const response = await fetch(`${API_URL}${endpoint}`, options);
-    
+
     if (!response.ok) {
       const data = await response.json();
       const apiErr = new Error(data.error || 'Đã xảy ra lỗi khi gọi API.');
       apiErr.isApiError = true;
       throw apiErr;
     }
-    
+
     return await response.json();
   } catch (err) {
     if (err.isApiError) {
@@ -107,15 +218,15 @@ async function apiCall(endpoint, method = 'GET', body = null) {
 
 // ===== LOCAL SIMULATION DATABASE (OFFLINE MODE) =====
 const MOCK_STAFF = [
-  { id: 1, name: 'Liên',   default_name: 'Liên',   type: 'full-time', room_role: 1, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
-  { id: 2, name: 'Thiên',  default_name: 'Thiên',  type: 'full-time', room_role: 2, tech_role: 1, base_salary: 0, per_room_rate: 50000 },
+  { id: 1, name: 'Liên', default_name: 'Liên', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
+  { id: 2, name: 'Thiên', default_name: 'Thiên', type: 'full-time', room_role: 2, tech_role: 1, base_salary: 0, per_room_rate: 50000 },
   { id: 3, name: 'Thương', default_name: 'Thương', type: 'full-time', room_role: 2, tech_role: 1, base_salary: 0, per_room_rate: 50000 },
-  { id: 4, name: 'Vân',    default_name: 'Vân',    type: 'full-time', room_role: 1, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
-  { id: 5, name: 'Diệu',  default_name: 'Diệu',  type: 'full-time', room_role: 1, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
-  { id: 6, name: 'Hoàn',   default_name: 'Hoàn',   type: 'full-time', room_role: 1, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
+  { id: 4, name: 'Vân', default_name: 'Vân', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
+  { id: 5, name: 'Diệu', default_name: 'Diệu', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
+  { id: 6, name: 'Hoàn', default_name: 'Hoàn', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
   { id: 7, name: 'Nhân viên Part-time 1', default_name: 'Nhân viên Part-time 1', type: 'part-time', room_role: 2, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
   { id: 8, name: 'Nhân viên Part-time 2', default_name: 'Nhân viên Part-time 2', type: 'part-time', room_role: 2, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
-  { id: 9, name: 'Lộc',    default_name: 'Lộc',    type: 'full-time', room_role: 1, tech_role: 0, base_salary: 0, per_room_rate: 50000 }
+  { id: 9, name: 'Lộc', default_name: 'Lộc', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 0, per_room_rate: 50000 }
 ];
 
 const PROVIDED_ROOMS = [
@@ -179,7 +290,7 @@ const PROVIDED_ROOMS = [
   { id: 56, code: 'S3-3906', building: 'S3', password: '336699', is_samsung: false, status: 'available' },
   { id: 57, code: 'S3-3918', building: 'S3', password: '838386', is_samsung: false, status: 'available' },
 
-  { id: 58, code: 'B2102', building: 'B', password: '456456*', is_samsung: false, status: 'available' },
+  { id: 58, code: 'B-2102', building: 'B', password: '456456*', is_samsung: false, status: 'available' },
 
   { id: 59, code: 'R6A-0505', building: 'R6A', password: '111.000.222.33', is_samsung: false, status: 'available' },
   { id: 60, code: 'R6A-2806', building: 'R6A', password: '2222.333.333', is_samsung: false, status: 'available' }
@@ -201,7 +312,7 @@ function saveLocalData(key, data) {
 // Generate remaining 90 placeholder rooms to reach 150 total rooms
 function initMockDatabase() {
   getLocalData('vistay_mock_staff', MOCK_STAFF);
-  
+
   const currentRooms = getLocalData('vistay_mock_apartments', []);
   if (currentRooms.length === 0) {
     const allMockRooms = [...PROVIDED_ROOMS];
@@ -228,7 +339,7 @@ function initMockDatabase() {
 // API Simulation layer
 function handleLocalMockCall(endpoint, method, body) {
   initMockDatabase();
-  
+
   let localStaff = getLocalData('vistay_mock_staff', MOCK_STAFF);
   let localRooms = getLocalData('vistay_mock_apartments', []);
   let localWork = getLocalData('vistay_mock_work', []);
@@ -242,7 +353,7 @@ function handleLocalMockCall(endpoint, method, body) {
   if (endpoint.startsWith('/staff/') && endpoint.endsWith('/role') && method === 'PUT') {
     const id = parseInt(endpoint.split('/')[2]);
     let { room_role, tech_role } = body;
-    
+
     // Auto mapper constraint
     if (tech_role === 1) room_role = 2;
     if (room_role === 1) tech_role = 0;
@@ -268,6 +379,32 @@ function handleLocalMockCall(endpoint, method, body) {
 
   // 2. Apartment endpoints
   if (endpoint.startsWith('/apartments') && method === 'GET') {
+    if (endpoint.startsWith('/apartments/status-history')) {
+      // Mock status history data
+      const params = new URLSearchParams(endpoint.split('?')[1] || '');
+      const mode = params.get('mode') || 'hourly';
+      const total = localRooms.length || 150;
+      const mockData = [];
+      if (mode === 'hourly') {
+        for (let h = 24; h >= 0; h--) {
+          const d = new Date(Date.now() - h * 3600000);
+          const maintenance = Math.floor(Math.random() * 6) + 1;
+          const occupied = Math.floor(Math.random() * 40) + 35;
+          const available = Math.max(total - occupied - maintenance, 15);
+          mockData.push({ time_bucket: d.toISOString(), available_count: available, occupied_count: occupied, maintenance_count: maintenance });
+        }
+      } else {
+        for (let d = 30; d >= 0; d--) {
+          const dt = new Date(Date.now() - d * 86400000);
+          const maintenance = Math.floor(Math.random() * 8) + 1;
+          const occupied = Math.floor(Math.random() * 50) + 30;
+          const available = Math.max(total - occupied - maintenance, 10);
+          mockData.push({ time_bucket: dt.toISOString().split('T')[0], available_count: available, occupied_count: occupied, maintenance_count: maintenance });
+        }
+      }
+      return Promise.resolve(mockData);
+    }
+
     if (endpoint.startsWith('/apartments/stats')) {
       const stats = {
         total: localRooms.length,
@@ -330,7 +467,7 @@ function handleLocalMockCall(endpoint, method, body) {
   // 3. Work assignments endpoints
   if (endpoint === '/work/assign' && method === 'POST') {
     const { staff_id, apartment_id, task_type } = body;
-    
+
     // Check limit of assignees based on room type
     const date = new Date().toISOString().split('T')[0];
     const roomObj = localRooms.find(r => r.id === apartment_id) || {};
@@ -427,15 +564,20 @@ function handleLocalMockCall(endpoint, method, body) {
 
     const result = localStaff.map(s => {
       const savedConfig = localSalary.find(sal => sal.staff_id === s.id && sal.month === month && sal.year === year) || {};
-      
+
       const baseSalary = savedConfig.base_salary !== undefined ? savedConfig.base_salary : (s.type === 'full-time' ? 6000000 : 0);
       const rate = savedConfig.per_room_rate !== undefined ? savedConfig.per_room_rate : 50000;
-      
+
       const totalRooms = localWork.filter(w => w.staff_id === s.id && w.status === 'completed').length;
       const roomBonus = totalRooms * rate;
+
+      // Calculate tech tasks approved for this month/year in mock data
+      const approvedTechTasks = localTasks.filter(t => t.staff_id === s.id && t.status === 'approved' && new Date(t.assigned_date).getMonth() + 1 === month && new Date(t.assigned_date).getFullYear() === year);
+      const techTaskSalary = approvedTechTasks.reduce((sum, t) => sum + (t.tech_price || 0), 0);
+
       const bonus = savedConfig.bonus || 0;
       const deductions = savedConfig.deductions || 0;
-      const totalSalary = baseSalary + roomBonus + bonus - deductions;
+      const totalSalary = baseSalary + roomBonus + techTaskSalary + bonus - deductions;
 
       return {
         staff_id: s.id,
@@ -445,6 +587,7 @@ function handleLocalMockCall(endpoint, method, body) {
         per_room_rate: rate,
         total_rooms: totalRooms,
         room_bonus: roomBonus,
+        tech_task_salary: techTaskSalary,
         bonus: bonus,
         deductions: deductions,
         total_salary: totalSalary,
@@ -470,10 +613,12 @@ function handleLocalMockCall(endpoint, method, body) {
   let localTasks = getLocalData('vistay_mock_tasks', []);
 
   if (endpoint === '/tasks' && method === 'POST') {
-    const { staff_id, title, description } = body;
+    const { staff_id, title, description, tech_level } = body;
     if (!staff_id || !title) {
       return Promise.reject(new Error('Thiếu thông tin.'));
     }
+    const level = tech_level ? parseInt(tech_level) : null;
+    const price = level ? (TECH_LEVEL_PRICES[level] || null) : null;
     localTasks.push({
       id: Date.now(),
       staff_id,
@@ -481,6 +626,8 @@ function handleLocalMockCall(endpoint, method, body) {
       description: (description || '').trim(),
       assigned_date: new Date().toISOString().split('T')[0],
       status: 'pending',
+      tech_level: level,
+      tech_price: price,
       staff_name: (localStaff.find(s => s.id === staff_id) || {}).name || ''
     });
     saveLocalData('vistay_mock_tasks', localTasks);
@@ -503,6 +650,21 @@ function handleLocalMockCall(endpoint, method, body) {
     localTasks = localTasks.map(t => t.id === id ? { ...t, status: 'completed' } : t);
     saveLocalData('vistay_mock_tasks', localTasks);
     return Promise.resolve({ message: 'Đã hoàn thành công việc.' });
+  }
+
+  if (endpoint.startsWith('/tasks/') && endpoint.endsWith('/approve') && method === 'PUT') {
+    const id = parseInt(endpoint.split('/')[2]);
+    localTasks = localTasks.map(t => t.id === id ? { ...t, status: 'approved', reject_reason: null } : t);
+    saveLocalData('vistay_mock_tasks', localTasks);
+    return Promise.resolve({ message: 'Đã phê duyệt hoàn thành công việc.' });
+  }
+
+  if (endpoint.startsWith('/tasks/') && endpoint.endsWith('/reject-completed') && method === 'PUT') {
+    const id = parseInt(endpoint.split('/')[2]);
+    const { reason } = body;
+    localTasks = localTasks.map(t => t.id === id ? { ...t, status: 'accepted', reject_reason: reason, before_image: null, proof_image: null } : t);
+    saveLocalData('vistay_mock_tasks', localTasks);
+    return Promise.resolve({ message: 'Đã từ chối phê duyệt công việc.' });
   }
 
   if (endpoint.startsWith('/tasks/') && method === 'DELETE') {
@@ -568,6 +730,13 @@ async function loadAssignmentTab() {
     renderRoomAssignmentsTable(roomAssignments);
     renderRejectedAssignments(roomAssignments);
 
+    try {
+      const tasks = await apiCall('/tasks/today');
+      renderActiveTechTasks(tasks);
+    } catch (e) {
+      console.warn("Failed to load tasks for notifications:", e.message);
+    }
+
     populateQuickAssignSelects();
   } catch (err) {
     showToast(err.message, 'warning');
@@ -585,15 +754,15 @@ function renderRoomAssignmentsTable(assignments) {
 
   tbody.innerHTML = assignments.map(wa => {
     const statusBadge = getStatusBadgeHtml(wa.status);
-    const proofLink = wa.proof_image 
+    const proofLink = wa.proof_image
       ? `<button class="btn btn-save" onclick="viewProof('${wa.proof_image}', 'Căn ${wa.code}')" style="padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #10b981, #059669);">👁️ Xem ảnh</button>`
       : '<span style="color: var(--text-muted); font-size: 0.8rem;">Chưa có</span>';
-    
+
     let approveBtn = '';
     if (wa.status === 'completed' && isManagerOrAdmin) {
       approveBtn = `<button class="btn" onclick="approveAssignment(${wa.id})" style="padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 4px; margin-right: 4px; cursor: pointer;">🟢 Duyệt</button>`;
     }
-    
+
     return `
       <tr>
         <td style="font-weight: 800; color: var(--text-primary);">${wa.code}</td>
@@ -614,7 +783,7 @@ function renderRoomAssignmentsTable(assignments) {
 function renderRejectedAssignments(assignments) {
   const container = document.getElementById('rejectedAssignmentsContainer');
   const rejected = assignments.filter(wa => wa.status === 'rejected');
-  
+
   if (rejected.length === 0) {
     container.innerHTML = '';
     return;
@@ -744,7 +913,7 @@ async function saveAssignment() {
 function updateAutoNotes() {
   const roomChecked = document.querySelector('input[name="roomRole"]:checked');
   const techChecked = document.querySelector('input[name="techRole"]:checked');
-  
+
   const roomNote = document.getElementById('roomAutoNote');
   const techNote = document.getElementById('techAutoNote');
 
@@ -814,7 +983,7 @@ async function loadApartmentsTab() {
   try {
     const query = new URLSearchParams(apartmentFilters).toString();
     apartmentList = await apiCall(`/apartments?${query}`);
-    
+
     // Also load stats
     const stats = await apiCall('/apartments/stats');
     renderApartmentStats(stats.totals);
@@ -832,6 +1001,7 @@ async function loadApartmentsTab() {
 
 function renderApartmentStats(totals) {
   const container = document.getElementById('roomStats');
+  const roomTypeSummary = getRoomTypeSummary(apartmentList.filter(room => room.building !== 'HCM'));
   container.innerHTML = `
     <div class="stat-item stat-total">
       <span class="stat-num">${totals.total}</span>
@@ -848,6 +1018,22 @@ function renderApartmentStats(totals) {
     <div class="stat-item stat-maintenance">
       <span class="stat-num">${totals.maintenance}</span>
       <span class="stat-label">🔧 Sửa chữa</span>
+    </div>
+    <div class="stat-item stat-total">
+      <span class="stat-num">${roomTypeSummary['1 ngủ'].length}</span>
+      <span class="stat-label">🛌 1 ngủ</span>
+    </div>
+    <div class="stat-item stat-total">
+      <span class="stat-num">${roomTypeSummary['2 ngủ'].length}</span>
+      <span class="stat-label">🛌 2 ngủ</span>
+    </div>
+    <div class="stat-item stat-total">
+      <span class="stat-num">${roomTypeSummary['3 ngủ'].length}</span>
+      <span class="stat-label">🛌 3 ngủ</span>
+    </div>
+    <div class="stat-item stat-total">
+      <span class="stat-num">${roomTypeSummary['4 ngủ'].length}</span>
+      <span class="stat-label">🛌 4 ngủ</span>
     </div>
   `;
 }
@@ -868,11 +1054,13 @@ function renderApartmentGrid() {
     const statusLabel = getRoomStatusLabel(room.status);
     const statusIcon = getRoomStatusIcon(room.status);
     const sstnBadge = room.is_samsung ? '<span class="samsung-badge" style="background: #3b82f6; color: white; padding: 2px 6px; font-size: 0.6rem; border-radius: 4px; font-weight: 700; margin-left: auto;">SSTN</span>' : '';
+    const roomTypeBadge = `<span class="room-type-badge" style="background: ${ROOM_TYPE_COLORS[room.room_type] || '#64748b'}; color: white; padding: 2px 6px; font-size: 0.6rem; border-radius: 4px; font-weight: 700; white-space: nowrap;">${room.room_type || '—'}</span>`;
 
     return `
       <div class="room-card ${statusClass}" onclick="openRoomStatusModal(${room.id})" style="display: flex; flex-direction: column; align-items: stretch; text-align: left; padding: 12px 10px;">
         <div style="display: flex; align-items: center; margin-bottom: 4px;">
           <div class="room-number" style="font-size: 1rem; font-weight: 800;">${room.code}</div>
+          ${roomTypeBadge}
           ${sstnBadge}
         </div>
         
@@ -913,18 +1101,12 @@ function openRoomStatusModal(roomId) {
   document.getElementById('roomModalType').textContent = `${room.room_type} · ${room.is_samsung ? 'Thiết bị Samsung (SSTN)' : 'Mật khẩu thường'}`;
   document.getElementById('roomModalFloor').textContent = `Tòa: ${room.building}`;
 
-  // Select the room type radio
-  const typeRadio = document.querySelector(`input[name="roomTypeEdit"][value="${room.room_type}"]`);
-  if (typeRadio) typeRadio.checked = true;
-
-  const radio = document.querySelector(`input[name="roomStatus"][value="${room.status}"]`);
-  if (radio) radio.checked = true;
-
   // Generate dynamic dropdowns based on room type
   const container = document.getElementById('assignStaffSelectContainer');
-  let selectCount = 2; // Mặc định 2 người dọn cho 1~2 ngủ
-  if (room.room_type === '3 ngủ') selectCount = 3;
-  if (room.room_type === '4 ngủ') selectCount = 4;
+  let selectCount = 1;
+  if (room.room_type === '2 ngủ') selectCount = 2;
+  else if (room.room_type === '3 ngủ') selectCount = 3;
+  else if (room.room_type === '4 ngủ') selectCount = 4;
 
   let html = '';
   for (let i = 1; i <= selectCount; i++) {
@@ -951,7 +1133,6 @@ function closeRoomStatusModal() {
 
 async function saveRoomStatus() {
   if (selectedRoomId === null) return;
-  const status = document.querySelector('input[name="roomStatus"]:checked').value;
   const taskTypeEl = document.querySelector('input[name="taskType"]:checked');
   const taskType = taskTypeEl ? taskTypeEl.value : 'out';
 
@@ -968,28 +1149,22 @@ async function saveRoomStatus() {
     }
   });
 
-  // Get selected room type
-  const roomTypeEl = document.querySelector('input[name="roomTypeEdit"]:checked');
-  const room_type = roomTypeEl ? roomTypeEl.value : null;
+  if (staffIds.length === 0) {
+    showToast('Vui lòng chọn ít nhất một nhân viên để giao phòng.', 'warning');
+    return;
+  }
 
   try {
-    // 1. Update status and room type
-    await apiCall(`/apartments/${selectedRoomId}/status`, 'PUT', { status, room_type });
-
-    // 2. If staff selected, assign work with task_type for each staff member
-    if (staffIds.length > 0) {
-      for (const staffId of staffIds) {
-        await apiCall('/work/assign', 'POST', {
-          staff_id: staffId,
-          apartment_id: selectedRoomId,
-          task_type: taskType
-        });
-      }
-      const taskLabel = getTaskTypeLabel(taskType);
-      showToast(`Đã giao việc [${taskLabel}] cho ${staffIds.length} nhân viên thành công!`, 'success');
-    } else {
-      showToast('Cập nhật trạng thái thành công!', 'success');
+    // Chỉ thực hiện giao việc cho các nhân viên được chọn
+    for (const staffId of staffIds) {
+      await apiCall('/work/assign', 'POST', {
+        staff_id: staffId,
+        apartment_id: selectedRoomId,
+        task_type: taskType
+      });
     }
+    const taskLabel = getTaskTypeLabel(taskType);
+    showToast(`Đã giao việc [${taskLabel}] cho ${staffIds.length} nhân viên thành công!`, 'success');
 
     closeRoomStatusModal();
     loadApartmentsTab();
@@ -1000,7 +1175,7 @@ async function saveRoomStatus() {
 
 // ===== TASK TYPE HELPERS =====
 function getTaskTypeLabel(type) {
-  switch(type) {
+  switch (type) {
     case 'ss_luu': return 'SS/Lưu';
     case 'out': return 'Out';
     case 'tong_ve_sinh': return 'Tổng VS';
@@ -1009,7 +1184,7 @@ function getTaskTypeLabel(type) {
 }
 
 function getTaskTypeClass(type) {
-  switch(type) {
+  switch (type) {
     case 'ss_luu': return 'task-tag-ss';
     case 'out': return 'task-tag-out';
     case 'tong_ve_sinh': return 'task-tag-tvs';
@@ -1054,12 +1229,12 @@ async function saveRoomPassword() {
 function setCityFilter(cityCode) {
   apartmentFilters.city = cityCode;
   apartmentFilters.building = 'all'; // reset complex when city changes
-  
+
   document.querySelectorAll('#cityTabs .floor-tab').forEach(btn => {
     btn.classList.remove('active');
   });
   event.currentTarget.classList.add('active');
-  
+
   renderComplexTabs();
   loadApartmentsTab();
 }
@@ -1068,20 +1243,20 @@ function renderComplexTabs() {
   const wrapper = document.getElementById('complexTabsWrapper');
   const container = document.getElementById('complexTabs');
   if (!container) return;
-  
+
   const city = apartmentFilters.city;
-  
+
   if (city === 'all') {
     wrapper.style.display = 'none';
     renderBuildingTabs();
     return;
   }
-  
+
   wrapper.style.display = 'block';
   let html = '';
   const selectedBuilding = apartmentFilters.building;
   const isSkyLakeActive = ['SkyLake', 'S1', 'S2', 'S3'].includes(selectedBuilding);
-  
+
   if (city === 'HN') {
     html = `
       <button class="floor-tab ${selectedBuilding === 'all' ? 'active' : ''}" onclick="setComplexFilter('all')">Tất cả khu HN</button>
@@ -1095,7 +1270,7 @@ function renderComplexTabs() {
     `;
     apartmentFilters.building = 'HCM'; // Force building HCM since there's only one complex
   }
-  
+
   container.innerHTML = html;
   renderBuildingTabs();
 }
@@ -1143,8 +1318,239 @@ function setBuildingFilter(b) {
 // ==================== TAB 3: STATS ====================
 async function loadStatsTab() {
   try {
-    statsData = await apiCall('/work/all-stats');
-    renderStatsTable();
+    // Tải danh sách căn hộ để tổng hợp
+    apartmentList = await apiCall('/apartments?building=all&status=all');
+    renderRoomSummaryTable();
+    renderStatsMatrix();
+    loadApartmentStatusTimeline();
+  } catch (err) {
+    showToast(err.message, 'warning');
+  }
+}
+
+// Trạng thái lọc tòa của bảng tổng hợp
+let summaryBuildingFilter = 'all';
+
+function setSummaryBuilding(building, btn) {
+  summaryBuildingFilter = building;
+  document.querySelectorAll('.summary-bld-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  renderRoomSummaryTable();
+}
+
+function renderRoomSummaryTable() {
+  const tbody = document.getElementById('roomSummaryTableBody');
+  if (!tbody) return;
+
+  // Lọc các căn hộ: loại trừ HCM và SSTN + lọc theo tòa
+  let filtered = apartmentList.filter(a => a.building !== 'HCM' && !a.is_samsung);
+  if (summaryBuildingFilter && summaryBuildingFilter !== 'all') {
+    filtered = filtered.filter(a => a.building === summaryBuildingFilter);
+  }
+
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Không có căn hộ nào phù hợp.</td></tr>';
+    return;
+  }
+
+  const buildingOrder = ['B', 'R6A', 'S1', 'S2', 'S3'];
+  const buildingNames = {
+    'B': 'Tòa B — Imperia',
+    'R6A': 'Tòa R6A — Royal',
+    'S1': 'Tòa S1 — SkyLake',
+    'S2': 'Tòa S2 — SkyLake',
+    'S3': 'Tòa S3 — SkyLake',
+  };
+
+  let html = '';
+  buildingOrder.forEach(b => {
+    const roomsInB = filtered.filter(r => r.building === b);
+    if (roomsInB.length > 0) {
+      // Hàng tiêu đề tòa
+      html += `
+        <tr class="table-group-header" style="background: rgba(167, 139, 250, 0.08); font-weight: bold;">
+          <td colspan="6" style="color: var(--accent-purple); font-size: 0.9rem; padding: 10px 15px; text-align: left;">
+            🏢 ${buildingNames[b] || ('Tòa ' + b)}
+          </td>
+        </tr>
+      `;
+
+      roomsInB.forEach(room => {
+        const statusClass = getRoomStatusClass(room.status);
+        const statusLabel = getRoomStatusLabel(room.status);
+        const statusIcon = getRoomStatusIcon(room.status);
+
+        let stayInfo = '';
+        if (room.status === 'occupied' && (room.checkin_date || room.checkout_date)) {
+          const inDate = room.checkin_date ? new Date(room.checkin_date).toLocaleDateString('vi-VN') : '—';
+          const outDate = room.checkout_date ? new Date(room.checkout_date).toLocaleDateString('vi-VN') : '—';
+          stayInfo = `<div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;">📅 ${inDate} ${room.checkin_time || ''} → ${outDate} ${room.checkout_time || ''}</div>`;
+        } else if (room.status === 'maintenance' && room.maintenance_duration) {
+          stayInfo = `<div style="font-size: 0.72rem; color: var(--text-muted); margin-top: 4px;">⏰ Dự kiến: ${room.maintenance_duration} giờ</div>`;
+        }
+
+        html += `
+          <tr>
+            <td style="font-weight: 800; color: var(--text-primary); padding-left: 25px;">${room.code}</td>
+            <td><span class="section-badge">${room.building}</span></td>
+            <td>${room.room_type}</td>
+            <td style="font-family: monospace; font-weight: 700; color: var(--accent-amber);">${room.password || '******'}</td>
+            <td>
+              <div style="display: flex; flex-direction: column; align-items: flex-start;">
+                <span class="room-status-badge ${statusClass}" style="padding: 4px 8px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 4px;">
+                  <span>${statusIcon}</span>
+                  <span>${statusLabel}</span>
+                </span>
+                ${stayInfo}
+              </div>
+            </td>
+            <td>
+              <select
+                class="summary-status-select"
+                onchange="changeRoomStatusInline(${room.id}, this.value, this)"
+                data-room-id="${room.id}"
+              >
+                <option value="available" ${room.status === 'available' ? 'selected' : ''}>🟢 Trống</option>
+                <option value="occupied" ${room.status === 'occupied' ? 'selected' : ''}>🔴 Có khách</option>
+                <option value="maintenance" ${room.status === 'maintenance' ? 'selected' : ''}>🔵 Bảo trì</option>
+              </select>
+            </td>
+          </tr>
+        `;
+      });
+    }
+  });
+
+  tbody.innerHTML = html;
+}
+
+function changeRoomStatusInline(roomId, newStatus, selectEl) {
+  if (selectEl) {
+    const room = apartmentList.find(r => r.id === roomId);
+    if (room) selectEl.value = room.status;
+  }
+  openRoomStatusEditOnlyModal(roomId);
+
+  setTimeout(() => {
+    const radio = document.querySelector(`input[name="statusOnlyVal"][value="${newStatus}"]`);
+    if (radio) radio.checked = true;
+  }, 50);
+}
+
+// ===== MODAL ĐỔI TRẠNG THÁI CĂN HỘ TRONG THỐNG KÊ =====
+let selectedStatusRoomId = null;
+
+function openRoomStatusEditOnlyModal(roomId) {
+  selectedStatusRoomId = roomId;
+  const room = apartmentList.find(r => r.id === roomId);
+  if (!room) return;
+
+  document.getElementById('statusOnlyModalNumber').textContent = `Cập Nhật Trạng Thái Căn ${room.code}`;
+  const radio = document.querySelector(`input[name="statusOnlyVal"][value="${room.status}"]`);
+  if (radio) radio.checked = true;
+
+  // Pre-fill checkin/checkout date-time
+  const checkinDateEl = document.getElementById('soCheckinDate');
+  const checkinTimeEl = document.getElementById('soCheckinTime');
+  const checkoutDateEl = document.getElementById('soCheckoutDate');
+  const checkoutTimeEl = document.getElementById('soCheckoutTime');
+
+  if (checkinDateEl) {
+    if (room.checkin_date) {
+      checkinDateEl.value = new Date(room.checkin_date).toISOString().split('T')[0];
+    } else {
+      checkinDateEl.value = '';
+    }
+  }
+  if (checkinTimeEl) checkinTimeEl.value = room.checkin_time || '';
+  if (checkoutDateEl) {
+    if (room.checkout_date) {
+      checkoutDateEl.value = new Date(room.checkout_date).toISOString().split('T')[0];
+    } else {
+      checkoutDateEl.value = '';
+    }
+  }
+  if (checkoutTimeEl) checkoutTimeEl.value = room.checkout_time || '';
+
+  // Pre-fill maintenance duration
+  const maintDurationEl = document.getElementById('soMaintenanceDuration');
+  if (maintDurationEl) maintDurationEl.value = room.maintenance_duration || '';
+
+  // Trigger toggle fields display
+  toggleStatusModalFields('admin');
+
+  document.getElementById('roomStatusEditOnlyModal').classList.add('active');
+}
+
+function closeRoomStatusEditOnlyModal() {
+  document.getElementById('roomStatusEditOnlyModal').classList.remove('active');
+  selectedStatusRoomId = null;
+}
+
+function toggleStatusModalFields(type) {
+  if (type === 'admin') {
+    const radio = document.querySelector('input[name="statusOnlyVal"]:checked');
+    const status = radio ? radio.value : '';
+
+    const dtGroup = document.querySelector('#roomStatusEditOnlyModal .datetime-inputs-group');
+    const mtGroup = document.getElementById('soMaintenanceGroup');
+
+    if (status === 'occupied') {
+      if (dtGroup) dtGroup.style.display = 'block';
+      if (mtGroup) mtGroup.style.display = 'none';
+    } else if (status === 'maintenance') {
+      if (dtGroup) dtGroup.style.display = 'none';
+      if (mtGroup) mtGroup.style.display = 'block';
+    } else {
+      if (dtGroup) dtGroup.style.display = 'none';
+      if (mtGroup) mtGroup.style.display = 'none';
+    }
+  } else if (type === 'employee') {
+    const radio = document.querySelector('input[name="empRoomStatus"]:checked');
+    const status = radio ? radio.value : '';
+
+    const dtGroup = document.querySelector('#empRoomStatusModal .datetime-inputs-group');
+    const mtGroup = document.getElementById('ersMaintenanceGroup');
+
+    if (status === 'occupied') {
+      if (dtGroup) dtGroup.style.display = 'block';
+      if (mtGroup) mtGroup.style.display = 'none';
+    } else if (status === 'maintenance') {
+      if (dtGroup) dtGroup.style.display = 'none';
+      if (mtGroup) mtGroup.style.display = 'block';
+    } else {
+      if (dtGroup) dtGroup.style.display = 'none';
+      if (mtGroup) mtGroup.style.display = 'none';
+    }
+  }
+}
+
+async function saveRoomStatusEditOnly() {
+  if (!selectedStatusRoomId) return;
+  const radio = document.querySelector('input[name="statusOnlyVal"]:checked');
+  if (!radio) return;
+
+  const newStatus = radio.value;
+  const checkin_date = document.getElementById('soCheckinDate')?.value || null;
+  const checkin_time = document.getElementById('soCheckinTime')?.value || null;
+  const checkout_date = document.getElementById('soCheckoutDate')?.value || null;
+  const checkout_time = document.getElementById('soCheckoutTime')?.value || null;
+  const maintenance_duration = document.getElementById('soMaintenanceDuration')?.value || null;
+
+  try {
+    const res = await apiCall(`/apartments/${selectedStatusRoomId}/status`, 'PUT', {
+      status: newStatus,
+      checkin_date,
+      checkin_time,
+      checkout_date,
+      checkout_time,
+      maintenance_duration: maintenance_duration ? parseInt(maintenance_duration) : null
+    });
+    showToast(res.message, 'success');
+    closeRoomStatusEditOnlyModal();
+    // Tải lại toàn bộ tab thống kê để cập nhật bảng, ma trận và biểu đồ
+    await loadStatsTab();
+    await loadApartmentsTab();
   } catch (err) {
     showToast(err.message, 'warning');
   }
@@ -1152,12 +1558,18 @@ async function loadStatsTab() {
 
 function renderStatsTable() {
   const tbody = document.getElementById('statsTableBody');
+  if (!tbody) return;
   if (statsData.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center;">Không có dữ liệu thống kê.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center;">Không có dữ liệu thống kê.</td></tr>';
     return;
   }
-
   tbody.innerHTML = statsData.map(row => {
+    const techTasksHtml = row.tech_role === 1
+      ? `<span style="font-weight: 700; color: #0ea5e9;">${row.tech_tasks_completed || 0} việc</span>`
+      : '<span style="color: var(--text-muted);">—</span>';
+    const kpiHtml = row.kpi !== null && row.kpi !== undefined
+      ? `<span style="font-weight: 800; color: #a855f7; background: rgba(168,85,247,0.1); padding: 2px 8px; border-radius: 6px;">${row.kpi}</span>`
+      : '<span style="color: var(--text-muted);">—</span>';
     return `
       <tr>
         <td style="font-weight: 700; color: var(--text-primary);">${row.name}</td>
@@ -1165,16 +1577,456 @@ function renderStatsTable() {
         <td style="font-weight: 700; color: #22c55e;">${row.today_completed} căn</td>
         <td>${row.today_total} căn</td>
         <td style="font-weight: 800; color: #0ea5e9;">${row.month_completed} căn</td>
+        <td>${techTasksHtml}</td>
+        <td>${kpiHtml}</td>
       </tr>
     `;
   }).join('');
+}
+
+function renderStatsMatrix() {
+  const tbody = document.getElementById('statsMatrixTableBody');
+  if (!tbody) return;
+
+  const matrix = getComplexStatsMatrix(apartmentList.filter(room => room.building !== 'HCM'));
+  if (matrix.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Không có dữ liệu thống kê.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = matrix.map(group => {
+    const cells = group.byType.map(bucket => {
+      const chipList = bucket.rooms.length > 0
+        ? bucket.rooms.map(room => {
+          const statusClass = getRoomStatusClass(room.status);
+          const statusLabel = getRoomStatusLabel(room.status);
+          return `
+              <button class="stats-room-chip ${statusClass}" onclick="event.stopPropagation(); openRoomStatusEditOnlyModal(${room.id})" title="${room.code} • ${statusLabel} • ${room.room_type}">
+                <span>${room.code}</span>
+                <small>${getRoomStatusIcon(room.status)}</small>
+              </button>
+            `;
+        }).join('')
+        : '<div class="stats-empty-cell">Không có căn hộ</div>';
+
+      return `
+        <td>
+          <div class="stats-matrix-cell" tabindex="0" title="Kéo xuống để xem các mã căn hộ bị ẩn">
+            <div class="stats-matrix-cell-head">
+              <strong>${bucket.count}</strong>
+              <span>${bucket.roomType}</span>
+            </div>
+            <div class="stats-matrix-room-list">
+              ${chipList}
+            </div>
+          </div>
+        </td>
+      `;
+    }).join('');
+
+    return `
+      <tr>
+        <td style="font-weight: 800; color: var(--text-primary); white-space: nowrap;">${group.label}</td>
+        ${cells}
+        <td style="font-weight: 800; color: var(--accent-teal);">${group.total}</td>
+      </tr>
+    `;
+  }).join('');
+}
+
+// ===== ROOM STATUS CHART =====
+let selectedChartBuilding = 'all';
+
+async function loadRoomStatusChart() {
+  try {
+    const select = document.getElementById('chartRoomSelect');
+    if (!select) return;
+
+    selectedChartBuilding = select.value || 'all';
+
+    renderApartmentStatusChart(apartmentList.filter(room => room.building !== 'HCM'));
+  } catch (err) {
+    console.warn('Failed to load room status chart:', err.message);
+  }
+}
+
+function onChartRoomChanged() {
+  const select = document.getElementById('chartRoomSelect');
+  if (select) {
+    selectedChartBuilding = select.value;
+    loadRoomStatusChart();
+    loadApartmentStatusTimeline();
+  }
+}
+
+let timelineMode = 'daily';
+
+function setTimelineMode(mode) {
+  timelineMode = mode;
+  document.querySelectorAll('.tl-mode-btn').forEach(btn => {
+    btn.classList.remove('active');
+  });
+  const activeBtn = document.getElementById(mode === 'daily' ? 'tlModeDaily' : 'tlModeHourly');
+  if (activeBtn) {
+    activeBtn.classList.add('active');
+  }
+  loadApartmentStatusTimeline();
+}
+
+async function loadApartmentStatusTimeline() {
+  try {
+    const canvas = document.getElementById('roomStatusTimeline');
+    if (!canvas) return;
+
+    const building = selectedChartBuilding || 'all';
+    const data = await apiCall(`/apartments/status-timeline?building=${encodeURIComponent(building)}&mode=${timelineMode}`);
+    renderApartmentStatusTimeline(data);
+  } catch (err) {
+    console.warn('Failed to load apartment status timeline:', err.message);
+  }
+}
+
+function getTimelineStatusShortLabel(status) {
+  switch (status) {
+    case 'available': return 'Trống';
+    case 'occupied': return 'Có khách';
+    case 'maintenance': return 'Bảo trì';
+    default: return status || '—';
+  }
+}
+
+function renderApartmentStatusTimeline(data) {
+  const container = document.getElementById('roomStatusTimeline');
+  if (!container) return;
+
+  const labels = Array.isArray(data?.labels) ? data.labels : [];
+  const rooms = Array.isArray(data?.rooms) ? data.rooms : [];
+
+  if (labels.length === 0 || rooms.length === 0) {
+    container.innerHTML = `
+      <div class="timeline-empty">
+        Không có dữ liệu dòng thời gian cho bộ lọc hiện tại.
+      </div>
+    `;
+    return;
+  }
+
+  // Nhóm phòng theo tòa
+  const buildingOrder = ['B', 'R6A', 'S1', 'S2', 'S3'];
+  const buildingNames = {
+    'B': '🏢 Tòa B — Imperia',
+    'R6A': '🏢 Tòa R6A — Royal',
+    'S1': '🏢 Tòa S1 — SkyLake',
+    'S2': '🏢 Tòa S2 — SkyLake',
+    'S3': '🏢 Tòa S3 — SkyLake',
+  };
+  const buildingGroups = {};
+  buildingOrder.forEach(b => buildingGroups[b] = []);
+  rooms.forEach(room => {
+    const b = room.building;
+    if (buildingGroups[b]) buildingGroups[b].push(room);
+    else {
+      if (!buildingGroups['other']) buildingGroups['other'] = [];
+      buildingGroups['other'].push(room);
+    }
+  });
+
+  // Render header ngày (sticky)
+  const dateHeaderHtml = `
+    <div class="timeline-header">
+      <div class="timeline-room-head">Căn hộ</div>
+      <div class="timeline-date-row" style="grid-template-columns: repeat(${labels.length}, minmax(18px, 1fr));">
+        ${labels.map(label => `<div class="timeline-date-cell">${label}</div>`).join('')}
+      </div>
+    </div>
+  `;
+
+  // Render các nhóm tòa
+  const groupsHtml = buildingOrder
+    .filter(b => buildingGroups[b] && buildingGroups[b].length > 0)
+    .map(building => {
+      const bRooms = buildingGroups[building];
+      const rowsHtml = bRooms.map(room => {
+        const currentStatus = room.current_status || 'available';
+        const statusClass = getRoomStatusClass(currentStatus);
+        const statusIcon = getRoomStatusIcon(currentStatus);
+
+        const segmentsHtml = room.segments.map(segment => {
+          const startLabel = labels[segment.start_index] || '';
+          const endLabel = labels[segment.start_index + segment.span - 1] || '';
+          let timeRangeStr = '';
+          const isHourly = timelineMode === 'hourly';
+
+          if (startLabel === endLabel) {
+            timeRangeStr = isHourly ? `lúc ${startLabel}` : `ngày ${startLabel}`;
+          } else {
+            timeRangeStr = isHourly
+              ? `từ ${startLabel} đến ${endLabel}`
+              : `từ ngày ${startLabel} đến ngày ${endLabel}`;
+          }
+
+          let statusLabel = getRoomStatusLabel(segment.status);
+          if (segment.status === 'maintenance' && room.maintenance_duration) {
+            statusLabel = `Bảo trì (dự kiến ${room.maintenance_duration} giờ)`;
+          }
+          const tooltipText = `${room.code} • ${statusLabel} • ${timeRangeStr}`;
+
+          let segmentContent = '';
+          if (segment.status === 'maintenance' && room.maintenance_duration) {
+            segmentContent = `<span class="segment-text" style="font-size: 0.62rem; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 2px; font-weight: 600; pointer-events: none;">🔧 ${room.maintenance_duration}h</span>`;
+          } else if (segment.status !== 'available') {
+            if (isHourly && segment.span >= 2) {
+              segmentContent = `<span class="segment-text" style="font-size: 0.62rem; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 2px; font-weight: 600; pointer-events: none;">${startLabel}-${endLabel}</span>`;
+            } else if (!isHourly && segment.span >= 3) {
+              segmentContent = `<span class="segment-text" style="font-size: 0.62rem; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 2px; font-weight: 600; pointer-events: none;">${startLabel}-${endLabel}</span>`;
+            }
+          }
+
+          return `
+            <button
+              class="timeline-segment status-${segment.status}"
+              style="grid-column: ${segment.start_index + 1} / span ${segment.span}; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 0;"
+              onclick="event.stopPropagation(); showTimelinePopover(this, '${room.code}', '${segment.status}', '${startLabel}', '${endLabel}', ${isHourly}, ${room.id})"
+              title="${tooltipText}"
+            >
+              ${segmentContent}
+            </button>
+          `;
+        }).join('');
+
+        return `
+          <div class="timeline-row">
+            <button class="timeline-room-label ${statusClass}" onclick="openRoomStatusEditOnlyModal(${room.id})" title="${room.code}">
+              <span class="timeline-room-code">${room.code}</span>
+              <span class="timeline-room-state">${statusIcon}</span>
+            </button>
+            <div class="timeline-track" style="--bucket-count: ${labels.length}; grid-template-columns: repeat(${labels.length}, minmax(18px, 1fr));">
+              ${segmentsHtml}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      // Đếm số lượng theo trạng thái
+      const occ = bRooms.filter(r => r.current_status === 'occupied').length;
+      const maint = bRooms.filter(r => r.current_status === 'maintenance').length;
+      const avail = bRooms.filter(r => r.current_status === 'available').length;
+      const statusSummary = `<span class="tl-bld-stat avail">🟢 ${avail}</span><span class="tl-bld-stat occ">🔴 ${occ}</span><span class="tl-bld-stat maint">🔵 ${maint}</span>`;
+
+      return `
+        <div class="timeline-building-group">
+          <button class="timeline-building-header" onclick="toggleTimelineBuilding('${building}')" id="tl-hdr-${building}">
+            <span class="tl-arrow" id="tl-arrow-${building}">▶</span>
+            <span class="tl-bld-name">${buildingNames[building] || building}</span>
+            <span class="tl-bld-count">${bRooms.length} căn</span>
+            <span class="tl-bld-stats">${statusSummary}</span>
+          </button>
+          <div class="timeline-building-body" id="tl-body-${building}">
+            ${rowsHtml}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+  container.innerHTML = dateHeaderHtml + `<div class="timeline-body">${groupsHtml}</div>`;
+}
+
+function toggleTimelineBuilding(building) {
+  const body = document.getElementById(`tl-body-${building}`);
+  const arrow = document.getElementById(`tl-arrow-${building}`);
+  if (!body) return;
+  const isOpen = body.classList.contains('open');
+  if (isOpen) {
+    body.classList.remove('open');
+    if (arrow) arrow.textContent = '▶';
+  } else {
+    body.classList.add('open');
+    if (arrow) arrow.textContent = '▼';
+  }
+}
+
+function showTimelinePopover(element, roomCode, status, startLabel, endLabel, isHourly, roomId) {
+  const popover = document.getElementById('timelinePopover');
+  if (!popover) return;
+
+  document.getElementById('popoverTitle').textContent = `Căn ${roomCode}`;
+
+  const statusLabel = getRoomStatusLabel(status);
+  const statusIcon = getRoomStatusIcon(status);
+  const statusValEl = document.getElementById('popoverStatus');
+  statusValEl.textContent = `${statusIcon} ${statusLabel}`;
+  statusValEl.className = `timeline-popover-value room-status-badge status-${status}`;
+  statusValEl.style.padding = '2px 6px';
+  statusValEl.style.borderRadius = '4px';
+
+  const timeInLabel = document.getElementById('popoverTimeInLabel');
+  const timeOutLabel = document.getElementById('popoverTimeOutLabel');
+  const timeInVal = document.getElementById('popoverTimeIn');
+  const timeOutVal = document.getElementById('popoverTimeOut');
+
+  if (isHourly) {
+    timeInLabel.textContent = 'Check-in:';
+    timeOutLabel.textContent = 'Check-out:';
+    timeInVal.textContent = startLabel;
+    timeOutVal.textContent = endLabel;
+  } else {
+    timeInLabel.textContent = 'Nhận phòng:';
+    timeOutLabel.textContent = 'Trả phòng:';
+    timeInVal.textContent = startLabel;
+    timeOutVal.textContent = endLabel;
+  }
+
+  const footer = document.getElementById('popoverFooter');
+  footer.innerHTML = `
+    <button class="btn btn-cancel" style="padding: 4px 10px; font-size: 0.75rem;" onclick="closeTimelinePopover()">Đóng</button>
+    <button class="btn btn-save" style="padding: 4px 10px; font-size: 0.75rem; background: var(--accent-amber); color: #0c1524;" onclick="closeTimelinePopover(); openRoomStatusEditOnlyModal(${roomId})">✏️ Đổi trạng thái</button>
+  `;
+
+  popover.style.display = 'block';
+  const rect = element.getBoundingClientRect();
+  const scrollLeft = window.pageXOffset || document.documentElement.scrollLeft;
+  const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+
+  let left = rect.left + scrollLeft + (rect.width / 2) - (popover.offsetWidth / 2);
+  let top = rect.bottom + scrollTop + 6;
+
+  if (left + popover.offsetWidth > window.innerWidth) {
+    left = window.innerWidth - popover.offsetWidth - 16;
+  }
+  if (left < 16) {
+    left = 16;
+  }
+  if (rect.bottom + popover.offsetHeight > window.innerHeight) {
+    top = rect.top + scrollTop - popover.offsetHeight - 6;
+  }
+
+  popover.style.left = `${left}px`;
+  popover.style.top = `${top}px`;
+}
+
+function closeTimelinePopover() {
+  const popover = document.getElementById('timelinePopover');
+  if (popover) {
+    popover.style.display = 'none';
+  }
+}
+
+function renderApartmentStatusChart(apartments) {
+  const canvas = document.getElementById('roomStatusChart');
+  if (!canvas) return;
+
+  const selected = selectedChartBuilding || 'all';
+  const groups = getChartBuckets(apartments, selected);
+  const labels = groups.map(group => group.label);
+  const datasets = ROOM_TYPE_ORDER.map(roomType => ({
+    label: roomType,
+    data: groups.map(group => {
+      const bucket = group.roomTypes.find(item => item.roomType === roomType);
+      return bucket ? bucket.count : 0;
+    }),
+    backgroundColor: ROOM_TYPE_COLORS[roomType],
+    borderColor: ROOM_TYPE_COLORS[roomType],
+    borderWidth: 1.5,
+    stack: 'rooms',
+    borderRadius: 6,
+    maxBarThickness: 42
+  }));
+
+  // Hủy biểu đồ cũ nếu tồn tại
+  if (roomStatusChart) {
+    roomStatusChart.destroy();
+    roomStatusChart = null;
+  }
+
+  const ctx = canvas.getContext('2d');
+
+  roomStatusChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: {
+        mode: 'index',
+        intersect: false
+      },
+      scales: {
+        x: {
+          grid: {
+            color: 'rgba(148, 163, 184, 0.04)',
+            drawBorder: false
+          },
+          ticks: {
+            color: '#64748b',
+            font: { size: 11, weight: '500' },
+            maxRotation: 0,
+            autoSkip: true,
+            maxTicksLimit: 8
+          }
+        },
+        y: {
+          min: 0,
+          grid: {
+            color: 'rgba(148, 163, 184, 0.04)',
+            drawBorder: false
+          },
+          ticks: {
+            stepSize: 1,
+            display: true
+          }
+        }
+      },
+      plugins: {
+        legend: {
+          display: true,
+          position: 'bottom',
+          labels: {
+            color: '#94a3b8',
+            usePointStyle: true,
+            boxWidth: 10
+          }
+        },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          titleColor: '#f1f5f9',
+          bodyColor: '#94a3b8',
+          borderColor: 'rgba(148, 163, 184, 0.2)',
+          borderWidth: 1,
+          padding: 12,
+          cornerRadius: 8,
+          titleFont: { size: 13, weight: '700' },
+          bodyFont: { size: 12 },
+          callbacks: {
+            title: function (context) {
+              return `Nhóm căn hộ: ${context[0].label}`;
+            },
+            label: function (context) {
+              const group = groups[context.dataIndex];
+              const bucket = group.roomTypes.find(item => item.roomType === context.dataset.label);
+              const statusSummary = bucket
+                ? `Trống ${bucket.statuses.available}, Có khách ${bucket.statuses.occupied}, Bảo trì ${bucket.statuses.maintenance}`
+                : 'Không có dữ liệu';
+              return ` ${context.dataset.label}: ${context.parsed.y} căn (${statusSummary})`;
+            }
+          }
+        }
+      },
+      animation: {
+        duration: 600,
+        easing: 'easeOutQuart'
+      }
+    }
+  });
 }
 
 // ==================== TAB 4: SALARY ====================
 function initSalaryFilters() {
   const mSelect = document.getElementById('salaryMonth');
   const ySelect = document.getElementById('salaryYear');
-  
+
   const current = new Date();
   const cMonth = current.getMonth() + 1;
   const cYear = current.getFullYear();
@@ -1204,8 +2056,17 @@ async function loadSalaryData() {
   const year = document.getElementById('salaryYear').value;
 
   try {
-    salaryData = await apiCall(`/salary?month=${month}&year=${year}`);
+    // Tải đồng thời bảng lương và thống kê hoàn thành công việc
+    const [salaryResult, statsResult] = await Promise.all([
+      apiCall(`/salary?month=${month}&year=${year}`),
+      apiCall('/work/all-stats')
+    ]);
+
+    salaryData = salaryResult;
+    statsData = statsResult;
+
     renderSalaryTable();
+    renderStatsTable();
   } catch (err) {
     showToast(err.message, 'warning');
   }
@@ -1214,7 +2075,7 @@ async function loadSalaryData() {
 function renderSalaryTable() {
   const tbody = document.getElementById('salaryTableBody');
   if (salaryData.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="11" style="text-align: center;">Không có dữ liệu bảng lương.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align: center;">Không có dữ liệu bảng lương.</td></tr>';
     return;
   }
 
@@ -1227,6 +2088,7 @@ function renderSalaryTable() {
         <td>${formatCurrency(row.per_room_rate)}</td>
         <td style="font-weight: 700; color: #0ea5e9;">${row.total_rooms}</td>
         <td>${formatCurrency(row.room_bonus)}</td>
+        <td style="font-weight: 700; color: #0ea5e9;">${formatCurrency(row.tech_task_salary || 0)}</td>
         <td style="color: #22c55e;">+${formatCurrency(row.bonus)}</td>
         <td style="color: #ef4444;">-${formatCurrency(row.deductions)}</td>
         <td style="font-weight: 800; color: #22c55e;">${formatCurrency(row.total_salary)}</td>
@@ -1387,33 +2249,89 @@ async function loadTasksTab() {
     const tasks = await apiCall('/tasks/today');
     renderTasksTable(tasks);
     renderRejectedTasks(tasks);
+    renderActiveTechTasks(tasks);
   } catch (err) {
     showToast(err.message, 'warning');
   }
 }
 
+function renderActiveTechTasks(tasks) {
+  const activeTasks = tasks.filter(t => t.status === 'in-progress');
+  const assignmentContainer = document.getElementById('activeTechTasksContainer-assignment');
+  const tasksContainer = document.getElementById('activeTechTasksContainer-tasks');
+
+  const html = activeTasks.map(t => `
+    <div style="background: rgba(14, 165, 233, 0.15); border: 1px solid rgba(14, 165, 233, 0.3); color: #38bdf8; padding: 12px 16px; border-radius: var(--radius-md); margin-bottom: 16px; display: flex; justify-content: space-between; align-items: center; font-size: 0.9rem; animation: pulse 2.5s infinite;">
+      <span>🔧 Nhân viên kỹ thuật <strong>${t.staff_name}</strong> đang thực hiện công việc: <strong>${t.title}</strong>.</span>
+      ${t.before_image ? `<button class="btn btn-save" onclick="viewProof('${t.before_image}', 'Ảnh lỗi - ${t.title}')" style="padding: 4px 10px; font-size: 0.75rem; background: linear-gradient(135deg, #0ea5e9, #0284c7); border: none; color: white; cursor: pointer;">👁️ Xem ảnh lỗi</button>` : ''}
+    </div>
+  `).join('');
+
+  if (assignmentContainer) assignmentContainer.innerHTML = html;
+  if (tasksContainer) tasksContainer.innerHTML = html;
+}
+
 function renderTasksTable(tasks) {
   const tbody = document.getElementById('tasksTableBody');
   if (!tasks || tasks.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 30px;">Chưa có công việc nào được giao hôm nay.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 30px;">Chưa có công việc nào được giao hôm nay.</td></tr>';
     return;
   }
 
   tbody.innerHTML = tasks.map(task => {
     const statusBadge = getStatusBadgeHtml(task.status);
-    const proofLink = task.proof_image 
-      ? `<button class="btn btn-save" onclick="viewProof('${task.proof_image}', 'Công việc: ${task.title}')" style="padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #10b981, #059669);">👁️ Xem ảnh</button>`
-      : '<span style="color: var(--text-muted); font-size: 0.8rem;">Chưa có</span>';
-    
-    const deleteBtn = `<button class="btn btn-cancel" onclick="deleteTask(${task.id})" style="padding: 4px 8px; font-size: 0.75rem;">🗑️ Xóa</button>`;
+
+    // Tech level badge
+    let levelBadge = '<span style="color: var(--text-muted); font-size: 0.8rem;">—</span>';
+    if (task.tech_level) {
+      const lvl = task.tech_level;
+      const lvlName = TECH_LEVEL_NAMES[lvl] || '';
+      const lvlColor = TECH_LEVEL_COLORS[lvl] || '#888';
+      const lvlBg = TECH_LEVEL_BG[lvl] || 'transparent';
+      const priceStr = task.tech_price ? new Intl.NumberFormat('vi-VN').format(task.tech_price) + 'đ' : '';
+      levelBadge = `<div style="display: flex; flex-direction: column; gap: 2px;">
+        <span style="background: ${lvlBg}; color: ${lvlColor}; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; font-weight: 700; display: inline-block;">${TECH_LEVEL_STARS[lvl]} ${lvlName}</span>
+        ${priceStr ? `<span style="font-size: 0.7rem; color: ${lvlColor}; font-weight: 600;">${priceStr}</span>` : ''}
+      </div>`;
+    }
+
+    // View images buttons
+    let imageButtons = [];
+    if (task.before_image) {
+      imageButtons.push(`<button class="btn btn-save" onclick="viewProof('${task.before_image}', 'Ảnh lỗi - ${task.title}')" style="padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #f59e0b, #d97706); border: none;">📸 Trước</button>`);
+    }
+    if (task.proof_image) {
+      imageButtons.push(`<button class="btn btn-save" onclick="viewProof('${task.proof_image}', 'Ảnh hoàn thành - ${task.title}')" style="padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #10b981, #059669); border: none;">📸 Sau</button>`);
+    }
+    const imagesHtml = imageButtons.length > 0 ? imageButtons.join(' ') : '<span style="color: var(--text-muted); font-size: 0.8rem;">Không có</span>';
+
+    let actionButtons = '';
+    if (task.status === 'completed') {
+      actionButtons += `<button class="btn" onclick="approveTask(${task.id})" style="padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 4px; margin-right: 4px; cursor: pointer;">🟢 Duyệt</button>`;
+      actionButtons += `<button class="btn" onclick="openRejectTaskModal(${task.id})" style="padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #ef4444, #dc2626); color: white; border: none; border-radius: 4px; margin-right: 4px; cursor: pointer;">🔴 Không duyệt</button>`;
+    }
+    actionButtons += `<button class="btn btn-cancel" onclick="deleteTask(${task.id})" style="padding: 4px 8px; font-size: 0.75rem;">🗑️ Xóa</button>`;
+
+    const selfBadge = task.is_self_assigned
+      ? `<span style="background: linear-gradient(135deg, #f59e0b, #d97706); color: white; padding: 2px 6px; font-size: 0.6rem; border-radius: 4px; font-weight: 700; margin-left: 6px;">Tự giao</span>`
+      : '';
+
+    const rejectHtml = task.reject_reason
+      ? `<div style="color: #f87171; font-size: 0.8rem; font-weight: 600; margin-top: 4px;">⚠️ Từ chối: ${task.reject_reason}</div>`
+      : '';
 
     return `
       <tr>
         <td style="font-weight: 700; color: var(--text-primary);">${task.staff_name || '—'}</td>
-        <td style="font-weight: 600;">${task.title}</td>
+        <td style="font-weight: 600;">
+          <div style="display: flex; align-items: center; flex-wrap: wrap;">${task.title}${selfBadge}</div>
+          ${rejectHtml}
+        </td>
+        <td>${levelBadge}</td>
         <td style="color: var(--text-secondary); font-size: 0.85rem;">${task.description || '—'}</td>
         <td>${statusBadge}</td>
-        <td><div style="display: flex; gap: 6px; align-items: center;">${proofLink} ${deleteBtn}</div></td>
+        <td><div style="display: flex; gap: 4px; align-items: center;">${imagesHtml}</div></td>
+        <td><div style="display: flex; gap: 4px; align-items: center;">${actionButtons}</div></td>
       </tr>
     `;
   }).join('');
@@ -1422,7 +2340,7 @@ function renderTasksTable(tasks) {
 function renderRejectedTasks(tasks) {
   const container = document.getElementById('rejectedTasksContainer');
   const rejected = tasks.filter(t => t.status === 'rejected');
-  
+
   if (rejected.length === 0) {
     container.innerHTML = '';
     return;
@@ -1474,6 +2392,47 @@ async function deleteTask(taskId) {
   try {
     const data = await apiCall(`/tasks/${taskId}`, 'DELETE');
     showToast(data.message, 'success');
+    loadTasksTab();
+  } catch (err) {
+    showToast(err.message, 'warning');
+  }
+}
+
+// ===== APPROVE/REJECT TECH TASKS =====
+async function approveTask(id) {
+  if (!confirm('Bạn có chắc chắn muốn phê duyệt hoàn thành công việc này không?')) return;
+  try {
+    const res = await apiCall(`/tasks/${id}/approve`, 'PUT');
+    showToast(res.message, 'success');
+    loadTasksTab();
+  } catch (err) {
+    showToast(err.message, 'warning');
+  }
+}
+
+function openRejectTaskModal(id) {
+  document.getElementById('rejectTaskId').value = id;
+  document.getElementById('rejectTaskReasonInput').value = '';
+  document.getElementById('rejectTaskModal').classList.add('active');
+}
+
+function closeRejectTaskModal() {
+  document.getElementById('rejectTaskModal').classList.remove('active');
+}
+
+async function submitRejectTask() {
+  const id = document.getElementById('rejectTaskId').value;
+  const reason = document.getElementById('rejectTaskReasonInput').value.trim();
+
+  if (!reason) {
+    showToast('Vui lòng nhập lý do không phê duyệt.', 'warning');
+    return;
+  }
+
+  try {
+    const res = await apiCall(`/tasks/${id}/reject-completed`, 'PUT', { reason });
+    showToast(res.message, 'success');
+    closeRejectTaskModal();
     loadTasksTab();
   } catch (err) {
     showToast(err.message, 'warning');
@@ -1535,6 +2494,32 @@ async function saveChangePassword() {
 // ===== EVENT BINDINGS =====
 document.addEventListener('DOMContentLoaded', () => {
   checkAuth();
+  setupRealtimeEvents();
+
+  // Khởi động hệ thống kiểm tra thông báo đổi mật khẩu
+  checkNewNotifications();
+  setInterval(checkNewNotifications, 10000);
+
+  // Close notification dropdown when clicking outside
+  document.addEventListener('click', (e) => {
+    const dropdown = document.getElementById('notiDropdown');
+    const container = document.querySelector('.noti-bell-container');
+    if (dropdown && dropdown.style.display === 'block' && container && !container.contains(e.target)) {
+      dropdown.style.display = 'none';
+    }
+  });
+
+  // Close timeline popover when clicking outside
+  document.addEventListener('click', (e) => {
+    const popover = document.getElementById('timelinePopover');
+    if (popover && popover.style.display === 'block') {
+      const isSegment = e.target.classList.contains('timeline-segment') || e.target.closest('.timeline-segment');
+      const isPopover = e.target.closest('.timeline-popover');
+      if (!isSegment && !isPopover) {
+        closeTimelinePopover();
+      }
+    }
+  });
 
   // Auto-recovery: If we are in local mode but server is online, switch back to backend
   if (localStorage.getItem('vistay_mode') === 'local' && token) {
@@ -1555,6 +2540,12 @@ document.addEventListener('DOMContentLoaded', () => {
   // Check if there is offline data and show sync button
   const hasOfflineData = localStorage.getItem('vistay_mock_staff') || localStorage.getItem('vistay_mock_apartments');
   const currentMode = localStorage.getItem('vistay_mode') || 'backend';
+
+  const offlineBanner = document.getElementById('offlineAlertBanner');
+  if (offlineBanner) {
+    offlineBanner.style.display = currentMode === 'local' ? 'block' : 'none';
+  }
+
   const btnSync = document.getElementById('btnSyncOffline');
   if (btnSync) {
     if (hasOfflineData && currentMode === 'local') {
@@ -1563,6 +2554,7 @@ document.addEventListener('DOMContentLoaded', () => {
       btnSync.style.display = 'none';
     }
   }
+
   document.getElementById('currentDate').textContent = formatDate();
 
   // Load first tab data
@@ -1579,6 +2571,11 @@ document.addEventListener('DOMContentLoaded', () => {
     loadApartmentsTab();
   });
 
+  document.getElementById('roomTypeFilter').addEventListener('change', (e) => {
+    apartmentFilters.room_type = e.target.value;
+    loadApartmentsTab();
+  });
+
   // Modal backdrop click closes modal
   document.querySelectorAll('.modal-overlay').forEach(overlay => {
     overlay.addEventListener('click', (e) => {
@@ -1590,6 +2587,8 @@ document.addEventListener('DOMContentLoaded', () => {
         closeSalaryModal();
         closeViewProofModal();
         closeChangePasswordModal();
+        closeRejectTaskModal();
+        closeRoomStatusEditOnlyModal();
       }
     });
   });
@@ -1633,7 +2632,7 @@ async function syncOfflineData() {
 
     showToast(`Đồng bộ dữ liệu thành công! Ứng dụng đã chuyển sang chế độ Online (Database).`, 'success');
     localStorage.setItem('vistay_mode', 'backend');
-    
+
     setTimeout(() => {
       window.location.reload();
     }, 1500);
@@ -1657,28 +2656,50 @@ async function approveAssignment(id) {
 }
 
 async function quickAssignRoom() {
-  const roomId = document.getElementById('quickRoomSelect').value;
-  const staffId = document.getElementById('quickStaffSelect').value;
+  const roomCode = document.getElementById('quickRoomInput').value.trim();
   const taskType = document.getElementById('quickTaskTypeSelect').value;
 
-  if (!roomId || !staffId) {
-    showToast('Vui lòng chọn đầy đủ căn hộ và nhân viên.', 'warning');
+  if (!roomCode) {
+    showToast('Vui lòng nhập mã căn hộ.', 'warning');
+    return;
+  }
+
+  const room = apartmentList.find(a => a.code.toLowerCase() === roomCode.toLowerCase());
+  if (!room) {
+    showToast('Căn hộ không tồn tại hoặc không hợp lệ.', 'warning');
+    return;
+  }
+
+  const staffSelects = document.querySelectorAll('.quick-staff-sel');
+  const staffIds = [];
+  staffSelects.forEach(sel => {
+    if (sel.value) {
+      const id = parseInt(sel.value);
+      if (!staffIds.includes(id)) {
+        staffIds.push(id);
+      }
+    }
+  });
+
+  if (staffIds.length === 0) {
+    showToast('Vui lòng chọn ít nhất một nhân viên dọn dẹp.', 'warning');
     return;
   }
 
   try {
-    const data = await apiCall('/work/assign', 'POST', {
-      staff_id: parseInt(staffId),
-      apartment_id: parseInt(roomId),
-      task_type: taskType
-    });
-    
-    showToast(data.message, 'success');
-    
-    // Clear selects
-    document.getElementById('quickRoomSelect').value = '';
-    document.getElementById('quickStaffSelect').value = '';
-    
+    for (const staffId of staffIds) {
+      await apiCall('/work/assign', 'POST', {
+        staff_id: staffId,
+        apartment_id: room.id,
+        type: taskType
+      });
+    }
+    showToast('Đã phân công dọn phòng thành công.', 'success');
+
+    // Reset form
+    document.getElementById('quickRoomInput').value = '';
+    renderQuickStaffSelects(1);
+
     // Reload data
     loadAssignmentTab();
   } catch (err) {
@@ -1688,7 +2709,8 @@ async function quickAssignRoom() {
 
 async function createTechTask() {
   const staffId = document.getElementById('techTaskStaffSelect').value;
-  const title = document.getElementById('techTaskJobSelect').value;
+  const select = document.getElementById('techTaskJobSelect');
+  const title = select.value;
   const note = document.getElementById('techTaskDescInput').value.trim();
 
   if (!staffId || !title) {
@@ -1696,22 +2718,28 @@ async function createTechTask() {
     return;
   }
 
+  // Get tech_level from selected option's data-level attribute
+  const selectedOption = select.options[select.selectedIndex];
+  const techLevel = selectedOption ? selectedOption.getAttribute('data-level') : null;
+
   const description = note ? note : '';
 
   try {
     const data = await apiCall('/tasks', 'POST', {
       staff_id: parseInt(staffId),
       title: title,
-      description: description
+      description: description,
+      tech_level: techLevel ? parseInt(techLevel) : null
     });
-    
+
     showToast(data.message, 'success');
-    
+
     // Clear fields
     document.getElementById('techTaskStaffSelect').value = '';
-    document.getElementById('techTaskJobSelect').value = 'Sơn nhà';
+    document.getElementById('techTaskJobSelect').value = '';
     document.getElementById('techTaskDescInput').value = '';
-    
+    onTechJobSelected(); // Reset level display
+
     // Reload tasks
     loadTasksTab();
   } catch (err) {
@@ -1719,22 +2747,299 @@ async function createTechTask() {
   }
 }
 
-async function populateQuickAssignSelects() {
-  const roomSelect = document.getElementById('quickRoomSelect');
-  const staffSelect = document.getElementById('quickStaffSelect');
-  
-  if (staffSelect) {
-    staffSelect.innerHTML = '<option value="">-- Chọn nhân viên --</option>' +
-      staffList.map(s => `<option value="${s.id}">${s.name} (${s.type === 'full-time' ? 'FT' : 'PT'})</option>`).join('');
+// Hiển thị cấp độ & giá khi chọn công việc kỹ thuật
+function onTechJobSelected() {
+  const select = document.getElementById('techTaskJobSelect');
+  const display = document.getElementById('techTaskLevelDisplay');
+  if (!select || !display) return;
+
+  const selectedOption = select.options[select.selectedIndex];
+  const level = selectedOption ? selectedOption.getAttribute('data-level') : null;
+
+  if (!level || !select.value) {
+    display.innerHTML = '<span style="color: var(--text-muted);">Chọn công việc để xem cấp độ</span>';
+    return;
   }
-  
-  if (roomSelect) {
+
+  const lvl = parseInt(level);
+  const name = TECH_LEVEL_NAMES[lvl] || '';
+  const color = TECH_LEVEL_COLORS[lvl] || '#888';
+  const bg = TECH_LEVEL_BG[lvl] || 'transparent';
+  const price = TECH_LEVEL_PRICES[lvl] || 0;
+  const priceStr = new Intl.NumberFormat('vi-VN').format(price);
+  const stars = TECH_LEVEL_STARS[lvl] || '';
+
+  display.innerHTML = `
+    <span style="background: ${bg}; color: ${color}; padding: 3px 10px; border-radius: 6px; font-weight: 700; font-size: 0.85rem;">
+      ${stars} Cấp ${lvl} — ${name}
+    </span>
+    <span style="margin-left: 8px; font-weight: 700; color: ${color}; font-size: 0.9rem;">${priceStr}đ</span>
+  `;
+}
+
+async function populateQuickAssignSelects() {
+  const roomList = document.getElementById('quickRoomList');
+  if (roomList) {
     try {
       const apartments = await apiCall('/apartments?building=all&status=all');
-      roomSelect.innerHTML = '<option value="">-- Chọn căn hộ --</option>' +
-        apartments.map(a => `<option value="${a.id}">${a.code} (${a.room_type})</option>`).join('');
+      const nonHcmApts = apartments.filter(a => a.building !== 'HCM');
+      roomList.innerHTML = nonHcmApts.map(a => `<option value="${a.code}">${a.code} (${a.room_type})</option>`).join('');
     } catch (e) {
       console.error('Failed to load apartments for quick select', e);
     }
   }
+  // Reset danh sách select nhân viên về 1 cái mặc định
+  renderQuickStaffSelects(1);
 }
+
+function renderQuickStaffSelects(count) {
+  const listContainer = document.getElementById('quickStaffSelectsList');
+  if (!listContainer) return;
+
+  let html = '';
+  for (let i = 1; i <= count; i++) {
+    const label = count > 1 ? `Người ${i}` : 'Chọn nhân viên';
+    html += `
+      <select class="room-filter-select quick-staff-sel" style="flex: 1; min-width: 120px;">
+        <option value="">-- ${label} --</option>
+        ${staffList.map(s => `<option value="${s.id}">${s.name} (${s.type === 'full-time' ? 'FT' : 'PT'})</option>`).join('')}
+      </select>
+    `;
+  }
+  listContainer.innerHTML = html;
+}
+
+function handleQuickRoomInput(val) {
+  if (!val) {
+    renderQuickStaffSelects(1);
+    return;
+  }
+  const room = apartmentList.find(a => a.code.toLowerCase() === val.trim().toLowerCase());
+  if (room) {
+    let selectCount = 1;
+    if (room.room_type === '2 ngủ') selectCount = 2;
+    else if (room.room_type === '3 ngủ') selectCount = 3;
+    else if (room.room_type === '4 ngủ') selectCount = 4;
+    renderQuickStaffSelects(selectCount);
+  } else {
+    renderQuickStaffSelects(1);
+  }
+}
+
+// ===== MODAL ROOM STATUS HISTORY CHART =====
+async function loadModalRoomChart(roomId) {
+  try {
+    const data = await apiCall(`/apartments/status-history?apartment_id=${roomId}&mode=hourly`);
+    renderModalRoomChart(data);
+  } catch (err) {
+    console.warn('Failed to load modal room chart:', err.message);
+  }
+}
+
+function renderModalRoomChart(data) {
+  const canvas = document.getElementById('modalRoomChart');
+  if (!canvas) return;
+
+  const labels = data.map(d => {
+    const dt = new Date(d.time_bucket);
+    return dt.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  });
+
+  const occupiedData = data.map(d => d.status === 'occupied' ? 1 : 0);
+  const maintenanceData = data.map(d => d.status === 'maintenance' ? 1 : 0);
+
+  if (modalRoomChart) {
+    modalRoomChart.destroy();
+    modalRoomChart = null;
+  }
+
+  const ctx = canvas.getContext('2d');
+  modalRoomChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [
+        {
+          label: 'Đang có khách',
+          data: occupiedData,
+          backgroundColor: '#ef4444',
+          borderRadius: 3,
+          borderSkipped: false,
+          barPercentage: 0.8,
+          categoryPercentage: 0.9
+        },
+        {
+          label: 'Đang bảo trì',
+          data: maintenanceData,
+          backgroundColor: '#3b82f6',
+          borderRadius: 3,
+          borderSkipped: false,
+          barPercentage: 0.8,
+          categoryPercentage: 0.9
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: 'rgba(15, 23, 42, 0.95)',
+          callbacks: {
+            title: () => '',
+            label: (context) => context.parsed.y === 1 ? ` Trạng thái: ${context.dataset.label}` : null
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { color: '#64748b', font: { size: 9 }, autoSkip: true, maxTicksLimit: 6 }
+        },
+        y: {
+          min: 0,
+          max: 1,
+          grid: { display: false },
+          ticks: { display: false }
+        }
+      }
+    }
+  });
+}
+
+// ===== NOTIFICATION BELL SYSTEM =====
+let lastSeenNotificationId = parseInt(localStorage.getItem('last_seen_noti_id') || '0');
+
+function toggleNotiDropdown() {
+  const dropdown = document.getElementById('notiDropdown');
+  if (!dropdown) return;
+  const isHidden = dropdown.style.display === 'none';
+  dropdown.style.display = isHidden ? 'block' : 'none';
+  if (isHidden) {
+    loadNotifications();
+  }
+}
+
+async function loadNotifications() {
+  try {
+    const list = await apiCall('/apartments/notifications');
+    const notiListEl = document.getElementById('notiList');
+    if (!notiListEl) return;
+
+    if (list.length === 0) {
+      notiListEl.innerHTML = '<div style="padding: 10px 0; text-align: center;">Không có thông báo mới</div>';
+      return;
+    }
+
+    notiListEl.innerHTML = list.map(n => {
+      const dt = new Date(n.created_at);
+      const timeStr = dt.toLocaleString('vi-VN', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+      return `
+        <div style="padding: 8px 0; border-bottom: 1px solid var(--border-color); display: flex; flex-direction: column; gap: 2px;">
+          <div style="color: var(--text-primary); font-weight: 500;">${n.message}</div>
+          <div style="font-size: 0.72rem; color: var(--text-muted);">${timeStr}</div>
+        </div>
+      `;
+    }).join('');
+
+    if (list.length > 0) {
+      const newestId = list[0].id;
+      if (document.getElementById('notiDropdown').style.display === 'block') {
+        localStorage.setItem('last_seen_noti_id', newestId);
+        lastSeenNotificationId = newestId;
+        updateNotiBadge(0);
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to load notifications:', err.message);
+  }
+}
+
+function updateNotiBadge(count) {
+  const badge = document.getElementById('notiCountBadge');
+  if (!badge) return;
+  if (count > 0) {
+    badge.textContent = count;
+    badge.style.display = 'block';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function clearNotiBadge() {
+  localStorage.setItem('last_seen_noti_id', '9999999');
+  updateNotiBadge(0);
+  const dropdown = document.getElementById('notiDropdown');
+  if (dropdown) dropdown.style.display = 'none';
+}
+
+async function checkNewNotifications() {
+  try {
+    const list = await apiCall('/apartments/notifications');
+    const newItems = list.filter(n => n.id > lastSeenNotificationId);
+    updateNotiBadge(newItems.length);
+  } catch (err) {
+    console.warn('Failed to check notifications:', err.message);
+  }
+}
+
+let eventSource = null;
+function setupRealtimeEvents() {
+  // Offline storage listener
+  window.addEventListener('storage', (e) => {
+    if (localStorage.getItem('vistay_mode') === 'local') {
+      if (e.key === 'vistay_mock_work' || e.key === 'vistay_mock_tasks_list' || e.key === 'vistay_mock_apartments') {
+        console.log('🔄 Offline mode: Local mock data updated. Reloading current tab...');
+        refreshActiveTab();
+      }
+    }
+  });
+
+  // Online SSE listener
+  if (localStorage.getItem('vistay_mode') !== 'local') {
+    if (eventSource) eventSource.close();
+    eventSource = new EventSource(`${API_URL}/events`);
+
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log('📢 Received real-time event:', data);
+
+        // Hiển thị Toast thông báo nếu có tin nhắn chi tiết
+        if (data.message) {
+          const type = (data.action === 'reject' || data.action === 'reject_completed') ? 'warning' : 'success';
+          showToast(data.message, type);
+        }
+
+        refreshActiveTab();
+      } catch (err) {
+        console.error('Failed to parse SSE data:', err);
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.warn("SSE connection lost. Retrying in 5 seconds...", err);
+      eventSource.close();
+      setTimeout(setupRealtimeEvents, 5000);
+    };
+  }
+}
+
+function refreshActiveTab() {
+  const activeTabBtn = document.querySelector('.tab-btn.active');
+  if (activeTabBtn) {
+    const onclickAttr = activeTabBtn.getAttribute('onclick') || '';
+    const match = onclickAttr.match(/'([^']+)'/);
+    if (match && match[1]) {
+      const tabId = match[1];
+      console.log(`🔄 Refreshing tab: ${tabId}`);
+      if (tabId === 'assignment') loadAssignmentTab();
+      else if (tabId === 'apartments') loadApartmentsTab();
+      else if (tabId === 'tasks') loadTasksTab();
+      else if (tabId === 'stats') loadStatsTab();
+      else if (tabId === 'salary') loadSalaryTab();
+    }
+  }
+}
+

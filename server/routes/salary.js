@@ -83,6 +83,24 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
     const staffRooms = await calculateDynamicRooms(currentMonth, currentYear);
 
     const pool = await getPool();
+    
+    // Fetch tech task salary for all staff members
+    const techSalaryRes = await pool.request()
+      .input('month', sql.Int, currentMonth)
+      .input('year', sql.Int, currentYear)
+      .query(`
+        SELECT staff_id, SUM(ISNULL(tech_price, 0)) as tech_salary
+        FROM Tasks
+        WHERE status = 'approved'
+          AND MONTH(assigned_date) = @month
+          AND YEAR(assigned_date) = @year
+        GROUP BY staff_id
+      `);
+    const techSalaries = {};
+    techSalaryRes.recordset.forEach(r => {
+      techSalaries[r.staff_id] = parseFloat(r.tech_salary) || 0;
+    });
+
     const result = await pool.request()
       .input('month', sql.Int, currentMonth)
       .input('year', sql.Int, currentYear)
@@ -114,7 +132,8 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
       const roundedRooms = Math.round(totalRooms * 100) / 100;
 
       const roomBonus = roundedRooms * rate;
-      const totalSalary = baseSalary + roomBonus + row.bonus - row.deductions;
+      const techTaskSalary = techSalaries[row.staff_id] || 0;
+      const totalSalary = baseSalary + roomBonus + techTaskSalary + row.bonus - row.deductions;
 
       return {
         staff_id: row.staff_id,
@@ -126,6 +145,7 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
         bonus: row.bonus,
         deductions: row.deductions,
         room_bonus: roomBonus,
+        tech_task_salary: techTaskSalary,
         total_salary: totalSalary,
         record_id: row.record_id,
         notes: row.notes || ''
@@ -150,6 +170,22 @@ router.get('/:staffId', authenticate, requireSelfOrAdmin, async (req, res) => {
     const staffRooms = await calculateDynamicRooms(currentMonth, currentYear);
 
     const pool = await getPool();
+    
+    // Fetch tech task salary for this staff member
+    const techSalaryRes = await pool.request()
+      .input('staffId', sql.Int, staffId)
+      .input('month', sql.Int, currentMonth)
+      .input('year', sql.Int, currentYear)
+      .query(`
+        SELECT SUM(ISNULL(tech_price, 0)) as tech_salary
+        FROM Tasks
+        WHERE staff_id = @staffId
+          AND status = 'approved'
+          AND MONTH(assigned_date) = @month
+          AND YEAR(assigned_date) = @year
+      `);
+    const techTaskSalary = parseFloat(techSalaryRes.recordset[0].tech_salary) || 0;
+
     const result = await pool.request()
       .input('staffId', sql.Int, staffId)
       .input('month', sql.Int, currentMonth)
@@ -183,7 +219,7 @@ router.get('/:staffId', authenticate, requireSelfOrAdmin, async (req, res) => {
     const roundedRooms = Math.round(totalRooms * 100) / 100;
 
     const roomBonus = roundedRooms * rate;
-    const totalSalary = baseSalary + roomBonus + row.bonus - row.deductions;
+    const totalSalary = baseSalary + roomBonus + techTaskSalary + row.bonus - row.deductions;
 
     res.json({
       staff_id: row.staff_id,
@@ -193,6 +229,7 @@ router.get('/:staffId', authenticate, requireSelfOrAdmin, async (req, res) => {
       per_room_rate: rate,
       total_rooms: roundedRooms,
       room_bonus: roomBonus,
+      tech_task_salary: techTaskSalary,
       bonus: row.bonus,
       deductions: row.deductions,
       total_salary: totalSalary,
@@ -217,9 +254,24 @@ router.post('/save', authenticate, requireAdmin, async (req, res) => {
     const base = base_salary || 0;
     const bon = bonus || 0;
     const ded = deductions || 0;
-    const total = base + (rooms * rate) + bon - ded;
 
     const pool = await getPool();
+
+    // Fetch tech task salary for this staff member
+    const techSalaryRes = await pool.request()
+      .input('staffId', sql.Int, staff_id)
+      .input('month', sql.Int, month)
+      .input('year', sql.Int, year)
+      .query(`
+        SELECT SUM(ISNULL(tech_price, 0)) as tech_salary
+        FROM Tasks
+        WHERE staff_id = @staffId
+          AND status = 'approved'
+          AND MONTH(assigned_date) = @month
+          AND YEAR(assigned_date) = @year
+      `);
+    const techTaskSalary = parseFloat(techSalaryRes.recordset[0].tech_salary) || 0;
+    const total = base + (rooms * rate) + techTaskSalary + bon - ded;
     
     // Kiểm tra bản ghi đã tồn tại chưa
     const check = await pool.request()

@@ -5,15 +5,16 @@ const express = require('express');
 const { sql, getPool } = require('../db');
 const { authenticate, requireAdmin, requireManagerOrAdmin } = require('../middleware/auth');
 const upload = require('../middleware/upload');
+const { recordStatusSnapshot } = require('../statusHistory');
+const { sendEventToAll } = require('../sse');
 
 const router = express.Router();
 
 // Helper to get local date string YYYY-MM-DD
 function getLocalDate() {
-  const d = new Date();
-  const offset = d.getTimezoneOffset();
-  const local = new Date(d.getTime() - (offset * 60 * 1000));
-  return local.toISOString().split('T')[0];
+  const options = { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' };
+  const formatter = new Intl.DateTimeFormat('en-CA', options);
+  return formatter.format(new Date());
 }
 
 // POST /api/work/assign — Giao căn hộ cho NV (Admin/Manager)
@@ -89,7 +90,28 @@ router.post('/assign', authenticate, requireManagerOrAdmin, async (req, res) => 
         VALUES (@staffId, @apartmentId, @date, @taskType, @assignedRole, 'pending')
       `);
 
-    res.json({ message: 'Giao việc thành công.' });
+    // Lấy thông tin phòng và nhân viên để tạo message thông báo
+    const info = await pool.request()
+      .input('staffId', sql.Int, staff_id)
+      .input('aptId', sql.Int, apartment_id)
+      .query(`
+        SELECT a.code as room_code, s.name as staff_name 
+        FROM Apartments a, Staff s
+        WHERE a.id = @aptId AND s.id = @staffId
+      `);
+    let msg = 'Đã giao việc thành công.';
+    if (info.recordset.length > 0) {
+      const item = info.recordset[0];
+      msg = `Đã giao dọn căn ${item.room_code} cho nhân viên ${item.staff_name}.`;
+    }
+
+    // Ghi notification vào DB
+    await pool.request()
+      .input('msg', sql.NVarChar, msg)
+      .query('INSERT INTO Notifications (message) VALUES (@msg)');
+
+    sendEventToAll({ type: 'WORK_UPDATE', action: 'assign', staff_id, message: msg });
+    res.json({ message: msg });
   } catch (err) {
     console.error('Assign work error:', err);
     res.status(500).json({ error: 'Lỗi server.' });
@@ -103,6 +125,7 @@ router.delete('/:id', authenticate, requireManagerOrAdmin, async (req, res) => {
     await pool.request()
       .input('id', sql.Int, req.params.id)
       .query('DELETE FROM WorkAssignments WHERE id = @id');
+    sendEventToAll({ type: 'WORK_UPDATE', action: 'delete', id: req.params.id });
     res.json({ message: 'Đã hủy phân công.' });
   } catch (err) {
     console.error('Delete assignment error:', err);
@@ -139,6 +162,7 @@ router.put('/:id/accept', authenticate, async (req, res) => {
       .input('id', sql.Int, req.params.id)
       .query("UPDATE WorkAssignments SET status = 'accepted' WHERE id = @id");
 
+    sendEventToAll({ type: 'WORK_UPDATE', action: 'accept', id: req.params.id });
     res.json({ message: 'Đã chấp nhận công việc.' });
   } catch (err) {
     console.error('Accept work error:', err);
@@ -160,6 +184,28 @@ router.put('/:id/reject', authenticate, async (req, res) => {
       .input('id', sql.Int, req.params.id)
       .query("UPDATE WorkAssignments SET status = 'rejected' WHERE id = @id");
 
+    // Lấy thông tin phòng và nhân viên để tạo message thông báo
+    const info = await pool.request()
+      .input('id', sql.Int, req.params.id)
+      .query(`
+        SELECT a.code as room_code, s.name as staff_name 
+        FROM WorkAssignments wa
+        JOIN Apartments a ON wa.apartment_id = a.id
+        JOIN Staff s ON wa.staff_id = s.id
+        WHERE wa.id = @id
+      `);
+    let msg = 'Một công việc dọn phòng đã bị từ chối.';
+    if (info.recordset.length > 0) {
+      const item = info.recordset[0];
+      msg = `Nhân viên ${item.staff_name} đã từ chối dọn căn ${item.room_code}.`;
+    }
+
+    // Ghi notification vào DB
+    await pool.request()
+      .input('msg', sql.NVarChar, msg)
+      .query('INSERT INTO Notifications (message) VALUES (@msg)');
+
+    sendEventToAll({ type: 'WORK_UPDATE', action: 'reject', id: req.params.id, message: msg });
     res.json({ message: 'Đã từ chối công việc. Báo cáo đã được gửi về Admin.' });
   } catch (err) {
     console.error('Reject work error:', err);
@@ -181,6 +227,7 @@ router.put('/:id/start', authenticate, async (req, res) => {
       .input('id', sql.Int, req.params.id)
       .query("UPDATE WorkAssignments SET status = 'in-progress' WHERE id = @id");
 
+    sendEventToAll({ type: 'WORK_UPDATE', action: 'start', id: req.params.id });
     res.json({ message: 'Bắt đầu làm việc.' });
   } catch (err) {
     console.error('Start work error:', err);
@@ -188,7 +235,7 @@ router.put('/:id/start', authenticate, async (req, res) => {
   }
 });
 
-// PUT /api/work/:id/complete — Đã làm xong + Upload ảnh minh chứng
+// PUT /api/work/:id/complete — Đã làm xong + Upload ảnh minh chứng (chỉ bắt buộc cho hệ số 1)
 router.put('/:id/complete', authenticate, upload.single('proof'), async (req, res) => {
   try {
     const isEmployee = req.user.role === 'employee';
@@ -197,12 +244,31 @@ router.put('/:id/complete', authenticate, upload.single('proof'), async (req, re
       if (!ok) return;
     }
 
-    if (!req.file) {
-      return res.status(400).json({ error: 'Vui lòng chụp hoặc tải ảnh lên làm minh chứng hoàn thành công việc.' });
-    }
-
     const pool = await getPool();
-    const imagePath = `/uploads/${req.file.filename}`;
+    
+    // Kiểm tra assigned_role
+    const checkRole = await pool.request()
+      .input('id', sql.Int, req.params.id)
+      .query('SELECT assigned_role FROM WorkAssignments WHERE id = @id');
+      
+    if (checkRole.recordset.length === 0) {
+      return res.status(404).json({ error: 'Không tìm thấy phân công dọn phòng.' });
+    }
+    
+    const assignedRole = checkRole.recordset[0].assigned_role;
+    const needsPhoto = assignedRole === 1;
+
+    let imagePath = null;
+    if (needsPhoto) {
+      if (!req.file) {
+        return res.status(400).json({ error: 'Vui lòng chụp hoặc tải ảnh lên làm minh chứng hoàn thành công việc.' });
+      }
+      imagePath = `/uploads/${req.file.filename}`;
+    } else {
+      if (req.file) {
+        imagePath = `/uploads/${req.file.filename}`;
+      }
+    }
 
     await pool.request()
       .input('id', sql.Int, req.params.id)
@@ -213,6 +279,7 @@ router.put('/:id/complete', authenticate, upload.single('proof'), async (req, re
         WHERE id = @id
       `);
 
+    sendEventToAll({ type: 'WORK_UPDATE', action: 'complete', id: req.params.id });
     res.json({ message: 'Đã hoàn thành dọn phòng.', proof_image: imagePath });
   } catch (err) {
     console.error('Complete work error:', err);
@@ -316,10 +383,11 @@ router.get('/all-stats', authenticate, requireManagerOrAdmin, async (req, res) =
       .input('date', sql.Date, date)
       .query(`
         SELECT 
-          s.id, s.name, s.type,
+          s.id, s.name, s.type, s.tech_role,
           ISNULL(today.completed, 0) as today_completed,
           ISNULL(today.total, 0) as today_total,
-          ISNULL(monthly.completed, 0) as month_completed
+          ISNULL(monthly.completed, 0) as month_completed,
+          ISNULL(tech_monthly.tech_tasks_completed, 0) as tech_tasks_completed
         FROM Staff s
         LEFT JOIN (
           SELECT staff_id, 
@@ -337,10 +405,27 @@ router.get('/all-stats', authenticate, requireManagerOrAdmin, async (req, res) =
             AND status = 'approved'
           GROUP BY staff_id
         ) monthly ON s.id = monthly.staff_id
+        LEFT JOIN (
+          SELECT staff_id, COUNT(*) as tech_tasks_completed
+          FROM Tasks 
+          WHERE MONTH(assigned_date) = MONTH(GETDATE()) 
+            AND YEAR(assigned_date) = YEAR(GETDATE()) 
+            AND status = 'approved'
+          GROUP BY staff_id
+        ) tech_monthly ON s.id = tech_monthly.staff_id
         ORDER BY s.id
       `);
 
-    res.json(result.recordset);
+    // Tính KPI cho NV kỹ thuật hệ số 1: tasks approved + (rooms approved / 2)
+    const statsWithKpi = result.recordset.map(row => {
+      let kpi = null;
+      if (row.tech_role === 1) {
+        kpi = row.tech_tasks_completed + (row.month_completed / 2);
+      }
+      return { ...row, kpi };
+    });
+
+    res.json(statsWithKpi);
   } catch (err) {
     console.error('Get all stats error:', err);
     res.status(500).json({ error: 'Lỗi server.' });
@@ -376,7 +461,11 @@ router.put('/:id/approve', authenticate, requireManagerOrAdmin, async (req, res)
         WHERE id = (SELECT apartment_id FROM WorkAssignments WHERE id = @id);
       `);
       
+    sendEventToAll({ type: 'WORK_UPDATE', action: 'approve', id: req.params.id, apartment_id: wa.apartment_id });
     res.json({ message: 'Đã phê duyệt hoàn thành căn hộ và cập nhật trạng thái phòng thành Trống.' });
+
+    // Ghi lại snapshot trạng thái sau khi duyệt
+    recordStatusSnapshot(wa.apartment_id, 'available').catch(e => console.error('Snapshot error:', e.message));
   } catch (err) {
     console.error('Approve work error:', err);
     res.status(500).json({ error: 'Lỗi server.' });

@@ -97,7 +97,7 @@ GO
 
 -- ===== CĂN HỘ - TÒA B (1 căn) =====
 INSERT INTO Apartments (code, building, password, is_samsung) VALUES
-('B2102',    'B',  '456456*',     0);
+('B-2102',   'B',  '456456*',     0);
 GO
 
 -- ===== CĂN HỘ - TÒA R6A (2 căn) =====

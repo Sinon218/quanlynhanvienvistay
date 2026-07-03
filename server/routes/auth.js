@@ -22,7 +22,7 @@ router.post('/login', async (req, res) => {
       .input('username', sql.VarChar, username)
       .query(`
         SELECT u.id, u.username, u.password_hash, u.role, u.staff_id, u.is_active,
-               s.name as staff_name
+               s.name as staff_name, ISNULL(s.tech_role, 0) as tech_role
         FROM Users u
         LEFT JOIN Staff s ON u.staff_id = s.id
         WHERE u.username = @username
@@ -49,6 +49,7 @@ router.post('/login', async (req, res) => {
         role: user.role,
         staffId: user.staff_id,
         staffName: user.staff_name,
+        techRole: user.tech_role,
       },
       process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
@@ -62,6 +63,7 @@ router.post('/login', async (req, res) => {
         role: user.role,
         staffId: user.staff_id,
         staffName: user.staff_name,
+        techRole: user.tech_role,
       },
     });
   } catch (err) {
@@ -78,7 +80,9 @@ router.get('/me', authenticate, async (req, res) => {
       .input('id', sql.Int, req.user.id)
       .query(`
         SELECT u.id, u.username, u.role, u.staff_id, u.is_active,
-               s.name as staff_name, s.type as staff_type
+               s.name as staff_name, s.type as staff_type,
+               ISNULL(s.tech_role, 0) as tech_role,
+               ISNULL(s.tech_role, 0) as techRole
         FROM Users u
         LEFT JOIN Staff s ON u.staff_id = s.id
         WHERE u.id = @id

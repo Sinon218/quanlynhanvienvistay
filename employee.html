@@ -6,10 +6,16 @@
   <title>Employee Portal - ViStay Portal</title>
   <link rel="stylesheet" href="style.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏨</text></svg>">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
 
   <div class="app-container">
+
+    <!-- Offline Mode Banner Cảnh báo -->
+    <div id="offlineAlertBanner" style="display: none; background: linear-gradient(135deg, #f59e0b, #d97706); color: white; padding: 10px; text-align: center; font-size: 0.88rem; font-weight: 700; border-radius: var(--radius-md); margin-bottom: 16px; box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25);">
+      ⚠️ Bạn đang chạy ở CHẾ ĐỘ OFFLINE (Local Mode) do không kết nối được server. Dữ liệu công việc của bạn có thể không đồng bộ với quản lý. Hãy kiểm tra kết nối mạng/máy chủ!
+    </div>
 
     <!-- ===== HEADER ===== -->
     <header class="app-header">
@@ -25,6 +31,24 @@
       <div class="header-user-actions">
         <div class="user-greeting">Xin chào, <strong id="employeeName">—</strong></div>
         <button id="btnSwitchToAdmin" class="btn" onclick="window.location.href='admin.html'" style="display: none; padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">⚙️ Giao diện QL</button>
+        
+        <!-- Notification Bell -->
+        <div class="noti-bell-container" style="position: relative; display: inline-block;">
+          <button class="noti-bell-btn" onclick="toggleNotiDropdown()" style="background: transparent; border: none; font-size: 1.2rem; cursor: pointer; position: relative; padding: 4px; color: var(--text-primary);">
+            🔔
+            <span class="noti-badge" id="notiCountBadge" style="display: none; position: absolute; top: -2px; right: -2px; background: #ef4444; color: white; font-size: 0.65rem; padding: 1px 5px; border-radius: 50%; font-weight: 700;">0</span>
+          </button>
+          <div class="noti-dropdown" id="notiDropdown" style="display: none; position: absolute; right: 0; top: 35px; width: 280px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 1000; max-height: 300px; overflow-y: auto; padding: 10px;">
+            <div style="font-weight: 700; font-size: 0.85rem; border-bottom: 1px solid var(--border-color); padding-bottom: 6px; margin-bottom: 6px; color: var(--text-primary); display: flex; justify-content: space-between; align-items: center;">
+              <span>🔔 Thông báo đổi mật khẩu</span>
+              <button onclick="clearNotiBadge()" style="background: transparent; border: none; font-size: 0.72rem; color: var(--accent-teal); cursor: pointer;">Đánh dấu đã đọc</button>
+            </div>
+            <div id="notiList" style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4; text-align: left;">
+              <div style="padding: 10px 0; text-align: center;">Không có thông báo mới</div>
+            </div>
+          </div>
+        </div>
+
         <button class="btn btn-save" onclick="openChangePasswordModal()" style="padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #475569, #334155);">🔑 Đổi MK</button>
         <button class="btn btn-logout" onclick="handleLogout()">🚪 Đăng xuất</button>
       </div>
@@ -34,16 +58,22 @@
     <div class="room-stats" style="margin-bottom: 24px;">
       <div class="stat-item stat-total">
         <span class="stat-num" id="statTodayTotal">0</span>
-        <span class="stat-label">Căn được giao (Hôm nay)</span>
+        <span class="stat-label" id="lblTodayTotal">Căn được giao (Hôm nay)</span>
       </div>
       <div class="stat-item stat-available">
         <span class="stat-num" id="statTodayCompleted">0</span>
-        <span class="stat-label">🟢 Đã xong (Hôm nay)</span>
+        <span class="stat-label" id="lblTodayCompleted">🟢 Đã xong (Hôm nay)</span>
       </div>
       <div class="stat-item stat-cleaning">
         <span class="stat-num" id="statMonthCompleted">0</span>
-        <span class="stat-label">🧹 Đã dọn (Tháng này)</span>
+        <span class="stat-label" id="lblMonthCompleted">🧹 Đã dọn (Tháng này)</span>
       </div>
+
+      <!-- Tech Self Assign Button (hidden by default, shown for tech role) -->
+      <button id="btnSelfAssignCard" class="stat-item" onclick="openSelfAssignModal()" style="display: none; border: 1.5px dashed var(--accent-orange); background: rgba(245, 158, 11, 0.08); cursor: pointer; flex-direction: column; justify-content: center; align-items: center; gap: 4px; outline: none; transition: all 0.2s ease;">
+        <span style="font-size: 1.8rem; display: block; margin-top: 2px;">🔧</span>
+        <span class="stat-label" style="font-weight: 700; color: #f59e0b; margin-top: 2px;">Tự giao việc</span>
+      </button>
     </div>
 
     <!-- ===== TWO COLUMNS FOR WORK & ESTIMATE ===== -->
@@ -72,10 +102,6 @@
             <strong id="estBaseSalary">? VNĐ</strong>
           </div>
           <div class="est-row">
-            <span>Định mức/căn:</span>
-            <strong id="estPerRoomRate">? VNĐ</strong>
-          </div>
-          <div class="est-row">
             <span>Số căn đã làm:</span>
             <strong id="estRoomsCount">0 căn</strong>
           </div>
@@ -83,14 +109,15 @@
             <span>Thưởng dọn phòng:</span>
             <strong id="estRoomBonus" style="color: #22c55e;">+0 VNĐ</strong>
           </div>
+          <div class="est-row" id="estTechRow" style="display: none;">
+            <span>Lương kỹ thuật:</span>
+            <strong id="estTechSalary" style="color: #22c55e;">+0 VNĐ</strong>
+          </div>
           <div class="est-row">
             <span>Thưởng khác:</span>
             <strong id="estBonus" style="color: #22c55e;">+0 VNĐ</strong>
           </div>
-          <div class="est-row">
-            <span>Khấu trừ:</span>
-            <strong id="estDeductions" style="color: #ef4444;">-0 VNĐ</strong>
-          </div>
+
           <hr style="border: 0; border-top: 1px solid var(--border-color); margin: 12px 0;">
           <div class="est-row total">
             <span>Tổng nhận dự kiến:</span>
@@ -104,15 +131,175 @@
 
     <!-- ===== CUSTOM TASKS SECTION ===== -->
     <section class="section" style="margin-top: 24px;">
-      <div class="section-header">
-        <span class="section-icon">📝</span>
-        <h2 class="section-title" style="color: var(--role-main);">Công Việc Khác Được Giao Hôm Nay</h2>
+      <div class="section-header" style="display: flex; justify-content: space-between; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="section-icon">📝</span>
+          <h2 class="section-title" style="color: var(--role-main);">Công Việc Khác Được Giao Hôm Nay</h2>
+        </div>
       </div>
       <div class="employee-task-list" id="customTaskListContainer">
         <!-- Rendered by JS -->
       </div>
     </section>
 
+    <!-- ===== SƠ ĐỒ TRẠNG THÁI TỪNG CĂN ===== -->
+    <section class="section" style="margin-bottom: 24px;">
+      <div class="section-header" style="flex-wrap: wrap; gap: 10px; align-items: center;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span class="section-icon">🧱</span>
+          <h2 class="section-title" style="color: var(--accent-amber);">Sơ Đồ Trạng Thái Từng Căn</h2>
+        </div>
+        
+        <!-- Mode Toggle: Daily vs Hourly -->
+        <div class="timeline-mode-toggle">
+          <button class="tl-mode-btn active" id="empTlModeDaily" onclick="setEmpTimelineMode('daily')">Theo Ngày</button>
+          <button class="tl-mode-btn" id="empTlModeHourly" onclick="setEmpTimelineMode('hourly')">Theo Giờ</button>
+        </div>
+
+        <span class="section-badge" style="background: rgba(245, 158, 11, 0.1); color: var(--accent-amber); border: 1px solid rgba(245, 158, 11, 0.2);">Di chuột/chạm để xem chi tiết · Bấm để đổi trạng thái</span>
+      </div>
+
+      <div class="timeline-shell">
+        <div class="timeline-legend">
+          <span class="timeline-legend-item"><i class="timeline-dot status-available"></i> 🟢 Trống</span>
+          <span class="timeline-legend-item"><i class="timeline-dot status-occupied"></i> <span style="color:#ef4444;font-weight:700;">🔴 Có khách</span></span>
+          <span class="timeline-legend-item"><i class="timeline-dot status-maintenance"></i> <span style="color:#3b82f6;font-weight:700;">🔵 Đang bảo trì</span></span>
+          <span style="color:var(--text-muted);font-size:0.75rem;margin-left:8px;">· Bấm tên căn để đổi trạng thái · Bấm ▶ để mở rộng tòa</span>
+        </div>
+        <div class="timeline-scroll">
+          <div id="empRoomStatusTimeline"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== APARTMENT STATUS SUMMARY ===== -->
+    <section class="section" style="margin-top: 24px;">
+      <div class="section-header">
+        <span class="section-icon">📋</span>
+        <h2 class="section-title" style="color: var(--accent-purple);">Bảng Tổng Hợp Trạng Thái Căn Hộ</h2>
+      </div>
+      <div class="stats-table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Mã căn</th>
+              <th>Tòa</th>
+              <th>Loại phòng</th>
+              <th>Mật khẩu</th>
+              <th>Trạng thái hiện tại</th>
+            </tr>
+          </thead>
+          <tbody id="empRoomSummaryTableBody">
+            <!-- Rendered by JS -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===== APARTMENT GRID ===== -->
+    <section class="section" style="margin-top: 24px;">
+      <div class="section-header">
+        <span class="section-icon">🛏️</span>
+        <h2 class="section-title">Danh Sách Căn Hộ & Mật Khẩu</h2>
+      </div>
+
+      <!-- Stats Bar -->
+      <div class="room-stats" id="empRoomStats">
+        <!-- Rendered by JS -->
+      </div>
+
+      <!-- Filters -->
+      <div class="room-filters" style="margin-top: 12px;">
+        <div class="room-search">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="empRoomSearchInput" placeholder="Tìm mã căn...">
+        </div>
+        <select id="empRoomStatusFilter" class="room-filter-select">
+          <option value="all">Tất cả trạng thái</option>
+          <option value="available">🟢 Trống</option>
+          <option value="occupied">🔴 Có khách</option>
+          <option value="maintenance">🔧 Sửa chữa</option>
+        </select>
+        <span class="filtered-count" id="empFilteredRoomCount"></span>
+      </div>
+
+      <!-- Room Grid -->
+      <div class="room-grid" id="empRoomListGrid" style="margin-top: 12px;">
+        <!-- Rendered by JS -->
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ===== MODAL: TẠO VIỆC KỸ THUẬT (TỰ GIAO) ===== -->
+  <div class="modal-overlay" id="selfAssignModal">
+    <div class="modal" style="max-width: 440px;">
+      <div class="modal-header">
+        <h2>🔧 Tạo Việc Kỹ Thuật</h2>
+        <button class="modal-close" onclick="closeSelfAssignModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-bottom: 14px;">Tự giao công việc kỹ thuật cho bản thân. Khi bắt đầu làm sẽ cần chụp ảnh lỗi, hoàn thành sẽ cần chụp ảnh đã sửa.</p>
+        <div class="rename-input-group" style="margin-bottom: 12px;">
+          <label for="selfAssignTitle">Chọn công việc <span style="color: #ef4444;">*</span></label>
+          <select id="selfAssignTitle" class="room-filter-select" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 0.9rem;" onchange="onSelfAssignJobSelected()">
+            <option value="">-- Chọn công việc kỹ thuật --</option>
+            <optgroup label="⭐ Cấp 1 — Dễ (50,000đ)">
+              <option value="Sơn tường" data-level="1">Sơn tường</option>
+              <option value="Vệ sinh điều hoà" data-level="1">Vệ sinh điều hoà</option>
+              <option value="Dán decal" data-level="1">Dán decal</option>
+              <option value="Giặt rèm trắng" data-level="1">Giặt rèm trắng</option>
+              <option value="Lắp khoá trong" data-level="1">Lắp khoá trong</option>
+              <option value="Siết ốc" data-level="1">Siết ốc</option>
+              <option value="Thay vòi sen" data-level="1">Thay vòi sen</option>
+              <option value="Thay bóng đèn" data-level="1">Thay bóng đèn</option>
+              <option value="Dán chặn cửa" data-level="1">Dán chặn cửa</option>
+              <option value="Đặt thuốc gián" data-level="1">Đặt thuốc gián</option>
+              <option value="Lắp bộ lọc nước" data-level="1">Lắp bộ lọc nước</option>
+              <option value="Vệ sinh quạt" data-level="1">Vệ sinh quạt</option>
+            </optgroup>
+            <optgroup label="⭐⭐ Cấp 2 — Trung bình (100,000đ)">
+              <option value="VS máy giặt cửa đứng" data-level="2">VS máy giặt cửa đứng</option>
+              <option value="Silicon" data-level="2">Silicon</option>
+              <option value="Sơn trần" data-level="2">Sơn trần</option>
+              <option value="Sơn bả" data-level="2">Sơn bả</option>
+              <option value="Xử lý bản lề cửa" data-level="2">Xử lý bản lề cửa</option>
+              <option value="VS sofa và đệm" data-level="2">VS sofa và đệm</option>
+              <option value="Vệ sinh rèm dày" data-level="2">Vệ sinh rèm dày</option>
+              <option value="Sơn chân bàn ghế" data-level="2">Sơn chân bàn ghế</option>
+              <option value="Treo đèn thả/đèn ốp" data-level="2">Treo đèn thả/đèn ốp</option>
+              <option value="Vệ sinh cây nước" data-level="2">Vệ sinh cây nước</option>
+            </optgroup>
+            <optgroup label="⭐⭐⭐ Cấp 3 — Khó (150,000đ)">
+              <option value="VS máy giặt cửa ngang" data-level="3">VS máy giặt cửa ngang</option>
+              <option value="Thay miệng cửa ban công" data-level="3">Thay miệng cửa ban công</option>
+              <option value="Thay vòng bi" data-level="3">Thay vòng bi</option>
+              <option value="VS lưới ĐH âm trần" data-level="3">VS lưới ĐH âm trần</option>
+              <option value="XL bồn cầu/cống thoát" data-level="3">XL bồn cầu/cống thoát</option>
+              <option value="Sửa giàn phơi" data-level="3">Sửa giàn phơi</option>
+            </optgroup>
+            <optgroup label="⭐⭐⭐⭐ Cấp 4 — Cực khó (250,000đ)">
+              <option value="Sửa tivi" data-level="4">Sửa tivi</option>
+              <option value="Sửa tủ lạnh" data-level="4">Sửa tủ lạnh</option>
+              <option value="Sửa lò vi sóng" data-level="4">Sửa lò vi sóng</option>
+              <option value="Sửa điều hoà" data-level="4">Sửa điều hoà</option>
+              <option value="Rèm chống côn trùng" data-level="4">Rèm chống côn trùng</option>
+            </optgroup>
+          </select>
+        </div>
+        <div id="selfAssignLevelDisplay" style="margin-bottom: 12px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-muted); font-size: 0.9rem; min-height: 38px; display: flex; align-items: center;">
+          Chọn công việc để xem cấp độ
+        </div>
+        <div class="rename-input-group">
+          <label for="selfAssignDesc">Mô tả chi tiết (tuỳ chọn)</label>
+          <textarea id="selfAssignDesc" rows="3" placeholder="Mô tả thêm về lỗi cần sửa..." style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 0.9rem; resize: vertical;"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-cancel" onclick="closeSelfAssignModal()">Đóng</button>
+        <button class="btn btn-save" onclick="submitSelfAssignTask()" style="background: linear-gradient(135deg, #f59e0b, #d97706);">🔧 Tạo công việc</button>
+      </div>
+    </div>
   </div>
 
   <!-- ===== MODAL: ĐỔI MẬT KHẨU ===== -->
@@ -143,9 +330,149 @@
     </div>
   </div>
 
-  <!-- ===== TOAST CONTAINER ===== -->
-  <div class="toast-container" id="toastContainer"></div>
+  <!-- ===== MODAL: CẬP NHẬT TRẠNG THÁI PHÒNG (CHO CÁC TÀI KHOẢN ĐẶC BIỆT) ===== -->
+  <div class="modal-overlay" id="empRoomStatusModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>🏠 Cập Nhật Trạng Thái Phòng</h2>
+        <button class="modal-close" onclick="closeEmpRoomStatusModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-staff-preview">
+          <div class="staff-avatar" style="background: linear-gradient(135deg, #0ea5e9, #6366f1); font-size: 0.8rem;">🚪</div>
+          <div class="preview-info">
+            <div class="preview-name" id="empRoomModalNumber">—</div>
+            <div class="preview-type"><span id="empRoomModalType">—</span> · <span id="empRoomModalFloor">—</span></div>
+          </div>
+        </div>
+
+        <!-- Trạng thái phòng -->
+        <div class="role-group" style="margin-top: 15px;">
+          <div class="role-group-label"><span>📋</span> Trạng thái phòng</div>
+          <div class="role-options room-status-options">
+            <div class="role-option opt-room-available">
+              <input type="radio" name="empRoomStatus" id="ersAvailable" value="available" onchange="toggleStatusModalFields('employee')">
+              <label for="ersAvailable">
+                <span class="option-num">🟢</span>
+                <span class="option-text">Trống</span>
+              </label>
+            </div>
+            <div class="role-option opt-room-occupied">
+              <input type="radio" name="empRoomStatus" id="ersOccupied" value="occupied" onchange="toggleStatusModalFields('employee')">
+              <label for="ersOccupied">
+                <span class="option-num">🔴</span>
+                <span class="option-text">Có khách</span>
+              </label>
+            </div>
+            <div class="role-option opt-room-maintenance">
+              <input type="radio" name="empRoomStatus" id="ersMaintenance" value="maintenance" onchange="toggleStatusModalFields('employee')">
+              <label for="ersMaintenance">
+                <span class="option-num">🔧</span>
+                <span class="option-text">Sửa chữa</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Check-in / Check-out Date Time -->
+        <div class="datetime-inputs-group" style="margin-top: 15px; border-top: 1px solid var(--border-color); padding-top: 15px; display: none;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div>
+              <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">📅 Ngày vào</label>
+              <input type="date" id="ersCheckinDate" class="form-control" style="width: 100%; padding: 6px; font-size: 0.85rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
+            </div>
+            <div>
+              <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">⏰ Giờ vào</label>
+              <input type="time" id="ersCheckinTime" class="form-control" style="width: 100%; padding: 6px; font-size: 0.85rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+            <div>
+              <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">📅 Ngày ra</label>
+              <input type="date" id="ersCheckoutDate" class="form-control" style="width: 100%; padding: 6px; font-size: 0.85rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
+            </div>
+            <div>
+              <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">⏰ Giờ ra</label>
+              <input type="time" id="ersCheckoutTime" class="form-control" style="width: 100%; padding: 6px; font-size: 0.85rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
+            </div>
+          </div>
+        </div>
+
+        <!-- Maintenance Duration Fields -->
+        <div class="maintenance-inputs-group" id="ersMaintenanceGroup" style="margin-top: 15px; border-top: 1px solid var(--border-color); padding-top: 15px; display: none;">
+          <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">⏰ Thời gian dự kiến sửa chữa (giờ)</label>
+          <input type="number" id="ersMaintenanceDuration" min="1" class="form-control" style="width: 100%; padding: 6px; font-size: 0.85rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;" placeholder="Ví dụ: 2, 4, 8...">
+        </div>
+
+        <!-- Biểu đồ lịch sử riêng của phòng -->
+        <div class="role-group" id="empModalRoomChartContainer" style="margin-top: 15px;">
+          <div class="role-group-label"><span>📈</span> Lịch sử trạng thái (24h)</div>
+          <div style="position: relative; height: 180px; width: 100%; margin-top: 8px; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px;">
+            <canvas id="empModalRoomChart"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-cancel" onclick="closeEmpRoomStatusModal()">Đóng</button>
+        <button class="btn btn-save" onclick="saveEmpRoomStatus()">💾 Lưu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: SỬA MẬT KHẨU CĂN HỘ (CHO CÁC TÀI KHOẢN ĐẶC BIỆT) ===== -->
+  <div class="modal-overlay" id="empRoomPasswordModal">
+    <div class="modal">
+      <div class="modal-header">
+        <h2>🔑 Đổi Mật Khẩu Căn Hộ</h2>
+        <button class="modal-close" onclick="closeEmpRoomPasswordModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="modal-staff-preview">
+          <div class="staff-avatar" style="background: linear-gradient(135deg, #eab308, #f97316); font-size: 0.8rem;">🔑</div>
+          <div class="preview-info">
+            <div class="preview-name" id="empRoomPwModalNumber">—</div>
+            <div class="preview-type">Mật khẩu hiện tại: <span id="empRoomPwModalOld">—</span></div>
+          </div>
+        </div>
+        <div class="rename-input-group">
+          <label for="empRoomNewPassword">Mật khẩu mới</label>
+          <input type="text" id="empRoomNewPassword" placeholder="Nhập mật khẩu mới...">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-cancel" onclick="closeEmpRoomPasswordModal()">Đóng</button>
+        <button class="btn btn-save" onclick="saveEmpRoomPassword()">💾 Cập nhật</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== TIMELINE POPOVER ===== -->
+  <div id="timelinePopover" class="timeline-popover">
+    <div class="timeline-popover-header">
+      <span class="timeline-popover-title" id="popoverTitle">Căn hộ</span>
+      <button class="timeline-popover-close" onclick="closeTimelinePopover()">✕</button>
+    </div>
+    <div class="timeline-popover-body">
+      <div class="timeline-popover-row">
+        <span class="timeline-popover-label">Trạng thái:</span>
+        <span class="timeline-popover-value" id="popoverStatus" style="font-weight: 700;">—</span>
+      </div>
+      <div class="timeline-popover-row">
+        <span class="timeline-popover-label" id="popoverTimeInLabel">Check-in:</span>
+        <span class="timeline-popover-value" id="popoverTimeIn">—</span>
+      </div>
+      <div class="timeline-popover-row">
+        <span class="timeline-popover-label" id="popoverTimeOutLabel">Check-out:</span>
+        <span class="timeline-popover-value" id="popoverTimeOut">—</span>
+      </div>
+    </div>
+    <div class="timeline-popover-footer" id="popoverFooter">
+      <!-- Dynamic edit buttons -->
+    </div>
+  </div>
 
   <script src="employee.js"></script>
+  <!-- ===== TOAST CONTAINER ===== -->
+  <div class="toast-container" id="toastContainer"></div>
 </body>
 </html>

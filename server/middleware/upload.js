@@ -21,16 +21,16 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage: storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB limit
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB limit
   fileFilter: function (req, file, cb) {
-    const filetypes = /jpeg|jpg|png|webp|gif/;
-    const mimetype = filetypes.test(file.mimetype);
+    const isImageMime = file.mimetype && file.mimetype.startsWith('image/');
+    const filetypes = /jpeg|jpg|png|webp|gif|heic|heif|tiff/;
     const extname = filetypes.test(path.extname(file.originalname).toLowerCase());
     
-    if (mimetype && extname) {
+    if (isImageMime || extname) {
       return cb(null, true);
     }
-    cb(new Error('Chỉ chấp nhận các định dạng file ảnh (jpg, jpeg, png, webp, gif)!'));
+    cb(new Error('Chỉ chấp nhận các định dạng file ảnh (jpg, jpeg, png, webp, gif, heic, heif)!'));
   }
 });
 
