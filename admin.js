@@ -1452,8 +1452,8 @@ function renderRoomSummaryTable() {
   const tbody = document.getElementById('roomSummaryTableBody');
   if (!tbody) return;
 
-  // Lọc các căn hộ: loại trừ HCM và giữ lại SSTN + lọc theo tòa
-  let filtered = apartmentList.filter(a => a.building !== 'HCM');
+  // Lọc các căn hộ từ summaryApartmentList: loại trừ HCM và giữ lại SSTN + lọc theo tòa
+  let filtered = summaryApartmentList.filter(a => a.building !== 'HCM');
   if (summaryBuildingFilter && summaryBuildingFilter !== 'all') {
     filtered = filtered.filter(a => a.building === summaryBuildingFilter);
   }
@@ -1771,7 +1771,7 @@ async function loadRoomStatusChart() {
 
     selectedChartBuilding = select.value || 'all';
 
-    renderApartmentStatusChart(apartmentList.filter(room => room.building !== 'HCM'));
+    renderApartmentStatusChart(summaryApartmentList.filter(room => room.building !== 'HCM'));
   } catch (err) {
     console.warn('Failed to load room status chart:', err.message);
   }
