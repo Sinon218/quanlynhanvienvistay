@@ -80,7 +80,7 @@
         <div class="task-form-grid" style="display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end;">
           <div class="rename-input-group" style="flex: 1; min-width: 180px;">
             <label for="quickRoomInput">🏢 Nhập mã căn hộ</label>
-            <input type="text" id="quickRoomInput" list="quickRoomList" class="room-filter-select" style="width: 100%; padding: 8px;" placeholder="Gõ mã căn..." oninput="handleQuickRoomInput(this.value)" autocomplete="off">
+            <input type="text" id="quickRoomInput" list="quickRoomList" class="room-filter-select" style="width: 100%; padding: 8px;" placeholder="Gõ mã căn..." oninput="handleQuickRoomInput(this.value)" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly');">
             <datalist id="quickRoomList"></datalist>
           </div>
           <div class="rename-input-group" id="quickStaffSelectContainer" style="flex: 2; min-width: 250px; display: flex; flex-direction: column; gap: 4px;">
@@ -356,7 +356,7 @@
         <div class="room-filters">
           <div class="room-search">
             <span class="search-icon">🔍</span>
-            <input type="text" id="roomSearchInput" placeholder="Tìm mã căn..." autocomplete="off">
+            <input type="text" id="roomSearchInput" placeholder="Tìm mã căn..." autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly');">
           </div>
           <select id="roomStatusFilter" class="room-filter-select">
             <option value="all">Tất cả trạng thái</option>
