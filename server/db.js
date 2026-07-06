@@ -33,38 +33,54 @@ if (process.env.DB_PORT) {
 }
 
 let poolPromise = null;
+let activePool = null;
 
 async function getPool() {
+  if (activePool && activePool.connected) {
+    return activePool;
+  }
+
   if (poolPromise) {
     try {
       const p = await poolPromise;
       if (p && p.connected) {
+        activePool = p;
         return p;
       }
-      // If pool is no longer connected, clear it to reconnect
-      poolPromise = null;
     } catch (err) {
       poolPromise = null;
     }
   }
 
-  poolPromise = (async () => {
-    try {
-      const newPool = new sql.ConnectionPool(config);
-      await newPool.connect();
-      console.log('✅ Connected to SQL Server:', process.env.DB_NAME);
+  if (!poolPromise) {
+    poolPromise = (async () => {
+      try {
+        if (activePool) {
+          try { await activePool.close(); } catch (e) {}
+          activePool = null;
+        }
+        const newPool = new sql.ConnectionPool(config);
+        await newPool.connect();
+        console.log('✅ Connected to SQL Server:', process.env.DB_NAME);
 
-      newPool.on('error', err => {
-        console.error('📡 SQL Pool Error:', err.message);
-      });
+        newPool.on('error', err => {
+          console.error('📡 SQL Pool Error:', err.message);
+          if (err.message.includes('Connection lost') || err.message.includes('socket') || err.message.includes('read')) {
+            activePool = null;
+            poolPromise = null;
+          }
+        });
 
-      return newPool;
-    } catch (err) {
-      console.error('❌ SQL Connection Error:', err.message);
-      poolPromise = null;
-      throw err;
-    }
-  })();
+        activePool = newPool;
+        return newPool;
+      } catch (err) {
+        console.error('❌ SQL Connection Error:', err.message);
+        poolPromise = null;
+        activePool = null;
+        throw err;
+      }
+    })();
+  }
 
   return poolPromise;
 }
