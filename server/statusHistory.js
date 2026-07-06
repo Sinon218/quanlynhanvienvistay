@@ -97,6 +97,26 @@ async function initStatusHistory() {
         );
         CREATE INDEX IX_ApartmentStatusHistory_AptDate ON ApartmentStatusHistory(apartment_id, recorded_at);
       END
+
+      IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'ApartmentStays')
+      BEGIN
+        CREATE TABLE ApartmentStays (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          apartment_id INT NOT NULL FOREIGN KEY REFERENCES Apartments(id) ON DELETE CASCADE,
+          checkin_date DATE NOT NULL,
+          checkin_time VARCHAR(10) NOT NULL,
+          checkout_date DATE NOT NULL,
+          checkout_time VARCHAR(10) NOT NULL,
+          created_at DATETIME NOT NULL DEFAULT GETDATE()
+        );
+        CREATE INDEX IX_ApartmentStays_AptDate ON ApartmentStays(apartment_id, checkin_date, checkout_date);
+
+        -- Migrate existing occupied rooms
+        INSERT INTO ApartmentStays (apartment_id, checkin_date, checkin_time, checkout_date, checkout_time)
+        SELECT id, checkin_date, checkin_time, checkout_date, checkout_time
+        FROM Apartments
+        WHERE status = 'occupied' AND checkin_date IS NOT NULL AND checkout_date IS NOT NULL;
+      END
     `);
 
     // Kiểm tra xem đã có dữ liệu chưa

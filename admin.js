@@ -235,7 +235,8 @@ async function apiCall(endpoint, method = 'GET', body = null) {
     const options = {
       method,
       headers,
-      body: body ? JSON.stringify(body) : null
+      body: body ? JSON.stringify(body) : null,
+      cache: 'no-store'
     };
 
     console.log(`[API CALL] fetching ${API_URL}${endpoint}`);
@@ -1636,7 +1637,80 @@ function changeRoomStatusInline(roomId, newStatus, selectEl) {
 // ===== MODAL ĐỔI TRẠNG THÁI CĂN HỘ TRONG THỐNG KÊ =====
 let selectedStatusRoomId = null;
 
-function openRoomStatusEditOnlyModal(roomId) {
+let stayRowCounter = 0;
+
+function addStayRowInModal(checkinDate = '', checkinTime = '14:00', checkoutDate = '', checkoutTime = '12:00') {
+  const container = document.getElementById('soStaysContainer');
+  if (!container) return;
+
+  if (!checkinDate && container.children.length > 0) {
+    const lastRow = container.lastElementChild;
+    const lastCheckoutDate = lastRow.querySelector('.so-checkout-date')?.value;
+    const lastCheckoutTime = lastRow.querySelector('.so-checkout-time')?.value;
+    if (lastCheckoutDate) {
+      checkinDate = lastCheckoutDate;
+      checkinTime = lastCheckoutTime || '14:00';
+    }
+  }
+
+  if (!checkinDate) {
+    const today = new Date();
+    const pad = val => String(val).padStart(2, '0');
+    checkinDate = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+  }
+  if (!checkoutDate) {
+    const tomorrow = new Date(checkinDate);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const pad = val => String(val).padStart(2, '0');
+    checkoutDate = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`;
+  }
+
+  const index = stayRowCounter++;
+  const div = document.createElement('div');
+  div.className = 'stay-row';
+  div.id = `soStayRow_${index}`;
+  div.setAttribute('data-index', index);
+  div.style.cssText = 'margin-bottom: 12px; border: 1px solid rgba(255, 255, 255, 0.08); padding: 10px; border-radius: 6px; background: rgba(255, 255, 255, 0.02); position: relative;';
+
+  div.innerHTML = `
+    <button type="button" class="btn-remove-stay" onclick="removeStayRowInModal(${index})" 
+      style="position: absolute; right: 8px; top: 8px; background: none; border: none; color: #ef4444; cursor: pointer; font-size: 0.95rem; font-weight: 700; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; border-radius: 50%;">✕</button>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px;">
+      <div>
+        <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 3px;">📅 Ngày vào</label>
+        <input type="date" class="form-control so-checkin-date" value="${checkinDate}"
+          style="width: 100%; padding: 4px; font-size: 0.8rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
+      </div>
+      <div>
+        <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 3px;">⏰ Giờ vào</label>
+        <input type="time" class="form-control so-checkin-time" value="${checkinTime}"
+          style="width: 100%; padding: 4px; font-size: 0.8rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
+      </div>
+    </div>
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px;">
+      <div>
+        <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 3px;">📅 Ngày ra</label>
+        <input type="date" class="form-control so-checkout-date" value="${checkoutDate}"
+          style="width: 100%; padding: 4px; font-size: 0.8rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
+      </div>
+      <div>
+        <label style="font-size: 0.72rem; color: var(--text-muted); display: block; margin-bottom: 3px;">⏰ Giờ ra</label>
+        <input type="time" class="form-control so-checkout-time" value="${checkoutTime}"
+          style="width: 100%; padding: 4px; font-size: 0.8rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
+      </div>
+    </div>
+  `;
+  container.appendChild(div);
+}
+
+function removeStayRowInModal(index) {
+  const row = document.getElementById(`soStayRow_${index}`);
+  if (row) {
+    row.remove();
+  }
+}
+
+async function openRoomStatusEditOnlyModal(roomId) {
   selectedStatusRoomId = roomId;
   const room = apartmentList.find(r => r.id === roomId) || summaryApartmentList.find(r => r.id === roomId);
   if (!room) return;
@@ -1645,35 +1719,37 @@ function openRoomStatusEditOnlyModal(roomId) {
   const radio = document.querySelector(`input[name="statusOnlyVal"][value="${room.status}"]`);
   if (radio) radio.checked = true;
 
-  // Pre-fill checkin/checkout date-time
-  const checkinDateEl = document.getElementById('soCheckinDate');
-  const checkinTimeEl = document.getElementById('soCheckinTime');
-  const checkoutDateEl = document.getElementById('soCheckoutDate');
-  const checkoutTimeEl = document.getElementById('soCheckoutTime');
-
-  if (checkinDateEl) {
-    if (room.checkin_date) {
-      checkinDateEl.value = new Date(room.checkin_date).toISOString().split('T')[0];
-    } else {
-      checkinDateEl.value = '';
-    }
+  const staysContainer = document.getElementById('soStaysContainer');
+  if (staysContainer) {
+    staysContainer.innerHTML = '';
   }
-  if (checkinTimeEl) checkinTimeEl.value = room.checkin_time || '';
-  if (checkoutDateEl) {
-    if (room.checkout_date) {
-      checkoutDateEl.value = new Date(room.checkout_date).toISOString().split('T')[0];
-    } else {
-      checkoutDateEl.value = '';
-    }
-  }
-  if (checkoutTimeEl) checkoutTimeEl.value = room.checkout_time || '';
 
-  // Pre-fill maintenance duration
   const maintDurationEl = document.getElementById('soMaintenanceDuration');
   if (maintDurationEl) maintDurationEl.value = room.maintenance_duration || '';
 
-  // Trigger toggle fields display
   toggleStatusModalFields('admin');
+
+  if (room.status === 'occupied') {
+    try {
+      const stays = await apiCall(`/apartments/${roomId}/stays`);
+      if (Array.isArray(stays) && stays.length > 0) {
+        stays.forEach(s => {
+          let checkinD = s.checkin_date ? new Date(s.checkin_date).toISOString().split('T')[0] : '';
+          let checkoutD = s.checkout_date ? new Date(s.checkout_date).toISOString().split('T')[0] : '';
+          addStayRowInModal(checkinD, s.checkin_time, checkoutD, s.checkout_time);
+        });
+      } else {
+        let checkinD = room.checkin_date ? new Date(room.checkin_date).toISOString().split('T')[0] : '';
+        let checkoutD = room.checkout_date ? new Date(room.checkout_date).toISOString().split('T')[0] : '';
+        addStayRowInModal(checkinD, room.checkin_time, checkoutD, room.checkout_time);
+      }
+    } catch (e) {
+      console.warn("Failed to fetch stays:", e.message);
+      let checkinD = room.checkin_date ? new Date(room.checkin_date).toISOString().split('T')[0] : '';
+      let checkoutD = room.checkout_date ? new Date(room.checkout_date).toISOString().split('T')[0] : '';
+      addStayRowInModal(checkinD, room.checkin_time, checkoutD, room.checkout_time);
+    }
+  }
 
   document.getElementById('roomStatusEditOnlyModal').classList.add('active');
 }
@@ -1695,24 +1771,10 @@ function toggleStatusModalFields(type) {
       if (dtGroup) dtGroup.style.display = 'block';
       if (mtGroup) mtGroup.style.display = 'none';
 
-      // Pre-fill default dates if empty
-      const checkinDateEl = document.getElementById('soCheckinDate');
-      const checkinTimeEl = document.getElementById('soCheckinTime');
-      const checkoutDateEl = document.getElementById('soCheckoutDate');
-      const checkoutTimeEl = document.getElementById('soCheckoutTime');
-
-      const today = new Date();
-      const tomorrow = new Date();
-      tomorrow.setDate(today.getDate() + 1);
-
-      const pad = val => String(val).padStart(2, '0');
-      const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
-      const tomorrowStr = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`;
-
-      if (checkinDateEl && !checkinDateEl.value) checkinDateEl.value = todayStr;
-      if (checkinTimeEl && !checkinTimeEl.value) checkinTimeEl.value = '14:00';
-      if (checkoutDateEl && !checkoutDateEl.value) checkoutDateEl.value = tomorrowStr;
-      if (checkoutTimeEl && !checkoutTimeEl.value) checkoutTimeEl.value = '12:00';
+      const staysContainer = document.getElementById('soStaysContainer');
+      if (staysContainer && staysContainer.children.length === 0) {
+        addStayRowInModal();
+      }
     } else if (status === 'maintenance') {
       if (dtGroup) dtGroup.style.display = 'none';
       if (mtGroup) mtGroup.style.display = 'block';
@@ -1731,7 +1793,6 @@ function toggleStatusModalFields(type) {
       if (dtGroup) dtGroup.style.display = 'block';
       if (mtGroup) mtGroup.style.display = 'none';
 
-      // Pre-fill default dates if empty
       const checkinDateEl = document.getElementById('ersCheckinDate');
       const checkinTimeEl = document.getElementById('ersCheckinTime');
       const checkoutDateEl = document.getElementById('ersCheckoutDate');
@@ -1765,15 +1826,39 @@ async function saveRoomStatusEditOnly() {
   if (!radio) return;
 
   const newStatus = radio.value;
-  const checkin_date = document.getElementById('soCheckinDate')?.value || null;
-  const checkin_time = document.getElementById('soCheckinTime')?.value || null;
-  const checkout_date = document.getElementById('soCheckoutDate')?.value || null;
-  const checkout_time = document.getElementById('soCheckoutTime')?.value || null;
   const maintenance_duration = document.getElementById('soMaintenanceDuration')?.value || null;
 
+  const stays = [];
   if (newStatus === 'occupied') {
-    if (!checkin_date || !checkin_time || !checkout_date || !checkout_time) {
-      showToast('Vui lòng nhập đầy đủ thông tin ngày/giờ check-in và check-out khi căn hộ có khách.', 'warning');
+    const container = document.getElementById('soStaysContainer');
+    const rows = container.querySelectorAll('.stay-row');
+
+    if (rows.length === 0) {
+      showToast('Vui lòng thêm ít nhất một khoảng thời gian khách.', 'warning');
+      return;
+    }
+
+    let isValid = true;
+    rows.forEach(row => {
+      const checkin_date = row.querySelector('.so-checkin-date')?.value;
+      const checkin_time = row.querySelector('.so-checkin-time')?.value;
+      const checkout_date = row.querySelector('.so-checkout-date')?.value;
+      const checkout_time = row.querySelector('.so-checkout-time')?.value;
+
+      if (!checkin_date || !checkin_time || !checkout_date || !checkout_time) {
+        isValid = false;
+      } else {
+        stays.push({
+          checkin_date,
+          checkin_time,
+          checkout_date,
+          checkout_time
+        });
+      }
+    });
+
+    if (!isValid) {
+      showToast('Vui lòng điền đầy đủ thông tin ngày/giờ vào và ngày/giờ ra cho tất cả các khách.', 'warning');
       return;
     }
   }
@@ -1781,15 +1866,11 @@ async function saveRoomStatusEditOnly() {
   try {
     const res = await apiCall(`/apartments/${selectedStatusRoomId}/status`, 'PUT', {
       status: newStatus,
-      checkin_date,
-      checkin_time,
-      checkout_date,
-      checkout_time,
-      maintenance_duration: maintenance_duration ? parseInt(maintenance_duration) : null
+      stays: newStatus === 'occupied' ? stays : null,
+      maintenance_duration: newStatus === 'maintenance' && maintenance_duration ? parseInt(maintenance_duration) : null
     });
     showToast(res.message, 'success');
     closeRoomStatusEditOnlyModal();
-    // Tải lại toàn bộ tab thống kê để cập nhật bảng, ma trận và biểu đồ
     await loadStatsTab();
     await loadApartmentsTab();
   } catch (err) {

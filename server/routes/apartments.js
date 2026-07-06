@@ -118,7 +118,7 @@ router.get('/stats', authenticate, async (req, res) => {
 // PUT /api/apartments/:id/status — Đổi trạng thái (Tất cả nhân viên đã xác thực)
 router.put('/:id/status', authenticate, async (req, res) => {
   try {
-    const { status, room_type, checkin_date, checkin_time, checkout_date, checkout_time, maintenance_duration } = req.body;
+    const { status, room_type, checkin_date, checkin_time, checkout_date, checkout_time, maintenance_duration, stays } = req.body;
     const pool = await getPool();
     const request = pool.request().input('id', sql.Int, req.params.id);
     const updates = [];
@@ -134,9 +134,96 @@ router.put('/:id/status', authenticate, async (req, res) => {
       // Tự động clear các trường dựa trên status mới chọn
       if (status === 'available') {
         updates.push('checkin_date = NULL', 'checkin_time = NULL', 'checkout_date = NULL', 'checkout_time = NULL', 'maintenance_duration = NULL');
+        // Clear stays table
+        await pool.request().input('aptId', sql.Int, req.params.id).query('DELETE FROM ApartmentStays WHERE apartment_id = @aptId');
       } else if (status === 'occupied') {
         updates.push('maintenance_duration = NULL');
-        // Cho phép nhận và cập nhật checkin/checkout
+        if (Array.isArray(stays)) {
+          await pool.request().input('aptId', sql.Int, req.params.id).query('DELETE FROM ApartmentStays WHERE apartment_id = @aptId');
+          for (const s of stays) {
+            if (s.checkin_date && s.checkout_date) {
+              await pool.request()
+                .input('aptId', sql.Int, req.params.id)
+                .input('cinD', sql.Date, s.checkin_date)
+                .input('cinT', sql.VarChar, s.checkin_time || '14:00')
+                .input('coutD', sql.Date, s.checkout_date)
+                .input('coutT', sql.VarChar, s.checkout_time || '12:00')
+                .query('INSERT INTO ApartmentStays (apartment_id, checkin_date, checkin_time, checkout_date, checkout_time) VALUES (@aptId, @cinD, @cinT, @coutD, @coutT)');
+            }
+          }
+          if (stays.length > 0) {
+            const first = stays[0];
+            updates.push('checkin_date = @cinD_main', 'checkin_time = @cinT_main', 'checkout_date = @coutD_main', 'checkout_time = @coutT_main');
+            request.input('cinD_main', sql.Date, first.checkin_date);
+            request.input('cinT_main', sql.VarChar, first.checkin_time || '14:00');
+            request.input('coutD_main', sql.Date, first.checkout_date);
+            request.input('coutT_main', sql.VarChar, first.checkout_time || '12:00');
+          } else {
+            updates.push('checkin_date = NULL', 'checkin_time = NULL', 'checkout_date = NULL', 'checkout_time = NULL');
+          }
+        } else {
+          // Backward compatibility: single stay
+          if (checkin_date !== undefined) {
+            updates.push('checkin_date = @checkin_date');
+            request.input('checkin_date', sql.Date, checkin_date || null);
+          }
+          if (checkin_time !== undefined) {
+            updates.push('checkin_time = @checkin_time');
+            request.input('checkin_time', sql.VarChar, checkin_time || null);
+          }
+          if (checkout_date !== undefined) {
+            updates.push('checkout_date = @checkout_date');
+            request.input('checkout_date', sql.Date, checkout_date || null);
+          }
+          if (checkout_time !== undefined) {
+            updates.push('checkout_time = @checkout_time');
+            request.input('checkout_time', sql.VarChar, checkout_time || null);
+          }
+
+          if (checkin_date && checkout_date) {
+            await pool.request().input('aptId', sql.Int, req.params.id).query('DELETE FROM ApartmentStays WHERE apartment_id = @aptId');
+            await pool.request()
+              .input('aptId', sql.Int, req.params.id)
+              .input('cinD', sql.Date, checkin_date)
+              .input('cinT', sql.VarChar, checkin_time || '14:00')
+              .input('coutD', sql.Date, checkout_date)
+              .input('coutT', sql.VarChar, checkout_time || '12:00')
+              .query('INSERT INTO ApartmentStays (apartment_id, checkin_date, checkin_time, checkout_date, checkout_time) VALUES (@aptId, @cinD, @cinT, @coutD, @coutT)');
+          }
+        }
+      } else if (status === 'maintenance') {
+        updates.push('checkin_date = NULL', 'checkin_time = NULL', 'checkout_date = NULL', 'checkout_time = NULL');
+        await pool.request().input('aptId', sql.Int, req.params.id).query('DELETE FROM ApartmentStays WHERE apartment_id = @aptId');
+        if (maintenance_duration !== undefined) {
+          updates.push('maintenance_duration = @maintenance_duration');
+          request.input('maintenance_duration', sql.Int, maintenance_duration ? parseInt(maintenance_duration) : null);
+        }
+      }
+    } else {
+      if (Array.isArray(stays)) {
+        await pool.request().input('aptId', sql.Int, req.params.id).query('DELETE FROM ApartmentStays WHERE apartment_id = @aptId');
+        for (const s of stays) {
+          if (s.checkin_date && s.checkout_date) {
+            await pool.request()
+              .input('aptId', sql.Int, req.params.id)
+              .input('cinD', sql.Date, s.checkin_date)
+              .input('cinT', sql.VarChar, s.checkin_time || '14:00')
+              .input('coutD', sql.Date, s.checkout_date)
+              .input('coutT', sql.VarChar, s.checkout_time || '12:00')
+              .query('INSERT INTO ApartmentStays (apartment_id, checkin_date, checkin_time, checkout_date, checkout_time) VALUES (@aptId, @cinD, @cinT, @coutD, @coutT)');
+          }
+        }
+        if (stays.length > 0) {
+          const first = stays[0];
+          updates.push('checkin_date = @cinD_main', 'checkin_time = @cinT_main', 'checkout_date = @coutD_main', 'checkout_time = @coutT_main');
+          request.input('cinD_main', sql.Date, first.checkin_date);
+          request.input('cinT_main', sql.VarChar, first.checkin_time || '14:00');
+          request.input('coutD_main', sql.Date, first.checkout_date);
+          request.input('coutT_main', sql.VarChar, first.checkout_time || '12:00');
+        } else {
+          updates.push('checkin_date = NULL', 'checkin_time = NULL', 'checkout_date = NULL', 'checkout_time = NULL');
+        }
+      } else {
         if (checkin_date !== undefined) {
           updates.push('checkin_date = @checkin_date');
           request.input('checkin_date', sql.Date, checkin_date || null);
@@ -153,31 +240,6 @@ router.put('/:id/status', authenticate, async (req, res) => {
           updates.push('checkout_time = @checkout_time');
           request.input('checkout_time', sql.VarChar, checkout_time || null);
         }
-      } else if (status === 'maintenance') {
-        updates.push('checkin_date = NULL', 'checkin_time = NULL', 'checkout_date = NULL', 'checkout_time = NULL');
-        // Cho phép nhận và cập nhật maintenance_duration
-        if (maintenance_duration !== undefined) {
-          updates.push('maintenance_duration = @maintenance_duration');
-          request.input('maintenance_duration', sql.Int, maintenance_duration ? parseInt(maintenance_duration) : null);
-        }
-      }
-    } else {
-      // Trường hợp không đổi status mà chỉ đổi các trường khác (như room_type hoặc update lẻ)
-      if (checkin_date !== undefined) {
-        updates.push('checkin_date = @checkin_date');
-        request.input('checkin_date', sql.Date, checkin_date || null);
-      }
-      if (checkin_time !== undefined) {
-        updates.push('checkin_time = @checkin_time');
-        request.input('checkin_time', sql.VarChar, checkin_time || null);
-      }
-      if (checkout_date !== undefined) {
-        updates.push('checkout_date = @checkout_date');
-        request.input('checkout_date', sql.Date, checkout_date || null);
-      }
-      if (checkout_time !== undefined) {
-        updates.push('checkout_time = @checkout_time');
-        request.input('checkout_time', sql.VarChar, checkout_time || null);
       }
       if (maintenance_duration !== undefined) {
         updates.push('maintenance_duration = @maintenance_duration');
@@ -201,7 +263,6 @@ router.put('/:id/status', authenticate, async (req, res) => {
     const query = `UPDATE Apartments SET ${updates.join(', ')} WHERE id = @id`;
     await request.query(query);
 
-    // Ghi lại snapshot trạng thái sau khi thay đổi
     if (status) {
       recordStatusSnapshot(req.params.id, status).catch(e => console.error('Snapshot error:', e.message));
     }
@@ -214,7 +275,8 @@ router.put('/:id/status', authenticate, async (req, res) => {
       checkin_time,
       checkout_date,
       checkout_time,
-      maintenance_duration
+      maintenance_duration,
+      stays
     });
     res.json({ message: 'Cập nhật căn hộ thành công.' });
   } catch (err) {
@@ -580,6 +642,22 @@ router.get('/status-timeline', authenticate, async (req, res) => {
       }
     });
 
+    const staysRes = await pool.request()
+      .query(`
+        SELECT apartment_id, checkin_date, checkin_time, checkout_date, checkout_time
+        FROM ApartmentStays
+        WHERE apartment_id IN (${apartmentIds.join(',')})
+      `);
+    const staysByApt = {};
+    apartmentIds.forEach(id => {
+      staysByApt[id] = [];
+    });
+    staysRes.recordset.forEach(stay => {
+      if (staysByApt[stay.apartment_id]) {
+        staysByApt[stay.apartment_id].push(stay);
+      }
+    });
+
     const labels = timeBuckets.map(bucket => formatBucketLabel(bucket, mode));
 
     const rooms = apartments.map(apt => {
@@ -600,28 +678,32 @@ router.get('/status-timeline', authenticate, async (req, res) => {
           }
           return activeStatus;
         } else {
-          // Future: determine based on current status and check-in/out / maintenance fields
+          // Future: determine based on stays table and maintenance fields
           const currentStatus = apt.status || 'available';
 
-          if (currentStatus === 'occupied') {
-            // Check check-in/out dates
-            if (apt.checkin_date && apt.checkout_date) {
-              const formatDateString = (d) => {
-                if (d instanceof Date) return d.toISOString().split('T')[0];
-                return String(d).split('T')[0];
-              };
-              const checkinStr = `${formatDateString(apt.checkin_date)}T${apt.checkin_time || '14:00'}:00`;
-              const checkoutStr = `${formatDateString(apt.checkout_date)}T${apt.checkout_time || '12:00'}:00`;
-              const checkinDate = new Date(checkinStr);
-              const checkoutDate = new Date(checkoutStr);
+          const aptStays = staysByApt[apt.id] || [];
+          let hasStay = false;
+          for (const stay of aptStays) {
+            const formatDateString = (d) => {
+              if (d instanceof Date) return d.toISOString().split('T')[0];
+              return String(d).split('T')[0];
+            };
+            const checkinStr = `${formatDateString(stay.checkin_date)}T${stay.checkin_time || '14:00'}:00`;
+            const checkoutStr = `${formatDateString(stay.checkout_date)}T${stay.checkout_time || '12:00'}:00`;
+            const checkinDate = new Date(checkinStr);
+            const checkoutDate = new Date(checkoutStr);
 
-              if (bucket >= checkinDate && bucket <= checkoutDate) {
-                return 'occupied';
-              } else {
-                return 'available';
-              }
+            if (bucket >= checkinDate && bucket <= checkoutDate) {
+              hasStay = true;
+              break;
             }
-          } else if (currentStatus === 'maintenance') {
+          }
+
+          if (hasStay) {
+            return 'occupied';
+          }
+
+          if (currentStatus === 'maintenance') {
             // Check maintenance duration
             const maintHistory = aptHistory.filter(h => h.status === 'maintenance');
             if (maintHistory.length > 0 && apt.maintenance_duration) {
@@ -629,8 +711,6 @@ router.get('/status-timeline', authenticate, async (req, res) => {
               const endMaint = new Date(startMaint.getTime() + apt.maintenance_duration * 60 * 60 * 1000);
               if (bucket <= endMaint) {
                 return 'maintenance';
-              } else {
-                return 'available';
               }
             }
           }
@@ -691,6 +771,20 @@ router.get('/notifications', authenticate, async (req, res) => {
     res.json(result.recordset);
   } catch (err) {
     console.error('Get notifications error:', err);
+    res.status(500).json({ error: 'Lỗi server.' });
+  }
+});
+
+// GET /api/apartments/:id/stays — Lấy danh sách các khoảng thời gian có khách của căn hộ
+router.get('/:id/stays', authenticate, async (req, res) => {
+  try {
+    const pool = await getPool();
+    const result = await pool.request()
+      .input('aptId', sql.Int, req.params.id)
+      .query('SELECT checkin_date, checkin_time, checkout_date, checkout_time FROM ApartmentStays WHERE apartment_id = @aptId ORDER BY checkin_date ASC, checkin_time ASC');
+    res.json(result.recordset);
+  } catch (err) {
+    console.error('Get apartment stays error:', err);
     res.status(500).json({ error: 'Lỗi server.' });
   }
 });

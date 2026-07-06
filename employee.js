@@ -87,7 +87,8 @@ async function apiCall(endpoint, method = 'GET', body = null) {
     const options = {
       method,
       headers,
-      body: body instanceof FormData ? body : (body ? JSON.stringify(body) : null)
+      body: body instanceof FormData ? body : (body ? JSON.stringify(body) : null),
+      cache: 'no-store'
     };
 
     const response = await fetch(`${API_URL}${endpoint}`, options);
