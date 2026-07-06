@@ -37,7 +37,14 @@ let activePool = null;
 
 async function getPool() {
   if (activePool && activePool.connected) {
-    return activePool;
+    try {
+      await activePool.request().query('SELECT 1');
+      return activePool;
+    } catch (err) {
+      console.warn('📡 Cached SQL connection lost, reconnecting...', err.message);
+      activePool = null;
+      poolPromise = null;
+    }
   }
 
   if (poolPromise) {
