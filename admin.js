@@ -1502,6 +1502,19 @@ async function loadStatsTab() {
     renderRoomSummaryTable();
     renderStatsMatrix();
     loadApartmentStatusTimeline();
+
+    // Khởi tạo ngày cho Form Nhận Khách Nhanh
+    const today = new Date();
+    const tomorrow = new Date();
+    tomorrow.setDate(today.getDate() + 1);
+    const pad = val => String(val).padStart(2, '0');
+    const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+    const tomorrowStr = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`;
+
+    const cinDateEl = document.getElementById('quickStayCheckinDate');
+    const coutDateEl = document.getElementById('quickStayCheckoutDate');
+    if (cinDateEl && !cinDateEl.value) cinDateEl.value = todayStr;
+    if (coutDateEl && !coutDateEl.value) coutDateEl.value = tomorrowStr;
   } catch (err) {
     showToast(err.message, 'warning');
   }
@@ -3184,7 +3197,13 @@ async function populateQuickAssignSelects() {
   if (roomList) {
     try {
       const apartments = await apiCall('/apartments?building=all&status=all');
-      roomList.innerHTML = apartments.map(a => `<option value="${a.code}">${a.code} (${a.room_type})</option>`).join('');
+      const optionsHtml = apartments.map(a => `<option value="${a.code}">${a.code} (${a.room_type})</option>`).join('');
+      roomList.innerHTML = optionsHtml;
+      
+      const stayRoomList = document.getElementById('quickStayRoomList');
+      if (stayRoomList) {
+        stayRoomList.innerHTML = optionsHtml;
+      }
     } catch (e) {
       console.error('Failed to load apartments for quick select', e);
     }
@@ -3256,6 +3275,83 @@ function removeQuickStaffSelect(btn) {
     if (items.length === 1) {
       items[0].querySelector('button').style.display = 'none';
     }
+  }
+}
+
+function handleQuickStayRoomInput(val) {
+  const list = document.getElementById('quickStayRoomList');
+  if (!list) return;
+  list.innerHTML = '';
+  if (!val) return;
+  const match = apartmentList.filter(r => r.code.toLowerCase().includes(val.toLowerCase()));
+  match.forEach(r => {
+    const opt = document.createElement('option');
+    opt.value = r.code;
+    list.appendChild(opt);
+  });
+}
+
+async function quickAddStay() {
+  const roomCode = document.getElementById('quickStayRoomInput')?.value;
+  const checkin_date = document.getElementById('quickStayCheckinDate')?.value;
+  const checkin_time = document.getElementById('quickStayCheckinTime')?.value || '14:00';
+  const checkout_date = document.getElementById('quickStayCheckoutDate')?.value;
+  const checkout_time = document.getElementById('quickStayCheckoutTime')?.value || '12:00';
+
+  if (!roomCode) {
+    showToast('Vui lòng nhập mã căn hộ.', 'warning');
+    return;
+  }
+  if (!checkin_date || !checkout_date) {
+    showToast('Vui lòng chọn đầy đủ ngày vào và ngày ra.', 'warning');
+    return;
+  }
+
+  // Find room by code
+  const room = apartmentList.find(r => r.code.toUpperCase() === roomCode.toUpperCase()) || 
+               summaryApartmentList.find(r => r.code.toUpperCase() === roomCode.toUpperCase());
+  if (!room) {
+    showToast(`Không tìm thấy căn hộ có mã: ${roomCode}`, 'warning');
+    return;
+  }
+
+  try {
+    // 1. Fetch current stays for this room
+    const currentStays = await apiCall(`/apartments/${room.id}/stays`);
+    const newStay = {
+      checkin_date,
+      checkin_time,
+      checkout_date,
+      checkout_time
+    };
+
+    // Add the new stay to the list
+    const updatedStays = Array.isArray(currentStays) ? [...currentStays] : [];
+    const formattedCurrentStays = updatedStays.map(s => ({
+      checkin_date: s.checkin_date ? new Date(s.checkin_date).toISOString().split('T')[0] : '',
+      checkin_time: s.checkin_time,
+      checkout_date: s.checkout_date ? new Date(s.checkout_date).toISOString().split('T')[0] : '',
+      checkout_time: s.checkout_time
+    }));
+
+    formattedCurrentStays.push(newStay);
+
+    // 2. Save stays to backend
+    const res = await apiCall(`/apartments/${room.id}/status`, 'PUT', {
+      status: 'occupied',
+      stays: formattedCurrentStays
+    });
+
+    showToast(`Đã thêm lịch khách cho căn ${room.code} thành công!`, 'success');
+
+    // Clear inputs
+    document.getElementById('quickStayRoomInput').value = '';
+    
+    // Reload tabs
+    await loadStatsTab();
+    await loadApartmentsTab();
+  } catch (err) {
+    showToast(err.message, 'warning');
   }
 }
 
