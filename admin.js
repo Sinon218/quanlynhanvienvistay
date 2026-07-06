@@ -12,6 +12,7 @@ let apartmentList = [];
 let summaryApartmentList = [];
 let statsData = [];
 let salaryData = [];
+let timelineData = null;
 
 // Chart state
 let roomStatusChart = null;
@@ -76,13 +77,15 @@ function getDefaultTvsWindow() {
 const COMPLEX_GROUPS = [
   { key: 'SkyLake', label: 'Skylake', buildings: ['S1', 'S2', 'S3'] },
   { key: 'Royal', label: 'Royal', buildings: ['R6A'] },
-  { key: 'Imperia', label: 'Imperia', buildings: ['B'] }
+  { key: 'Imperia', label: 'Imperia', buildings: ['B'] },
+  { key: 'HCM', label: 'Hồ Chí Minh', buildings: ['HCM'] }
 ];
 
 function getBuildingsForChartGroup(selectedGroup) {
   if (selectedGroup === 'SkyLake') return ['S1', 'S2', 'S3'];
   if (selectedGroup === 'Royal') return ['R6A'];
   if (selectedGroup === 'Imperia') return ['B'];
+  if (selectedGroup === 'HCM') return ['HCM'];
   if (selectedGroup && selectedGroup !== 'all') return [selectedGroup];
   return [];
 }
@@ -101,6 +104,9 @@ function getChartGroupDefs(selectedGroup) {
   if (selectedGroup === 'Imperia') {
     return [{ label: 'B', buildings: ['B'] }];
   }
+  if (selectedGroup === 'HCM') {
+    return [{ label: 'HCM', buildings: ['HCM'] }];
+  }
   return COMPLEX_GROUPS.map(group => ({ label: group.label, buildings: group.buildings }));
 }
 
@@ -115,7 +121,7 @@ function getRoomTypeSummary(apartments) {
 function getComplexStatsMatrix(apartments) {
   return COMPLEX_GROUPS.map(group => {
     const groupRooms = apartments
-      .filter(room => group.buildings.includes(room.building) && room.building !== 'HCM')
+      .filter(room => group.buildings.includes(room.building))
       .sort((a, b) => a.code.localeCompare(b.code, 'vi'));
 
     const byType = ROOM_TYPE_ORDER.map(roomType => {
@@ -202,8 +208,10 @@ function handleLogout() {
 // ===== API REQUEST HELPER WITH OFFLINE FALLBACK =====
 async function apiCall(endpoint, method = 'GET', body = null) {
   let mode = localStorage.getItem('vistay_mode') || 'backend';
+  console.log(`[API CALL] calling ${endpoint} using mode: ${mode}, token length: ${token ? token.length : 0}`);
 
   if (mode === 'local') {
+    console.log(`[API CALL] falling back to mock for ${endpoint}`);
     return handleLocalMockCall(endpoint, method, body);
   }
 
@@ -221,9 +229,15 @@ async function apiCall(endpoint, method = 'GET', body = null) {
       body: body ? JSON.stringify(body) : null
     };
 
+    console.log(`[API CALL] fetching ${API_URL}${endpoint}`);
     const response = await fetch(`${API_URL}${endpoint}`, options);
+    console.log(`[API CALL] response status for ${endpoint}: ${response.status}`);
 
     if (!response.ok) {
+      if (response.status === 401) {
+        handleLogout();
+        return;
+      }
       const data = await response.json();
       const apiErr = new Error(data.error || 'Đã xảy ra lỗi khi gọi API.');
       apiErr.isApiError = true;
@@ -233,6 +247,7 @@ async function apiCall(endpoint, method = 'GET', body = null) {
     return await response.json();
   } catch (err) {
     if (err.isApiError) {
+      console.error(`[API CALL] api error for ${endpoint}:`, err);
       throw err;
     }
     console.warn(`API call to ${endpoint} failed: ${err.message}. Falling back to local offline mode.`);
@@ -763,23 +778,33 @@ function switchTab(e, tabId) {
 
 // ==================== TAB 1: ASSIGNMENT ====================
 async function loadAssignmentTab() {
+  console.log("[ASSIGNMENT] loadAssignmentTab started");
   try {
+    console.log("[ASSIGNMENT] fetching staff...");
     staffList = await apiCall('/staff');
+    console.log("[ASSIGNMENT] rendering staff grids. staffList length:", staffList.length);
     renderStaffGrids();
 
+    console.log("[ASSIGNMENT] fetching work/today...");
     const roomAssignments = await apiCall('/work/today');
+    console.log("[ASSIGNMENT] rendering room assignments. assignments length:", roomAssignments.length);
     renderRoomAssignmentsTable(roomAssignments);
     renderRejectedAssignments(roomAssignments);
 
     try {
+      console.log("[ASSIGNMENT] fetching tasks/today...");
       const tasks = await apiCall('/tasks/today');
+      console.log("[ASSIGNMENT] rendering active tech tasks. tasks length:", tasks.length);
       renderActiveTechTasks(tasks);
     } catch (e) {
       console.warn("Failed to load tasks for notifications:", e.message);
     }
 
+    console.log("[ASSIGNMENT] populating quick assign selects...");
     populateQuickAssignSelects();
+    console.log("[ASSIGNMENT] loadAssignmentTab completed successfully");
   } catch (err) {
+    console.error("[ASSIGNMENT] loadAssignmentTab error:", err);
     showToast(err.message, 'warning');
   }
 }
@@ -1042,7 +1067,7 @@ async function loadApartmentsTab() {
 
 function renderApartmentStats(totals) {
   const container = document.getElementById('roomStats');
-  const roomTypeSummary = getRoomTypeSummary(apartmentList.filter(room => room.building !== 'HCM'));
+  const roomTypeSummary = getRoomTypeSummary(apartmentList);
   container.innerHTML = `
     <div class="stat-item stat-total">
       <span class="stat-num">${totals.total}</span>
@@ -1161,21 +1186,58 @@ function renderRoomAssignmentStaffSelects(room, taskType = 'out') {
   const container = document.getElementById('assignStaffSelectContainer');
   if (!container || !room) return;
 
-  const selectCount = getCleaningSelectCount(room.room_type, taskType);
-  let html = '';
-  for (let i = 1; i <= selectCount; i++) {
-    const labelText = selectCount > 1 ? `Người dọn ${i}` : 'Người dọn';
-    html += `
-      <div style="margin-top: 8px;">
-        <span style="font-size: 0.8rem; color: var(--text-muted);">${labelText}:</span>
-        <select id="assignStaffSelect_${i}" class="room-filter-select" style="width: 100%; margin-top: 4px;">
+  container.innerHTML = `
+    <div id="modalStaffSelectsWrapper">
+      <div class="modal-staff-select-item" style="margin-top: 8px; display: flex; align-items: center; gap: 8px;">
+        <select class="room-filter-select modal-staff-sel" style="flex: 1;">
           <option value="">-- Chọn nhân viên để giao phòng --</option>
           ${staffList.map(s => `<option value="${s.id}">${s.name} (${s.type === 'full-time' ? 'FT' : 'PT'})</option>`).join('')}
         </select>
+        <button type="button" class="btn btn-cancel" onclick="removeModalStaffSelect(this)" style="padding: 6px 10px; display: none;">✕</button>
       </div>
-    `;
+    </div>
+    <button class="btn" type="button" onclick="addModalStaffSelect()" style="margin-top: 8px; padding: 4px 8px; font-size: 0.75rem; background: rgba(16, 185, 129, 0.1); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.2); cursor: pointer;">➕ Thêm người dọn</button>
+  `;
+}
+
+function addModalStaffSelect() {
+  const wrapper = document.getElementById('modalStaffSelectsWrapper');
+  if (!wrapper) return;
+  
+  const newItem = document.createElement('div');
+  newItem.className = 'modal-staff-select-item';
+  newItem.style.marginTop = '8px';
+  newItem.style.display = 'flex';
+  newItem.style.alignItems = 'center';
+  newItem.style.gap = '8px';
+  
+  newItem.innerHTML = `
+    <select class="room-filter-select modal-staff-sel" style="flex: 1;">
+      <option value="">-- Chọn nhân viên để giao phòng --</option>
+      ${staffList.map(s => `<option value="${s.id}">${s.name} (${s.type === 'full-time' ? 'FT' : 'PT'})</option>`).join('')}
+    </select>
+    <button type="button" class="btn btn-cancel" onclick="removeModalStaffSelect(this)" style="padding: 6px 10px;">✕</button>
+  `;
+  wrapper.appendChild(newItem);
+  
+  // Show all remove buttons if there are more than 1
+  const items = wrapper.querySelectorAll('.modal-staff-select-item');
+  if (items.length > 1) {
+    wrapper.querySelectorAll('.modal-staff-select-item button').forEach(btn => btn.style.display = 'inline-block');
   }
-  container.innerHTML = html;
+}
+
+function removeModalStaffSelect(btn) {
+  const item = btn.closest('.modal-staff-select-item');
+  const wrapper = document.getElementById('modalStaffSelectsWrapper');
+  if (item && wrapper) {
+    item.remove();
+    // Hide remove button if only 1 select left
+    const items = wrapper.querySelectorAll('.modal-staff-select-item');
+    if (items.length === 1) {
+      items[0].querySelector('button').style.display = 'none';
+    }
+  }
 }
 
 function refreshRoomAssignmentStaffSelects() {
@@ -1188,33 +1250,26 @@ function refreshRoomAssignmentStaffSelects() {
 }
 
 function toggleTvsTimeFields(taskType) {
-  const isTvs = taskType === 'tong_ve_sinh';
   const group = document.getElementById('tvsTimeGroup');
-  if (group) group.style.display = isTvs ? 'block' : 'none';
+  if (group) group.style.display = 'block';
 
-  if (isTvs) {
-    const defaults = getDefaultTvsWindow();
-    const startEl = document.getElementById('tvsStartAt');
-    const endEl = document.getElementById('tvsEndAt');
-    if (startEl && !startEl.value) startEl.value = defaults.start;
-    if (endEl && !endEl.value) endEl.value = defaults.end;
-  }
+  const defaults = getDefaultTvsWindow();
+  const startEl = document.getElementById('tvsStartAt');
+  const endEl = document.getElementById('tvsEndAt');
+  if (startEl && !startEl.value) startEl.value = defaults.start;
+  if (endEl && !endEl.value) endEl.value = defaults.end;
 }
 
 function toggleQuickTvsTimeFields() {
-  const taskType = document.getElementById('quickTaskTypeSelect')?.value || 'out';
-  const isTvs = taskType === 'tong_ve_sinh';
   document.querySelectorAll('.quick-tvs-time-group').forEach(el => {
-    el.style.display = isTvs ? 'block' : 'none';
+    el.style.display = 'block';
   });
 
-  if (isTvs) {
-    const defaults = getDefaultTvsWindow();
-    const startEl = document.getElementById('quickTvsStartAt');
-    const endEl = document.getElementById('quickTvsEndAt');
-    if (startEl && !startEl.value) startEl.value = defaults.start;
-    if (endEl && !endEl.value) endEl.value = defaults.end;
-  }
+  const defaults = getDefaultTvsWindow();
+  const startEl = document.getElementById('quickTvsStartAt');
+  const endEl = document.getElementById('quickTvsEndAt');
+  if (startEl && !startEl.value) startEl.value = defaults.start;
+  if (endEl && !endEl.value) endEl.value = defaults.end;
 }
 
 function openRoomStatusModal(roomId) {
@@ -1244,6 +1299,8 @@ async function saveRoomStatus() {
   if (selectedRoomId === null) return;
   const taskTypeEl = document.querySelector('input[name="taskType"]:checked');
   const taskType = taskTypeEl ? taskTypeEl.value : 'out';
+  const expectedStart = document.getElementById('tvsStartAt')?.value || null;
+  const expectedEnd = document.getElementById('tvsEndAt')?.value || null;
 
   // Read multiple staff dropdowns
   const staffIds = [];
@@ -1269,7 +1326,9 @@ async function saveRoomStatus() {
       await apiCall('/work/assign', 'POST', {
         staff_id: staffId,
         apartment_id: selectedRoomId,
-        task_type: taskType
+        task_type: taskType,
+        expected_start_at: expectedStart,
+        expected_end_at: expectedEnd
       });
     }
     const taskLabel = getTaskTypeLabel(taskType);
@@ -1452,8 +1511,8 @@ function renderRoomSummaryTable() {
   const tbody = document.getElementById('roomSummaryTableBody');
   if (!tbody) return;
 
-  // Lọc các căn hộ từ summaryApartmentList: loại trừ HCM và giữ lại SSTN + lọc theo tòa
-  let filtered = summaryApartmentList.filter(a => a.building !== 'HCM');
+  // Lọc các căn hộ từ summaryApartmentList: lọc theo tòa
+  let filtered = summaryApartmentList;
   if (summaryBuildingFilter && summaryBuildingFilter !== 'all') {
     filtered = filtered.filter(a => a.building === summaryBuildingFilter);
   }
@@ -1517,6 +1576,7 @@ function renderRoomSummaryTable() {
             >
               <option value="available" ${room.status === 'available' ? 'selected' : ''}>🟢 Trống</option>
               <option value="occupied" ${room.status === 'occupied' ? 'selected' : ''}>🔴 Có khách</option>
+              ${room.status === 'maintenance' ? `<option value="maintenance" selected disabled>🔵 Bảo trì</option>` : ''}
             </select>
           `;
         }
@@ -1625,6 +1685,25 @@ function toggleStatusModalFields(type) {
     if (status === 'occupied') {
       if (dtGroup) dtGroup.style.display = 'block';
       if (mtGroup) mtGroup.style.display = 'none';
+
+      // Pre-fill default dates if empty
+      const checkinDateEl = document.getElementById('soCheckinDate');
+      const checkinTimeEl = document.getElementById('soCheckinTime');
+      const checkoutDateEl = document.getElementById('soCheckoutDate');
+      const checkoutTimeEl = document.getElementById('soCheckoutTime');
+
+      const today = new Date();
+      const tomorrow = new Date();
+      tomorrow.setDate(today.getDate() + 1);
+
+      const pad = val => String(val).padStart(2, '0');
+      const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+      const tomorrowStr = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`;
+
+      if (checkinDateEl && !checkinDateEl.value) checkinDateEl.value = todayStr;
+      if (checkinTimeEl && !checkinTimeEl.value) checkinTimeEl.value = '14:00';
+      if (checkoutDateEl && !checkoutDateEl.value) checkoutDateEl.value = tomorrowStr;
+      if (checkoutTimeEl && !checkoutTimeEl.value) checkoutTimeEl.value = '12:00';
     } else if (status === 'maintenance') {
       if (dtGroup) dtGroup.style.display = 'none';
       if (mtGroup) mtGroup.style.display = 'block';
@@ -1642,6 +1721,25 @@ function toggleStatusModalFields(type) {
     if (status === 'occupied') {
       if (dtGroup) dtGroup.style.display = 'block';
       if (mtGroup) mtGroup.style.display = 'none';
+
+      // Pre-fill default dates if empty
+      const checkinDateEl = document.getElementById('ersCheckinDate');
+      const checkinTimeEl = document.getElementById('ersCheckinTime');
+      const checkoutDateEl = document.getElementById('ersCheckoutDate');
+      const checkoutTimeEl = document.getElementById('ersCheckoutTime');
+
+      const today = new Date();
+      const tomorrow = new Date();
+      tomorrow.setDate(today.getDate() + 1);
+
+      const pad = val => String(val).padStart(2, '0');
+      const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+      const tomorrowStr = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`;
+
+      if (checkinDateEl && !checkinDateEl.value) checkinDateEl.value = todayStr;
+      if (checkinTimeEl && !checkinTimeEl.value) checkinTimeEl.value = '14:00';
+      if (checkoutDateEl && !checkoutDateEl.value) checkoutDateEl.value = tomorrowStr;
+      if (checkoutTimeEl && !checkoutTimeEl.value) checkoutTimeEl.value = '12:00';
     } else if (status === 'maintenance') {
       if (dtGroup) dtGroup.style.display = 'none';
       if (mtGroup) mtGroup.style.display = 'block';
@@ -1663,6 +1761,13 @@ async function saveRoomStatusEditOnly() {
   const checkout_date = document.getElementById('soCheckoutDate')?.value || null;
   const checkout_time = document.getElementById('soCheckoutTime')?.value || null;
   const maintenance_duration = document.getElementById('soMaintenanceDuration')?.value || null;
+
+  if (newStatus === 'occupied') {
+    if (!checkin_date || !checkin_time || !checkout_date || !checkout_time) {
+      showToast('Vui lòng nhập đầy đủ thông tin ngày/giờ check-in và check-out khi căn hộ có khách.', 'warning');
+      return;
+    }
+  }
 
   try {
     const res = await apiCall(`/apartments/${selectedStatusRoomId}/status`, 'PUT', {
@@ -1715,7 +1820,7 @@ function renderStatsMatrix() {
   const tbody = document.getElementById('statsMatrixTableBody');
   if (!tbody) return;
 
-  const matrix = getComplexStatsMatrix(summaryApartmentList.filter(room => room.building !== 'HCM'));
+  const matrix = getComplexStatsMatrix(summaryApartmentList);
   if (matrix.length === 0) {
     tbody.innerHTML = '<tr><td colspan="6" style="text-align: center;">Không có dữ liệu thống kê.</td></tr>';
     return;
@@ -1771,7 +1876,7 @@ async function loadRoomStatusChart() {
 
     selectedChartBuilding = select.value || 'all';
 
-    renderApartmentStatusChart(summaryApartmentList.filter(room => room.building !== 'HCM'));
+    renderApartmentStatusChart(summaryApartmentList);
   } catch (err) {
     console.warn('Failed to load room status chart:', err.message);
   }
@@ -1807,6 +1912,7 @@ async function loadApartmentStatusTimeline() {
 
     const building = selectedChartBuilding || 'all';
     const data = await apiCall(`/apartments/status-timeline?building=${encodeURIComponent(building)}&mode=${timelineMode}`);
+    timelineData = data;
     renderApartmentStatusTimeline(data);
   } catch (err) {
     console.warn('Failed to load apartment status timeline:', err.message);
@@ -2001,6 +2107,23 @@ function showTimelinePopover(element, roomCode, status, startLabel, endLabel, is
     timeOutLabel.textContent = 'Trả phòng:';
     timeInVal.textContent = startLabel;
     timeOutVal.textContent = endLabel;
+  }
+
+  const cleaningRow = document.getElementById('popoverCleaningRow');
+  const cleaningDetails = document.getElementById('popoverCleaningDetails');
+  if (cleaningRow && cleaningDetails) {
+    const room = timelineData?.rooms?.find(r => r.id === roomId);
+    if (room && room.assignments && room.assignments.length > 0) {
+      cleaningRow.style.display = 'flex';
+      cleaningDetails.innerHTML = room.assignments.map(wa => {
+        const startStr = wa.expected_start_at ? new Date(wa.expected_start_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '—';
+        const endStr = wa.expected_end_at ? new Date(wa.expected_end_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '—';
+        const taskLabel = getTaskTypeLabel(wa.task_type);
+        return `<div style="margin-bottom: 6px; border-bottom: 1px dashed rgba(255,255,255,0.1); padding-bottom: 6px;">👤 <strong>${wa.staff_name}</strong> (${taskLabel})<br>⏰ Dự kiến: ${startStr} - ${endStr}</div>`;
+      }).join('');
+    } else {
+      cleaningRow.style.display = 'none';
+    }
   }
 
   const footer = document.getElementById('popoverFooter');
@@ -2619,7 +2742,8 @@ async function saveChangePassword() {
 }
 
 // ===== EVENT BINDINGS =====
-document.addEventListener('DOMContentLoaded', () => {
+function initializePage() {
+  console.log("[INIT] initializePage started");
   checkAuth();
   setupRealtimeEvents();
 
@@ -2733,9 +2857,31 @@ document.addEventListener('DOMContentLoaded', () => {
   if (quickTaskTypeSelect) {
     quickTaskTypeSelect.addEventListener('change', () => {
       handleQuickRoomInput(document.getElementById('quickRoomInput')?.value || '');
+      toggleQuickTvsTimeInputs();
     });
+    toggleQuickTvsTimeInputs();
   }
-});
+}
+
+function toggleQuickTvsTimeInputs() {
+  const select = document.getElementById('quickTaskTypeSelect');
+  if (!select) return;
+  const taskType = select.value;
+  const timeGroups = document.querySelectorAll('.quick-tvs-time-group');
+  timeGroups.forEach(group => {
+    if (taskType === 'tong_ve_sinh') {
+      group.style.display = 'block';
+    } else {
+      group.style.display = 'none';
+    }
+  });
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializePage);
+} else {
+  initializePage();
+}
 
 async function syncOfflineData() {
   if (!confirm('Bạn có muốn đồng bộ toàn bộ dữ liệu Offline (Nhân viên, Căn hộ, Phân công) từ điện thoại này lên Server máy tính không? Dữ liệu trên Server sẽ được cập nhật.')) {
@@ -2796,6 +2942,13 @@ async function approveAssignment(id) {
 async function quickAssignRoom() {
   const roomCode = document.getElementById('quickRoomInput').value.trim();
   const taskType = document.getElementById('quickTaskTypeSelect').value;
+  let expectedStart = document.getElementById('quickTvsStartAt')?.value || null;
+  let expectedEnd = document.getElementById('quickTvsEndAt')?.value || null;
+
+  if (taskType !== 'tong_ve_sinh') {
+    expectedStart = null;
+    expectedEnd = null;
+  }
 
   if (!roomCode) {
     showToast('Vui lòng nhập mã căn hộ.', 'warning');
@@ -2829,13 +2982,20 @@ async function quickAssignRoom() {
       await apiCall('/work/assign', 'POST', {
         staff_id: staffId,
         apartment_id: room.id,
-        task_type: taskType
+        task_type: taskType,
+        expected_start_at: expectedStart,
+        expected_end_at: expectedEnd
       });
     }
     showToast('Đã phân công dọn phòng thành công.', 'success');
 
     // Reset form
     document.getElementById('quickRoomInput').value = '';
+    const defaults = getDefaultTvsWindow();
+    const startEl = document.getElementById('quickTvsStartAt');
+    const endEl = document.getElementById('quickTvsEndAt');
+    if (startEl) startEl.value = defaults.start;
+    if (endEl) endEl.value = defaults.end;
     renderQuickStaffSelects(1);
 
     // Reload data
@@ -2920,8 +3080,7 @@ async function populateQuickAssignSelects() {
   if (roomList) {
     try {
       const apartments = await apiCall('/apartments?building=all&status=all');
-      const nonHcmApts = apartments.filter(a => a.building !== 'HCM');
-      roomList.innerHTML = nonHcmApts.map(a => `<option value="${a.code}">${a.code} (${a.room_type})</option>`).join('');
+      roomList.innerHTML = apartments.map(a => `<option value="${a.code}">${a.code} (${a.room_type})</option>`).join('');
     } catch (e) {
       console.error('Failed to load apartments for quick select', e);
     }
@@ -2938,13 +3097,62 @@ function renderQuickStaffSelects(count) {
   for (let i = 1; i <= count; i++) {
     const label = count > 1 ? `Người ${i}` : 'Chọn nhân viên';
     html += `
-      <select class="room-filter-select quick-staff-sel" style="flex: 1; min-width: 120px;">
-        <option value="">-- ${label} --</option>
-        ${staffList.map(s => `<option value="${s.id}">${s.name} (${s.type === 'full-time' ? 'FT' : 'PT'})</option>`).join('')}
-      </select>
+      <div class="quick-staff-select-item" style="display: flex; align-items: center; gap: 4px; flex: 1; min-width: 150px;">
+        <select class="room-filter-select quick-staff-sel" style="flex: 1;">
+          <option value="">-- ${label} --</option>
+          ${staffList.map(s => `<option value="${s.id}">${s.name} (${s.type === 'full-time' ? 'FT' : 'PT'})</option>`).join('')}
+        </select>
+        <button type="button" class="btn btn-cancel" onclick="removeQuickStaffSelect(this)" style="padding: 4px 8px; display: none;">✕</button>
+      </div>
     `;
   }
   listContainer.innerHTML = html;
+
+  // Show remove buttons if count > 1
+  if (count > 1) {
+    listContainer.querySelectorAll('.quick-staff-select-item button').forEach(btn => btn.style.display = 'inline-block');
+  }
+}
+
+function addQuickStaffSelect() {
+  const listContainer = document.getElementById('quickStaffSelectsList');
+  if (!listContainer) return;
+  
+  const newItem = document.createElement('div');
+  newItem.className = 'quick-staff-select-item';
+  newItem.style.display = 'flex';
+  newItem.style.alignItems = 'center';
+  newItem.style.gap = '4px';
+  newItem.style.flex = '1';
+  newItem.style.minWidth = '150px';
+  
+  newItem.innerHTML = `
+    <select class="room-filter-select quick-staff-sel" style="flex: 1;">
+      <option value="">-- Chọn nhân viên --</option>
+      ${staffList.map(s => `<option value="${s.id}">${s.name} (${s.type === 'full-time' ? 'FT' : 'PT'})</option>`).join('')}
+    </select>
+    <button type="button" class="btn btn-cancel" onclick="removeQuickStaffSelect(this)" style="padding: 4px 8px;">✕</button>
+  `;
+  listContainer.appendChild(newItem);
+  
+  // Show all remove buttons if there are more than 1
+  const items = listContainer.querySelectorAll('.quick-staff-select-item');
+  if (items.length > 1) {
+    listContainer.querySelectorAll('.quick-staff-select-item button').forEach(btn => btn.style.display = 'inline-block');
+  }
+}
+
+function removeQuickStaffSelect(btn) {
+  const item = btn.closest('.quick-staff-select-item');
+  const listContainer = document.getElementById('quickStaffSelectsList');
+  if (item && listContainer) {
+    item.remove();
+    // Hide remove button if only 1 select left
+    const items = listContainer.querySelectorAll('.quick-staff-select-item');
+    if (items.length === 1) {
+      items[0].querySelector('button').style.display = 'none';
+    }
+  }
 }
 
 function handleQuickRoomInput(val) {
@@ -3121,43 +3329,47 @@ async function checkNewNotifications() {
 
 let eventSource = null;
 function setupRealtimeEvents() {
-  // Offline storage listener
-  window.addEventListener('storage', (e) => {
-    if (localStorage.getItem('vistay_mode') === 'local') {
-      if (e.key === 'vistay_mock_work' || e.key === 'vistay_mock_tasks_list' || e.key === 'vistay_mock_apartments') {
-        console.log('🔄 Offline mode: Local mock data updated. Reloading current tab...');
-        refreshActiveTab();
-      }
-    }
-  });
-
-  // Online SSE listener
-  if (localStorage.getItem('vistay_mode') !== 'local') {
-    if (eventSource) eventSource.close();
-    eventSource = new EventSource(`${API_URL}/events`);
-
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        console.log('📢 Received real-time event:', data);
-
-        // Hiển thị Toast thông báo nếu có tin nhắn chi tiết
-        if (data.message) {
-          const type = (data.action === 'reject' || data.action === 'reject_completed') ? 'warning' : 'success';
-          showToast(data.message, type);
+  try {
+    // Offline storage listener
+    window.addEventListener('storage', (e) => {
+      if (localStorage.getItem('vistay_mode') === 'local') {
+        if (e.key === 'vistay_mock_work' || e.key === 'vistay_mock_tasks_list' || e.key === 'vistay_mock_apartments') {
+          console.log('🔄 Offline mode: Local mock data updated. Reloading current tab...');
+          refreshActiveTab();
         }
-
-        refreshActiveTab();
-      } catch (err) {
-        console.error('Failed to parse SSE data:', err);
       }
-    };
+    });
 
-    eventSource.onerror = (err) => {
-      console.warn("SSE connection lost. Retrying in 5 seconds...", err);
-      eventSource.close();
-      setTimeout(setupRealtimeEvents, 5000);
-    };
+    // Online SSE listener
+    if (localStorage.getItem('vistay_mode') !== 'local') {
+      if (eventSource) eventSource.close();
+      eventSource = new EventSource(`${API_URL}/events`);
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('📢 Received real-time event:', data);
+
+          // Hiển thị Toast thông báo nếu có tin nhắn chi tiết
+          if (data.message) {
+            const type = (data.action === 'reject' || data.action === 'reject_completed') ? 'warning' : 'success';
+            showToast(data.message, type);
+          }
+
+          refreshActiveTab();
+        } catch (err) {
+          console.error('Failed to parse SSE data:', err);
+        }
+      };
+
+      eventSource.onerror = (err) => {
+        console.warn("SSE connection lost. Retrying in 5 seconds...", err);
+        eventSource.close();
+        setTimeout(setupRealtimeEvents, 5000);
+      };
+    }
+  } catch (err) {
+    console.error('Failed to setup real-time events:', err);
   }
 }
 

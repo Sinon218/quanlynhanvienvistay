@@ -18,10 +18,7 @@ function getLocalDate() {
 }
 
 function getCleaningStaffLimit(roomType, taskType = 'out') {
-  if (taskType === 'tong_ve_sinh') return Infinity;
-  if (roomType === '3 ngủ') return 3;
-  if (roomType === '4 ngủ') return 4;
-  return 2;
+  return Infinity;
 }
 
 async function ensureNotificationsTable(pool) {
@@ -40,7 +37,7 @@ async function ensureNotificationsTable(pool) {
 // POST /api/work/assign — Giao căn hộ cho NV (Admin/Manager)
 router.post('/assign', authenticate, requireManagerOrAdmin, async (req, res) => {
   try {
-    const { staff_id, apartment_id, assigned_date, task_type } = req.body;
+    const { staff_id, apartment_id, assigned_date, task_type, expected_start_at, expected_end_at } = req.body;
     if (!staff_id || !apartment_id) {
       return res.status(400).json({ error: 'Thiếu thông tin nhân viên hoặc căn hộ.' });
     }
@@ -105,9 +102,11 @@ router.post('/assign', authenticate, requireManagerOrAdmin, async (req, res) => 
       .input('date', sql.Date, date)
       .input('taskType', sql.VarChar, type)
       .input('assignedRole', sql.Int, assignedRole)
+      .input('expectedStart', sql.DateTime, expected_start_at ? new Date(expected_start_at) : null)
+      .input('expectedEnd', sql.DateTime, expected_end_at ? new Date(expected_end_at) : null)
       .query(`
-        INSERT INTO WorkAssignments (staff_id, apartment_id, assigned_date, task_type, assigned_role, status)
-        VALUES (@staffId, @apartmentId, @date, @taskType, @assignedRole, 'pending')
+        INSERT INTO WorkAssignments (staff_id, apartment_id, assigned_date, task_type, assigned_role, status, expected_start_at, expected_end_at)
+        VALUES (@staffId, @apartmentId, @date, @taskType, @assignedRole, 'pending', @expectedStart, @expectedEnd)
       `);
 
     // Lấy thông tin phòng và nhân viên để tạo message thông báo

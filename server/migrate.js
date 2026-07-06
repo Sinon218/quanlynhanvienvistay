@@ -26,6 +26,21 @@ async function migrate() {
         PRINT 'ℹ️ checkin/checkout columns already exist';
       END
     `);
+
+    console.log('🔄 Checking and adding expected_start_at/expected_end_at columns to WorkAssignments...');
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'WorkAssignments' AND COLUMN_NAME = 'expected_start_at')
+      BEGIN
+        ALTER TABLE WorkAssignments ADD 
+          expected_start_at DATETIME NULL,
+          expected_end_at DATETIME NULL;
+        PRINT '✅ expected_start_at/expected_end_at columns added to WorkAssignments';
+      END
+      ELSE
+      BEGIN
+        PRINT 'ℹ️ expected_start_at/expected_end_at columns already exist';
+      END
+    `);
     
     console.log('✅ DATABASE MIGRATION COMPLETE!');
   } catch (err) {

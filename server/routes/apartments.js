@@ -460,7 +460,7 @@ router.get('/status-timeline', authenticate, async (req, res) => {
     let queryApartments = `
       SELECT id, code, building, room_type, status
       FROM Apartments
-      WHERE building != 'HCM' AND is_samsung = 0
+      WHERE 1=1
     `;
     const request = pool.request();
 
@@ -505,6 +505,58 @@ router.get('/status-timeline', authenticate, async (req, res) => {
         ORDER BY recorded_at ASC
       `);
 
+    const initialStatusesRes = await pool.request()
+      .input('cutoff', sql.DateTime, cutoffDate)
+      .query(`
+        SELECT h.apartment_id, h.status
+        FROM ApartmentStatusHistory h
+        INNER JOIN (
+          SELECT apartment_id, MAX(id) as max_id
+          FROM ApartmentStatusHistory
+          WHERE apartment_id IN (${apartmentIds.join(',')})
+            AND recorded_at < @cutoff
+          GROUP BY apartment_id
+        ) latest ON h.id = latest.max_id
+      `);
+
+    const initialStatusByApt = {};
+    initialStatusesRes.recordset.forEach(row => {
+      initialStatusByApt[row.apartment_id] = row.status;
+    });
+
+    const getLocalDate = () => {
+      const options = { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' };
+      const formatter = new Intl.DateTimeFormat('en-CA', options);
+      return formatter.format(new Date());
+    };
+
+    const date = getLocalDate();
+    const assignmentsRes = await pool.request()
+      .input('date', sql.Date, date)
+      .query(`
+        SELECT wa.id, wa.apartment_id, wa.staff_id, wa.task_type, wa.expected_start_at, wa.expected_end_at, s.name as staff_name
+        FROM WorkAssignments wa
+        JOIN Staff s ON wa.staff_id = s.id
+        WHERE wa.assigned_date = @date AND wa.status <> 'rejected'
+      `);
+
+    const assignmentsByApt = {};
+    apartmentIds.forEach(id => {
+      assignmentsByApt[id] = [];
+    });
+    assignmentsRes.recordset.forEach(wa => {
+      if (assignmentsByApt[wa.apartment_id]) {
+        assignmentsByApt[wa.apartment_id].push({
+          id: wa.id,
+          staff_id: wa.staff_id,
+          staff_name: wa.staff_name,
+          task_type: wa.task_type,
+          expected_start_at: wa.expected_start_at,
+          expected_end_at: wa.expected_end_at
+        });
+      }
+    });
+
     const historyByApt = {};
     apartmentIds.forEach(id => {
       historyByApt[id] = [];
@@ -522,7 +574,7 @@ router.get('/status-timeline', authenticate, async (req, res) => {
       const aptHistory = historyByApt[apt.id] || [];
 
       const statuses = timeBuckets.map(bucket => {
-        let activeStatus = aptHistory.length > 0 ? aptHistory[0].status : apt.status;
+        let activeStatus = initialStatusByApt[apt.id] || (aptHistory.length > 0 ? aptHistory[0].status : apt.status);
 
         for (let j = aptHistory.length - 1; j >= 0; j--) {
           if (new Date(aptHistory[j].recorded_at) <= bucket) {
@@ -561,7 +613,8 @@ router.get('/status-timeline', authenticate, async (req, res) => {
         room_type: apt.room_type,
         current_status: apt.status,
         statuses,
-        segments
+        segments,
+        assignments: assignmentsByApt[apt.id] || []
       };
     });
 

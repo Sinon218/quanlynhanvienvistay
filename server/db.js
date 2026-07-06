@@ -16,12 +16,14 @@ const config = {
   options: {
     encrypt: false,
     trustServerCertificate: true,
+    keepAlive: true,
   },
   pool: {
     max: 10,
     min: 0,
     idleTimeoutMillis: 30000,
   },
+  connectionTimeout: 15000,
 };
 
 if (process.env.DB_PORT) {
@@ -30,30 +32,47 @@ if (process.env.DB_PORT) {
   config.options.instanceName = instanceName;
 }
 
-let pool = null;
+let poolPromise = null;
 
 async function getPool() {
-  if (!pool || !pool.connected) {
+  if (poolPromise) {
     try {
-      pool = new sql.ConnectionPool(config);
-      await pool.connect();
+      const p = await poolPromise;
+      if (p && p.connected) {
+        return p;
+      }
+      // If pool is no longer connected, clear it to reconnect
+      poolPromise = null;
+    } catch (err) {
+      poolPromise = null;
+    }
+  }
+
+  poolPromise = (async () => {
+    try {
+      const newPool = new sql.ConnectionPool(config);
+      await newPool.connect();
       console.log('✅ Connected to SQL Server:', process.env.DB_NAME);
 
-      pool.on('error', err => {
+      newPool.on('error', err => {
         console.error('📡 SQL Pool Error (Auto-closing):', err.message);
         try {
-          pool.close();
+          newPool.close();
         } catch (closeErr) {
           // ignore
         }
+        poolPromise = null;
       });
+
+      return newPool;
     } catch (err) {
       console.error('❌ SQL Connection Error:', err.message);
-      pool = null;
+      poolPromise = null;
       throw err;
     }
-  }
-  return pool;
+  })();
+
+  return poolPromise;
 }
 
 module.exports = { sql, getPool };

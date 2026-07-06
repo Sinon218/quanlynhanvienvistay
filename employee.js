@@ -1,4 +1,4 @@
-﻿// ===================================================================
+// ===================================================================
 // EMPLOYEE PORTAL JS - employee.js
 // ===================================================================
 
@@ -18,6 +18,7 @@ let apartmentFilters = {
   search: ''
 };
 let selectedRoomId = null;
+let timelineData = null;
 
 // Bảng giá theo cấp độ kỹ thuật
 const TECH_LEVEL_PRICES = { 1: 20000, 2: 40000, 3: 800000, 4: 150000 };
@@ -92,6 +93,10 @@ async function apiCall(endpoint, method = 'GET', body = null) {
     const response = await fetch(`${API_URL}${endpoint}`, options);
 
     if (!response.ok) {
+      if (response.status === 401) {
+        handleLogout();
+        return;
+      }
       const data = await response.json();
       const apiErr = new Error(data.error || 'Đã xảy ra lỗi khi gọi API.');
       apiErr.isApiError = true;
@@ -1023,7 +1028,7 @@ async function checkNewNotifications() {
 }
 
 // ===== EVENT BINDINGS =====
-document.addEventListener('DOMContentLoaded', () => {
+function initializePage() {
   checkAuth();
   setupRealtimeEvents();
 
@@ -1107,7 +1112,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   });
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializePage);
+} else {
+  initializePage();
+}
 
 // ===== EMPLOYEE APARTMENTS & CHART LOGIC =====
 async function loadEmployeeApartments() {
@@ -1380,6 +1391,25 @@ function toggleStatusModalFields(type) {
     if (status === 'occupied') {
       if (dtGroup) dtGroup.style.display = 'block';
       if (mtGroup) mtGroup.style.display = 'none';
+
+      // Pre-fill default dates if empty
+      const checkinDateEl = document.getElementById('soCheckinDate');
+      const checkinTimeEl = document.getElementById('soCheckinTime');
+      const checkoutDateEl = document.getElementById('soCheckoutDate');
+      const checkoutTimeEl = document.getElementById('soCheckoutTime');
+
+      const today = new Date();
+      const tomorrow = new Date();
+      tomorrow.setDate(today.getDate() + 1);
+
+      const pad = val => String(val).padStart(2, '0');
+      const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+      const tomorrowStr = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`;
+
+      if (checkinDateEl && !checkinDateEl.value) checkinDateEl.value = todayStr;
+      if (checkinTimeEl && !checkinTimeEl.value) checkinTimeEl.value = '14:00';
+      if (checkoutDateEl && !checkoutDateEl.value) checkoutDateEl.value = tomorrowStr;
+      if (checkoutTimeEl && !checkoutTimeEl.value) checkoutTimeEl.value = '12:00';
     } else if (status === 'maintenance') {
       if (dtGroup) dtGroup.style.display = 'none';
       if (mtGroup) mtGroup.style.display = 'block';
@@ -1397,6 +1427,25 @@ function toggleStatusModalFields(type) {
     if (status === 'occupied') {
       if (dtGroup) dtGroup.style.display = 'block';
       if (mtGroup) mtGroup.style.display = 'none';
+
+      // Pre-fill default dates if empty
+      const checkinDateEl = document.getElementById('ersCheckinDate');
+      const checkinTimeEl = document.getElementById('ersCheckinTime');
+      const checkoutDateEl = document.getElementById('ersCheckoutDate');
+      const checkoutTimeEl = document.getElementById('ersCheckoutTime');
+
+      const today = new Date();
+      const tomorrow = new Date();
+      tomorrow.setDate(today.getDate() + 1);
+
+      const pad = val => String(val).padStart(2, '0');
+      const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+      const tomorrowStr = `${tomorrow.getFullYear()}-${pad(tomorrow.getMonth() + 1)}-${pad(tomorrow.getDate())}`;
+
+      if (checkinDateEl && !checkinDateEl.value) checkinDateEl.value = todayStr;
+      if (checkinTimeEl && !checkinTimeEl.value) checkinTimeEl.value = '14:00';
+      if (checkoutDateEl && !checkoutDateEl.value) checkoutDateEl.value = tomorrowStr;
+      if (checkoutTimeEl && !checkoutTimeEl.value) checkoutTimeEl.value = '12:00';
     } else if (status === 'maintenance') {
       if (dtGroup) dtGroup.style.display = 'none';
       if (mtGroup) mtGroup.style.display = 'block';
@@ -1417,6 +1466,13 @@ async function saveEmpRoomStatus() {
   const checkout_date = document.getElementById('ersCheckoutDate')?.value || null;
   const checkout_time = document.getElementById('ersCheckoutTime')?.value || null;
   const maintenance_duration = document.getElementById('ersMaintenanceDuration')?.value || null;
+
+  if (status === 'occupied') {
+    if (!checkin_date || !checkin_time || !checkout_date || !checkout_time) {
+      showToast('Vui lòng nhập đầy đủ thông tin ngày/giờ check-in và check-out khi căn hộ có khách.', 'warning');
+      return;
+    }
+  }
 
   try {
     const res = await apiCall(`/apartments/${selectedRoomId}/status`, 'PUT', {
@@ -1780,6 +1836,7 @@ async function loadEmpApartmentStatusTimeline() {
     if (!canvas) return;
 
     const data = await apiCall(`/apartments/status-timeline?building=all&mode=${empTimelineMode}`);
+    timelineData = data;
     renderEmpApartmentStatusTimeline(data);
   } catch (err) {
     console.warn('Failed to load employee apartment status timeline:', err.message);
@@ -1985,6 +2042,23 @@ function showTimelinePopover(element, roomCode, status, startLabel, endLabel, is
     timeOutVal.textContent = endLabel;
   }
 
+  const cleaningRow = document.getElementById('popoverCleaningRow');
+  const cleaningDetails = document.getElementById('popoverCleaningDetails');
+  if (cleaningRow && cleaningDetails) {
+    const room = timelineData?.rooms?.find(r => r.id === roomId);
+    if (room && room.assignments && room.assignments.length > 0) {
+      cleaningRow.style.display = 'flex';
+      cleaningDetails.innerHTML = room.assignments.map(wa => {
+        const startStr = wa.expected_start_at ? new Date(wa.expected_start_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '—';
+        const endStr = wa.expected_end_at ? new Date(wa.expected_end_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '—';
+        const taskLabel = getTaskTypeLabel(wa.task_type);
+        return `<div style="margin-bottom: 6px; border-bottom: 1px dashed rgba(255,255,255,0.1); padding-bottom: 6px;">👤 <strong>${wa.staff_name}</strong> (${taskLabel})<br>⏰ Dự kiến: ${startStr} - ${endStr}</div>`;
+      }).join('');
+    } else {
+      cleaningRow.style.display = 'none';
+    }
+  }
+
   const footer = document.getElementById('popoverFooter');
 
   if (isPrivileged) {
@@ -2029,48 +2103,52 @@ function closeTimelinePopover() {
 
 let eventSource = null;
 function setupRealtimeEvents() {
-  // Lắng nghe storage event cho chế độ offline (local mock)
-  window.addEventListener('storage', (e) => {
-    if (localStorage.getItem('vistay_mode') === 'local') {
-      if (e.key === 'vistay_mock_work' || e.key === 'vistay_mock_tasks_list' || e.key === 'vistay_mock_apartments') {
-        console.log('🔄 Offline mode: Local mock data updated. Reloading dashboard...');
-        if (typeof loadDashboard === 'function') {
-          loadDashboard();
+  try {
+    // Lắng nghe storage event cho chế độ offline (local mock)
+    window.addEventListener('storage', (e) => {
+      if (localStorage.getItem('vistay_mode') === 'local') {
+        if (e.key === 'vistay_mock_work' || e.key === 'vistay_mock_tasks_list' || e.key === 'vistay_mock_apartments') {
+          console.log('🔄 Offline mode: Local mock data updated. Reloading dashboard...');
+          if (typeof loadDashboard === 'function') {
+            loadDashboard();
+          }
         }
       }
+    });
+
+    // Lắng nghe Server-Sent Events cho chế độ online (backend)
+    if (localStorage.getItem('vistay_mode') !== 'local') {
+      if (eventSource) eventSource.close();
+      eventSource = new EventSource(`${API_URL}/events`);
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          console.log('📢 Received real-time event:', data);
+
+          // Hiển thị Toast thông báo cho nhân viên nếu có tin nhắn chi tiết
+          if (data.message) {
+            const type = (data.action === 'reject' || data.action === 'reject_completed') ? 'warning' : 'success';
+            showToast(data.message, type);
+          }
+
+          if (typeof loadDashboard === 'function') {
+            console.log('🔄 Reloading dashboard...');
+            loadDashboard();
+          }
+        } catch (err) {
+          console.error('Failed to parse SSE data:', err);
+        }
+      };
+
+      eventSource.onerror = (err) => {
+        console.warn("SSE connection lost. Retrying in 5 seconds...", err);
+        eventSource.close();
+        setTimeout(setupRealtimeEvents, 5000);
+      };
     }
-  });
-
-  // Lắng nghe Server-Sent Events cho chế độ online (backend)
-  if (localStorage.getItem('vistay_mode') !== 'local') {
-    if (eventSource) eventSource.close();
-    eventSource = new EventSource(`${API_URL}/events`);
-
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        console.log('📢 Received real-time event:', data);
-
-        // Hiển thị Toast thông báo cho nhân viên nếu có tin nhắn chi tiết
-        if (data.message) {
-          const type = (data.action === 'reject' || data.action === 'reject_completed') ? 'warning' : 'success';
-          showToast(data.message, type);
-        }
-
-        if (typeof loadDashboard === 'function') {
-          console.log('🔄 Reloading dashboard...');
-          loadDashboard();
-        }
-      } catch (err) {
-        console.error('Failed to parse SSE data:', err);
-      }
-    };
-
-    eventSource.onerror = (err) => {
-      console.warn("SSE connection lost. Retrying in 5 seconds...", err);
-      eventSource.close();
-      setTimeout(setupRealtimeEvents, 5000);
-    };
+  } catch (err) {
+    console.error('Failed to setup real-time events:', err);
   }
 }
 

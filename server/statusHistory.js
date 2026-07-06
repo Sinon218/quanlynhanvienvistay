@@ -46,6 +46,16 @@ async function initStatusHistory() {
       END
     `);
 
+    // Migration: Thêm các cột expected_start_at và expected_end_at vào WorkAssignments table nếu chưa có
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'WorkAssignments' AND COLUMN_NAME = 'expected_start_at')
+      BEGIN
+        ALTER TABLE WorkAssignments ADD 
+          expected_start_at DATETIME NULL,
+          expected_end_at DATETIME NULL;
+      END
+    `);
+
     // Migration: Cập nhật loại phòng theo danh sách chính xác của user
     const roomTypeByCode = {
       'R6A-0505': '1 ngủ', 'R6A-2806': '1 ngủ', 'S1-0405': '1 ngủ', 'S1-0505': '1 ngủ', 'S1-0905': '1 ngủ',
