@@ -107,14 +107,18 @@
             style="flex: 2; min-width: 250px; display: flex; flex-direction: column; gap: 4px;">
             <label style="display: flex; justify-content: space-between; align-items: center;">
               <span>👤 Nhân viên dọn dẹp</span>
-              <button type="button" onclick="addQuickStaffSelect()" style="background: transparent; border: none; color: var(--accent-green); cursor: pointer; font-size: 0.85rem; font-weight: bold; padding: 0 4px;">➕ Thêm người</button>
+              <button type="button" onclick="addQuickStaffSelect()"
+                style="background: transparent; border: none; color: var(--accent-green); cursor: pointer; font-size: 0.85rem; font-weight: bold; padding: 0 4px;">➕
+                Thêm người</button>
             </label>
             <div id="quickStaffSelectsList" style="display: flex; gap: 8px; flex-wrap: wrap; width: 100%;">
-              <div class="quick-staff-select-item" style="display: flex; align-items: center; gap: 4px; flex: 1; min-width: 150px;">
+              <div class="quick-staff-select-item"
+                style="display: flex; align-items: center; gap: 4px; flex: 1; min-width: 150px;">
                 <select class="room-filter-select quick-staff-sel" style="flex: 1;">
                   <option value="">-- Chọn nhân viên --</option>
                 </select>
-                <button type="button" class="btn btn-cancel" onclick="removeQuickStaffSelect(this)" style="padding: 4px 8px; display: none;">✕</button>
+                <button type="button" class="btn btn-cancel" onclick="removeQuickStaffSelect(this)"
+                  style="padding: 4px 8px; display: none;">✕</button>
               </div>
             </div>
           </div>
@@ -495,7 +499,8 @@
           </div>
           <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
             <span class="section-badge"
-              style="background: rgba(167, 139, 250, 0.1); color: var(--accent-purple); border: 1px solid rgba(167, 139, 250, 0.2);">HN & HCM</span>
+              style="background: rgba(167, 139, 250, 0.1); color: var(--accent-purple); border: 1px solid rgba(167, 139, 250, 0.2);">HN
+              & HCM</span>
             <span style="font-size: 0.78rem; color: var(--text-muted);">🔴 Đỏ = Có khách &nbsp;|&nbsp; 🔵 Xanh = Bảo trì
               &nbsp;|&nbsp; 🟢 Xanh lá = Trống</span>
           </div>
@@ -760,13 +765,15 @@
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
             <div>
               <label for="tvsStartAt"
-                style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Dự kiến bắt đầu</label>
+                style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Dự kiến bắt
+                đầu</label>
               <input type="datetime-local" id="tvsStartAt" class="form-control"
                 style="width: 100%; padding: 6px; font-size: 0.85rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
             </div>
             <div>
               <label for="tvsEndAt"
-                style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Dự kiến xong</label>
+                style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">Dự kiến
+                xong</label>
               <input type="datetime-local" id="tvsEndAt" class="form-control"
                 style="width: 100%; padding: 6px; font-size: 0.85rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
             </div>
@@ -855,186 +862,189 @@
       </div>
     </div>
   </div>
-    <!-- ===== MODAL: XEM ẢNH MINH CHỨNG ===== -->
-    <div class="modal-overlay" id="viewProofModal">
-      <div class="modal" style="max-width: 500px;">
-        <div class="modal-header">
-          <h2 id="proofModalTitle">🖼️ Ảnh Minh Chứng Hoàn Thành</h2>
-          <button class="modal-close" onclick="closeViewProofModal()">✕</button>
-        </div>
-        <div class="modal-body" style="text-align: center;">
-          <img id="proofModalImage" src="" alt="Minh chứng"
-            style="max-width: 100%; max-height: 400px; border-radius: var(--radius-md); box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-cancel" onclick="closeViewProofModal()">Đóng</button>
-        </div>
+  <!-- ===== MODAL: XEM ẢNH MINH CHỨNG ===== -->
+  <div class="modal-overlay" id="viewProofModal">
+    <div class="modal" style="max-width: 500px;">
+      <div class="modal-header">
+        <h2 id="proofModalTitle">🖼️ Ảnh Minh Chứng Hoàn Thành</h2>
+        <button class="modal-close" onclick="closeViewProofModal()">✕</button>
+      </div>
+      <div class="modal-body" style="text-align: center;">
+        <img id="proofModalImage" src="" alt="Minh chứng"
+          style="max-width: 100%; max-height: 400px; border-radius: var(--radius-md); box-shadow: 0 4px 12px rgba(0,0,0,0.5);">
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-cancel" onclick="closeViewProofModal()">Đóng</button>
       </div>
     </div>
+  </div>
 
-    <!-- ===== MODAL: ĐỔI MẬT KHẨU ===== -->
-    <div class="modal-overlay" id="changePasswordModal">
-      <div class="modal" style="max-width: 400px;">
-        <div class="modal-header">
-          <h2>🔑 Thay Đổi Mật Khẩu</h2>
-          <button class="modal-close" onclick="closeChangePasswordModal()">✕</button>
+  <!-- ===== MODAL: ĐỔI MẬT KHẨU ===== -->
+  <div class="modal-overlay" id="changePasswordModal">
+    <div class="modal" style="max-width: 400px;">
+      <div class="modal-header">
+        <h2>🔑 Thay Đổi Mật Khẩu</h2>
+        <button class="modal-close" onclick="closeChangePasswordModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="rename-input-group" style="margin-bottom: 12px;">
+          <label for="currentPasswordInput">Mật khẩu hiện tại</label>
+          <input type="password" id="currentPasswordInput" placeholder="Nhập mật khẩu hiện tại...">
         </div>
-        <div class="modal-body">
-          <div class="rename-input-group" style="margin-bottom: 12px;">
-            <label for="currentPasswordInput">Mật khẩu hiện tại</label>
-            <input type="password" id="currentPasswordInput" placeholder="Nhập mật khẩu hiện tại...">
-          </div>
-          <div class="rename-input-group" style="margin-bottom: 12px;">
-            <label for="newPasswordInput">Mật khẩu mới</label>
-            <input type="password" id="newPasswordInput" placeholder="Mật khẩu mới (tối thiểu 6 ký tự)...">
-          </div>
-          <div class="rename-input-group">
-            <label for="confirmPasswordInput">Xác nhận mật khẩu mới</label>
-            <input type="password" id="confirmPasswordInput" placeholder="Xác nhận lại mật khẩu mới...">
-          </div>
+        <div class="rename-input-group" style="margin-bottom: 12px;">
+          <label for="newPasswordInput">Mật khẩu mới</label>
+          <input type="password" id="newPasswordInput" placeholder="Mật khẩu mới (tối thiểu 6 ký tự)...">
         </div>
-        <div class="modal-footer">
-          <button class="btn btn-cancel" onclick="closeChangePasswordModal()">Đóng</button>
-          <button class="btn btn-save" onclick="saveChangePassword()">💾 Cập nhật</button>
+        <div class="rename-input-group">
+          <label for="confirmPasswordInput">Xác nhận mật khẩu mới</label>
+          <input type="password" id="confirmPasswordInput" placeholder="Xác nhận lại mật khẩu mới...">
         </div>
       </div>
-    </div>
-
-    <!-- ===== MODAL: TỪ CHỐI DUYỆT CÔNG VIỆC KỸ THUẬT ===== -->
-    <div class="modal-overlay" id="rejectTaskModal">
-      <div class="modal" style="max-width: 400px;">
-        <div class="modal-header">
-          <h2>🔴 Lý Do Không Phê Duyệt</h2>
-          <button class="modal-close" onclick="closeRejectTaskModal()">✕</button>
-        </div>
-        <div class="modal-body">
-          <input type="hidden" id="rejectTaskId">
-          <div class="rename-input-group">
-            <label for="rejectTaskReasonInput">Lý do không phê duyệt công việc này <span
-                style="color: #ef4444;">*</span></label>
-            <textarea id="rejectTaskReasonInput" rows="3"
-              placeholder="Nhập lý do không phê duyệt để nhân viên sửa đổi..."
-              style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 0.9rem; resize: vertical;"></textarea>
-          </div>
-        </div>
-        <div class="modal-footer">
-          <button class="btn btn-cancel" onclick="closeRejectTaskModal()">Đóng</button>
-          <button class="btn btn-save" onclick="submitRejectTask()"
-            style="background: linear-gradient(135deg, #ef4444, #dc2626);">Gửi lý do</button>
-        </div>
+      <div class="modal-footer">
+        <button class="btn btn-cancel" onclick="closeChangePasswordModal()">Đóng</button>
+        <button class="btn btn-save" onclick="saveChangePassword()">💾 Cập nhật</button>
       </div>
     </div>
+  </div>
 
-    <!-- ===== MODAL: CHỈ ĐỔI TRẠNG THÁI CĂN HỘ (TRONG PHẦN THỐNG KÊ) ===== -->
-    <div class="modal-overlay" id="roomStatusEditOnlyModal">
-      <div class="modal" style="max-width: 400px;">
-        <div class="modal-header">
-          <h2 id="statusOnlyModalNumber">Cập Nhật Trạng Trạng Thái</h2>
-          <button class="modal-close" onclick="closeRoomStatusEditOnlyModal()">✕</button>
+  <!-- ===== MODAL: TỪ CHỐI DUYỆT CÔNG VIỆC KỸ THUẬT ===== -->
+  <div class="modal-overlay" id="rejectTaskModal">
+    <div class="modal" style="max-width: 400px;">
+      <div class="modal-header">
+        <h2>🔴 Lý Do Không Phê Duyệt</h2>
+        <button class="modal-close" onclick="closeRejectTaskModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="rejectTaskId">
+        <div class="rename-input-group">
+          <label for="rejectTaskReasonInput">Lý do không phê duyệt công việc này <span
+              style="color: #ef4444;">*</span></label>
+          <textarea id="rejectTaskReasonInput" rows="3" placeholder="Nhập lý do không phê duyệt để nhân viên sửa đổi..."
+            style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 0.9rem; resize: vertical;"></textarea>
         </div>
-        <div class="modal-body">
-          <div class="role-group">
-            <div class="role-group-label" style="font-weight: 700; margin-bottom: 8px;">Trạng thái căn hộ:</div>
-            <div class="role-options" style="display: flex; flex-direction: column; gap: 10px;">
-              <div class="role-option opt-room-available">
-                <input type="radio" name="statusOnlyVal" id="soAvailable" value="available"
-                  onchange="toggleStatusModalFields('admin')">
-                <label for="soAvailable">
-                  <span class="option-num">🟢</span>
-                  <span class="option-text">Trống</span>
-                </label>
-              </div>
-              <div class="role-option opt-room-occupied">
-                <input type="radio" name="statusOnlyVal" id="soOccupied" value="occupied"
-                  onchange="toggleStatusModalFields('admin')">
-                <label for="soOccupied">
-                  <span class="option-num">🔴</span>
-                  <span class="option-text">Có khách</span>
-                </label>
-              </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-cancel" onclick="closeRejectTaskModal()">Đóng</button>
+        <button class="btn btn-save" onclick="submitRejectTask()"
+          style="background: linear-gradient(135deg, #ef4444, #dc2626);">Gửi lý do</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: CHỈ ĐỔI TRẠNG THÁI CĂN HỘ (TRONG PHẦN THỐNG KÊ) ===== -->
+  <div class="modal-overlay" id="roomStatusEditOnlyModal">
+    <div class="modal" style="max-width: 400px;">
+      <div class="modal-header">
+        <h2 id="statusOnlyModalNumber">Cập Nhật Trạng Trạng Thái</h2>
+        <button class="modal-close" onclick="closeRoomStatusEditOnlyModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="role-group">
+          <div class="role-group-label" style="font-weight: 700; margin-bottom: 8px;">Trạng thái căn hộ:</div>
+          <div class="role-options" style="display: flex; flex-direction: column; gap: 10px;">
+            <div class="role-option opt-room-available">
+              <input type="radio" name="statusOnlyVal" id="soAvailable" value="available"
+                onchange="toggleStatusModalFields('admin')">
+              <label for="soAvailable">
+                <span class="option-num">🟢</span>
+                <span class="option-text">Trống</span>
+              </label>
+            </div>
+            <div class="role-option opt-room-occupied">
+              <input type="radio" name="statusOnlyVal" id="soOccupied" value="occupied"
+                onchange="toggleStatusModalFields('admin')">
+              <label for="soOccupied">
+                <span class="option-num">🔴</span>
+                <span class="option-text">Có khách</span>
+              </label>
             </div>
           </div>
-          <!-- Check-in / Check-out Date Time -->
-          <div class="datetime-inputs-group"
-            style="margin-top: 15px; border-top: 1px solid var(--border-color); padding-top: 15px; display: none;">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-              <div>
-                <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">📅 Ngày
-                  vào</label>
-                <input type="date" id="soCheckinDate" class="form-control"
-                  style="width: 100%; padding: 6px; font-size: 0.85rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
-              </div>
-              <div>
-                <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">⏰ Giờ
-                  vào</label>
-                <input type="time" id="soCheckinTime" class="form-control"
-                  style="width: 100%; padding: 6px; font-size: 0.85rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
-              </div>
+        </div>
+        <!-- Check-in / Check-out Date Time -->
+        <div class="datetime-inputs-group"
+          style="margin-top: 15px; border-top: 1px solid var(--border-color); padding-top: 15px; display: none;">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div>
+              <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">📅 Ngày
+                vào</label>
+              <input type="date" id="soCheckinDate" class="form-control"
+                style="width: 100%; padding: 6px; font-size: 0.85rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
             </div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
-              <div>
-                <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">📅 Ngày
-                  ra</label>
-                <input type="date" id="soCheckoutDate" class="form-control"
-                  style="width: 100%; padding: 6px; font-size: 0.85rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
-              </div>
-              <div>
-                <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">⏰ Giờ
-                  ra</label>
-                <input type="time" id="soCheckoutTime" class="form-control"
-                  style="width: 100%; padding: 6px; font-size: 0.85rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
-              </div>
+            <div>
+              <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">⏰ Giờ
+                vào</label>
+              <input type="time" id="soCheckinTime" class="form-control"
+                style="width: 100%; padding: 6px; font-size: 0.85rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
             </div>
           </div>
-          <!-- Maintenance Duration Fields -->
-          <div class="maintenance-inputs-group" id="soMaintenanceGroup"
-            style="margin-top: 15px; border-top: 1px solid var(--border-color); padding-top: 15px; display: none;">
-            <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">⏰ Thời gian
-              dự kiến sửa chữa (giờ)</label>
-            <input type="number" id="soMaintenanceDuration" min="1" class="form-control"
-              style="width: 100%; padding: 6px; font-size: 0.85rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;"
-              placeholder="Ví dụ: 2, 4, 8...">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px;">
+            <div>
+              <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">📅 Ngày
+                ra</label>
+              <input type="date" id="soCheckoutDate" class="form-control"
+                style="width: 100%; padding: 6px; font-size: 0.85rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
+            </div>
+            <div>
+              <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">⏰ Giờ
+                ra</label>
+              <input type="time" id="soCheckoutTime" class="form-control"
+                style="width: 100%; padding: 6px; font-size: 0.85rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;">
+            </div>
           </div>
         </div>
-        <div class="modal-footer">
-          <button class="btn btn-cancel" onclick="closeRoomStatusEditOnlyModal()">Đóng</button>
-          <button class="btn btn-save" onclick="saveRoomStatusEditOnly()">💾 Lưu</button>
+        <!-- Maintenance Duration Fields -->
+        <div class="maintenance-inputs-group" id="soMaintenanceGroup"
+          style="margin-top: 15px; border-top: 1px solid var(--border-color); padding-top: 15px; display: none;">
+          <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 4px;">⏰ Thời gian
+            dự kiến sửa chữa (giờ)</label>
+          <input type="number" id="soMaintenanceDuration" min="1" class="form-control"
+            style="width: 100%; padding: 6px; font-size: 0.85rem; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 4px;"
+            placeholder="Ví dụ: 2, 4, 8...">
         </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-cancel" onclick="closeRoomStatusEditOnlyModal()">Đóng</button>
+        <button class="btn btn-save" onclick="saveRoomStatusEditOnly()">💾 Lưu</button>
       </div>
     </div>
+  </div>
 
-    <!-- ===== TIMELINE POPOVER ===== -->
-    <div id="timelinePopover" class="timeline-popover">
-      <div class="timeline-popover-header">
-        <span class="timeline-popover-title" id="popoverTitle">Căn hộ</span>
-        <button class="timeline-popover-close" onclick="closeTimelinePopover()">✕</button>
+  <!-- ===== TIMELINE POPOVER ===== -->
+  <div id="timelinePopover" class="timeline-popover">
+    <div class="timeline-popover-header">
+      <span class="timeline-popover-title" id="popoverTitle">Căn hộ</span>
+      <button class="timeline-popover-close" onclick="closeTimelinePopover()">✕</button>
+    </div>
+    <div class="timeline-popover-body">
+      <div class="timeline-popover-row">
+        <span class="timeline-popover-label">Trạng thái:</span>
+        <span class="timeline-popover-value" id="popoverStatus" style="font-weight: 700;">—</span>
       </div>
-      <div class="timeline-popover-body">
-        <div class="timeline-popover-row">
-          <span class="timeline-popover-label">Trạng thái:</span>
-          <span class="timeline-popover-value" id="popoverStatus" style="font-weight: 700;">—</span>
-        </div>
-        <div class="timeline-popover-row">
-          <span class="timeline-popover-label" id="popoverTimeInLabel">Check-in:</span>
-          <span class="timeline-popover-value" id="popoverTimeIn">—</span>
-        </div>
-        <div class="timeline-popover-row">
-          <span class="timeline-popover-label" id="popoverTimeOutLabel">Check-out:</span>
-          <span class="timeline-popover-value" id="popoverTimeOut">—</span>
-        </div>
-        <div class="timeline-popover-row" id="popoverCleaningRow" style="display: none; flex-direction: column; align-items: flex-start; margin-top: 8px; border-top: 1px dashed var(--border-color); padding-top: 8px; width: 100%;">
-          <span class="timeline-popover-label" style="color: var(--accent-amber); font-weight: 700; display: block; margin-bottom: 4px;">🧹 Phân công dọn dẹp:</span>
-          <div id="popoverCleaningDetails" style="line-height: 1.4; color: var(--text-primary); font-size: 0.8rem; width: 100%;"></div>
-        </div>
+      <div class="timeline-popover-row">
+        <span class="timeline-popover-label" id="popoverTimeInLabel">Check-in:</span>
+        <span class="timeline-popover-value" id="popoverTimeIn">—</span>
       </div>
-      <div class="timeline-popover-footer" id="popoverFooter">
-        <!-- Dynamic edit buttons -->
+      <div class="timeline-popover-row">
+        <span class="timeline-popover-label" id="popoverTimeOutLabel">Check-out:</span>
+        <span class="timeline-popover-value" id="popoverTimeOut">—</span>
+      </div>
+      <div class="timeline-popover-row" id="popoverCleaningRow"
+        style="display: none; flex-direction: column; align-items: flex-start; margin-top: 8px; border-top: 1px dashed var(--border-color); padding-top: 8px; width: 100%;">
+        <span class="timeline-popover-label"
+          style="color: var(--accent-amber); font-weight: 700; display: block; margin-bottom: 4px;">🧹 Phân công dọn
+          dẹp:</span>
+        <div id="popoverCleaningDetails"
+          style="line-height: 1.4; color: var(--text-primary); font-size: 0.8rem; width: 100%;"></div>
       </div>
     </div>
+    <div class="timeline-popover-footer" id="popoverFooter">
+      <!-- Dynamic edit buttons -->
+    </div>
+  </div>
 
-    <script src="admin.js"></script>
-    <!-- ===== TOAST CONTAINER ===== -->
-    <div class="toast-container" id="toastContainer"></div>
+  <script src="admin.js"></script>
+  <!-- ===== TOAST CONTAINER ===== -->
+  <div class="toast-container" id="toastContainer"></div>
 </body>
 
 </html>

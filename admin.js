@@ -388,6 +388,7 @@ function handleLocalMockCall(endpoint, method, body) {
   let localRooms = getLocalData('vistay_mock_apartments', []);
   let localWork = getLocalData('vistay_mock_work', []);
   let localSalary = getLocalData('vistay_mock_salary', []);
+  let localTasks = getLocalData('vistay_mock_tasks', []);
 
   // 1. Staff endpoints
   if (endpoint === '/staff' && method === 'GET') {
@@ -654,8 +655,6 @@ function handleLocalMockCall(endpoint, method, body) {
   }
 
   // 5. Tasks endpoints
-  let localTasks = getLocalData('vistay_mock_tasks', []);
-
   if (endpoint === '/tasks' && method === 'POST') {
     const { staff_id, title, description, tech_level } = body;
     if (!staff_id || !title) {
