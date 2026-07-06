@@ -370,7 +370,8 @@ function initMockDatabase() {
         building: b,
         password: '???',
         is_samsung: false,
-        status: 'available'
+        status: 'available',
+        room_type: '2 ngủ'
       });
     }
     saveLocalData('vistay_mock_apartments', allMockRooms);

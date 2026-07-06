@@ -55,13 +55,7 @@ async function getPool() {
       console.log('✅ Connected to SQL Server:', process.env.DB_NAME);
 
       newPool.on('error', err => {
-        console.error('📡 SQL Pool Error (Auto-closing):', err.message);
-        try {
-          newPool.close();
-        } catch (closeErr) {
-          // ignore
-        }
-        poolPromise = null;
+        console.error('📡 SQL Pool Error:', err.message);
       });
 
       return newPool;
