@@ -446,19 +446,31 @@ router.get('/status-timeline', authenticate, async (req, res) => {
       return bucket.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' });
     };
 
+    let todayIndex = -1;
     if (mode === 'hourly') {
       // 48 buckets cho 24 giờ (mỗi bước 30 phút)
       for (let i = 48; i >= 0; i--) {
         timeBuckets.push(new Date(now.getTime() - i * 30 * 60 * 1000));
       }
-    } else {
-      for (let i = 30; i >= 0; i--) {
-        timeBuckets.push(new Date(now.getFullYear(), now.getMonth(), now.getDate() - i, 23, 59, 59));
+      const nowTime = now.getTime();
+      let minDiff = Infinity;
+      for (let i = 0; i < timeBuckets.length; i++) {
+        const diff = Math.abs(timeBuckets[i].getTime() - nowTime);
+        if (diff < minDiff) {
+          minDiff = diff;
+          todayIndex = i;
+        }
       }
+    } else {
+      // 5 ngày trong quá khứ và 25 ngày trong tương lai (tổng cộng 31 ngày)
+      for (let i = -5; i <= 25; i++) {
+        timeBuckets.push(new Date(now.getFullYear(), now.getMonth(), now.getDate() + i, 23, 59, 59));
+      }
+      todayIndex = 5;
     }
 
     let queryApartments = `
-      SELECT id, code, building, room_type, status
+      SELECT id, code, building, room_type, status, checkin_date, checkin_time, checkout_date, checkout_time, maintenance_duration
       FROM Apartments
       WHERE 1=1
     `;
@@ -574,16 +586,57 @@ router.get('/status-timeline', authenticate, async (req, res) => {
       const aptHistory = historyByApt[apt.id] || [];
 
       const statuses = timeBuckets.map(bucket => {
-        let activeStatus = initialStatusByApt[apt.id] || (aptHistory.length > 0 ? aptHistory[0].status : apt.status);
+        const bucketTime = bucket.getTime();
+        const nowTime = now.getTime();
 
-        for (let j = aptHistory.length - 1; j >= 0; j--) {
-          if (new Date(aptHistory[j].recorded_at) <= bucket) {
-            activeStatus = aptHistory[j].status;
-            break;
+        if (bucketTime <= nowTime) {
+          // Past or present: read from history
+          let activeStatus = initialStatusByApt[apt.id] || (aptHistory.length > 0 ? aptHistory[0].status : apt.status);
+          for (let j = aptHistory.length - 1; j >= 0; j--) {
+            if (new Date(aptHistory[j].recorded_at) <= bucket) {
+              activeStatus = aptHistory[j].status;
+              break;
+            }
           }
-        }
+          return activeStatus;
+        } else {
+          // Future: determine based on current status and check-in/out / maintenance fields
+          const currentStatus = apt.status || 'available';
 
-        return activeStatus;
+          if (currentStatus === 'occupied') {
+            // Check check-in/out dates
+            if (apt.checkin_date && apt.checkout_date) {
+              const formatDateString = (d) => {
+                if (d instanceof Date) return d.toISOString().split('T')[0];
+                return String(d).split('T')[0];
+              };
+              const checkinStr = `${formatDateString(apt.checkin_date)}T${apt.checkin_time || '14:00'}:00`;
+              const checkoutStr = `${formatDateString(apt.checkout_date)}T${apt.checkout_time || '12:00'}:00`;
+              const checkinDate = new Date(checkinStr);
+              const checkoutDate = new Date(checkoutStr);
+
+              if (bucket >= checkinDate && bucket <= checkoutDate) {
+                return 'occupied';
+              } else {
+                return 'available';
+              }
+            }
+          } else if (currentStatus === 'maintenance') {
+            // Check maintenance duration
+            const maintHistory = aptHistory.filter(h => h.status === 'maintenance');
+            if (maintHistory.length > 0 && apt.maintenance_duration) {
+              const startMaint = new Date(maintHistory[maintHistory.length - 1].recorded_at);
+              const endMaint = new Date(startMaint.getTime() + apt.maintenance_duration * 60 * 60 * 1000);
+              if (bucket <= endMaint) {
+                return 'maintenance';
+              } else {
+                return 'available';
+              }
+            }
+          }
+
+          return 'available';
+        }
       });
 
       const segments = [];
@@ -618,7 +671,7 @@ router.get('/status-timeline', authenticate, async (req, res) => {
       };
     });
 
-    return res.json({ labels, rooms });
+    return res.json({ labels, rooms, todayIndex });
   } catch (err) {
     console.error('Get status timeline error:', err);
     res.status(500).json({ error: 'Lỗi server.' });

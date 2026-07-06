@@ -1932,7 +1932,7 @@ function getTimelineStatusShortLabel(status) {
   switch (status) {
     case 'available': return 'Trống';
     case 'occupied': return 'Có khách';
-    case 'maintenance': return 'Bảo trì';
+    case 'maintenance': return 'Tổng vệ sinh';
     default: return status || '—';
   }
 }
@@ -1978,7 +1978,10 @@ function renderApartmentStatusTimeline(data) {
     <div class="timeline-header">
       <div class="timeline-room-head">Căn hộ</div>
       <div class="timeline-date-row" style="grid-template-columns: repeat(${labels.length}, minmax(18px, 1fr));">
-        ${labels.map(label => `<div class="timeline-date-cell">${label}</div>`).join('')}
+        ${labels.map((label, idx) => {
+          const isToday = idx === data.todayIndex ? 'is-today' : '';
+          return `<div class="timeline-date-cell ${isToday}">${label}</div>`;
+        }).join('')}
       </div>
     </div>
   `;
@@ -2009,7 +2012,7 @@ function renderApartmentStatusTimeline(data) {
 
           let statusLabel = getRoomStatusLabel(segment.status);
           if (segment.status === 'maintenance' && room.maintenance_duration) {
-            statusLabel = `Bảo trì (dự kiến ${room.maintenance_duration} giờ)`;
+            statusLabel = `Tổng vệ sinh (dự kiến ${room.maintenance_duration} giờ)`;
           }
           const tooltipText = `${room.code} • ${statusLabel} • ${timeRangeStr}`;
 
@@ -2071,11 +2074,15 @@ function renderApartmentStatusTimeline(data) {
     }).join('');
 
   container.innerHTML = dateHeaderHtml + `<div class="timeline-body">${groupsHtml}</div>`;
-  // Tự động cuộn về phía bên phải (ngày hôm nay/mới nhất)
+  // Tự động cuộn "Hôm nay" vào chính giữa màn hình
   setTimeout(() => {
     const scrollContainer = container.closest('.timeline-scroll');
     if (scrollContainer) {
-      scrollContainer.scrollLeft = scrollContainer.scrollWidth;
+      const todayCell = scrollContainer.querySelector('.timeline-date-cell.is-today');
+      if (todayCell) {
+        const offsetLeft = todayCell.offsetLeft;
+        scrollContainer.scrollLeft = offsetLeft - scrollContainer.offsetWidth / 2;
+      }
     }
   }, 100);
 }
@@ -2273,7 +2280,7 @@ function renderApartmentStatusChart(apartments) {
               const group = groups[context.dataIndex];
               const bucket = group.roomTypes.find(item => item.roomType === context.dataset.label);
               const statusSummary = bucket
-                ? `Trống ${bucket.statuses.available}, Có khách ${bucket.statuses.occupied}, Bảo trì ${bucket.statuses.maintenance}`
+                ? `Trống ${bucket.statuses.available}, Có khách ${bucket.statuses.occupied}, Tổng vệ sinh ${bucket.statuses.maintenance}`
                 : 'Không có dữ liệu';
               return ` ${context.dataset.label}: ${context.parsed.y} căn (${statusSummary})`;
             }
@@ -3228,7 +3235,7 @@ function renderModalRoomChart(data) {
           categoryPercentage: 0.9
         },
         {
-          label: 'Đang bảo trì',
+          label: 'Tổng vệ sinh',
           data: maintenanceData,
           backgroundColor: '#3b82f6',
           borderRadius: 3,

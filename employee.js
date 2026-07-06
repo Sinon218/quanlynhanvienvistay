@@ -1847,7 +1847,7 @@ function getTimelineStatusShortLabel(status) {
   switch (status) {
     case 'available': return 'Trống';
     case 'occupied': return 'Có khách';
-    case 'maintenance': return 'Bảo trì';
+    case 'maintenance': return 'Tổng vệ sinh';
     default: return status || '—';
   }
 }
@@ -1891,7 +1891,10 @@ function renderEmpApartmentStatusTimeline(data) {
     <div class="timeline-header">
       <div class="timeline-room-head">Căn hộ</div>
       <div class="timeline-date-row" style="grid-template-columns: repeat(${labels.length}, minmax(18px, 1fr));">
-        ${labels.map(label => `<div class="timeline-date-cell">${label}</div>`).join('')}
+        ${labels.map((label, idx) => {
+          const isToday = idx === data.todayIndex ? 'is-today' : '';
+          return `<div class="timeline-date-cell ${isToday}">${label}</div>`;
+        }).join('')}
       </div>
     </div>
   `;
@@ -1930,7 +1933,7 @@ function renderEmpApartmentStatusTimeline(data) {
 
           let statusLabel = getRoomStatusLabel(segment.status);
           if (segment.status === 'maintenance' && room.maintenance_duration) {
-            statusLabel = `Bảo trì (dự kiến ${room.maintenance_duration} giờ)`;
+            statusLabel = `Tổng vệ sinh (dự kiến ${room.maintenance_duration} giờ)`;
           }
           const tooltipText = `${room.code} • ${statusLabel} • ${timeRangeStr}`;
 
@@ -1995,11 +1998,15 @@ function renderEmpApartmentStatusTimeline(data) {
     }).join('');
 
   container.innerHTML = dateHeaderHtml + `<div class="timeline-body">${groupsHtml}</div>`;
-  // Tự động cuộn về phía bên phải (ngày hôm nay/mới nhất)
+  // Tự động cuộn "Hôm nay" vào chính giữa màn hình
   setTimeout(() => {
     const scrollContainer = container.closest('.timeline-scroll');
     if (scrollContainer) {
-      scrollContainer.scrollLeft = scrollContainer.scrollWidth;
+      const todayCell = scrollContainer.querySelector('.timeline-date-cell.is-today');
+      if (todayCell) {
+        const offsetLeft = todayCell.offsetLeft;
+        scrollContainer.scrollLeft = offsetLeft - scrollContainer.offsetWidth / 2;
+      }
     }
   }, 100);
 }
