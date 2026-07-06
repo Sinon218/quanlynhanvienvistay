@@ -113,7 +113,10 @@ function getChartGroupDefs(selectedGroup) {
 function getRoomTypeSummary(apartments) {
   const summary = {};
   ROOM_TYPE_ORDER.forEach(type => {
-    summary[type] = apartments.filter(room => room.room_type === type);
+    summary[type] = apartments.filter(room => {
+      const rType = room.room_type || '';
+      return rType.normalize('NFC') === type.normalize('NFC');
+    });
   });
   return summary;
 }
@@ -125,7 +128,10 @@ function getComplexStatsMatrix(apartments) {
       .sort((a, b) => a.code.localeCompare(b.code, 'vi'));
 
     const byType = ROOM_TYPE_ORDER.map(roomType => {
-      const rooms = groupRooms.filter(room => room.room_type === roomType);
+      const rooms = groupRooms.filter(room => {
+        const rType = room.room_type || '';
+        return rType.normalize('NFC') === roomType.normalize('NFC');
+      });
       return {
         roomType,
         count: rooms.length,
@@ -149,7 +155,10 @@ function getChartBuckets(apartments, selectedGroup) {
       .sort((a, b) => a.code.localeCompare(b.code, 'vi'));
 
     const roomTypes = ROOM_TYPE_ORDER.map(roomType => {
-      const typeRooms = rooms.filter(room => room.room_type === roomType);
+      const typeRooms = rooms.filter(room => {
+        const rType = room.room_type || '';
+        return rType.normalize('NFC') === roomType.normalize('NFC');
+      });
       const statuses = {
         available: typeRooms.filter(room => room.status === 'available').length,
         occupied: typeRooms.filter(room => room.status === 'occupied').length,
@@ -2062,6 +2071,13 @@ function renderApartmentStatusTimeline(data) {
     }).join('');
 
   container.innerHTML = dateHeaderHtml + `<div class="timeline-body">${groupsHtml}</div>`;
+  // Tự động cuộn về phía bên phải (ngày hôm nay/mới nhất)
+  setTimeout(() => {
+    const scrollContainer = container.closest('.timeline-scroll');
+    if (scrollContainer) {
+      scrollContainer.scrollLeft = scrollContainer.scrollWidth;
+    }
+  }, 100);
 }
 
 function toggleTimelineBuilding(building) {

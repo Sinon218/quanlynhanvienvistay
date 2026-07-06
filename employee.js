@@ -1995,6 +1995,13 @@ function renderEmpApartmentStatusTimeline(data) {
     }).join('');
 
   container.innerHTML = dateHeaderHtml + `<div class="timeline-body">${groupsHtml}</div>`;
+  // Tự động cuộn về phía bên phải (ngày hôm nay/mới nhất)
+  setTimeout(() => {
+    const scrollContainer = container.closest('.timeline-scroll');
+    if (scrollContainer) {
+      scrollContainer.scrollLeft = scrollContainer.scrollWidth;
+    }
+  }, 100);
 }
 
 function toggleEmpTimelineBuilding(building) {
