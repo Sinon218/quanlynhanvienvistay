@@ -9,7 +9,7 @@ async function migrate() {
   try {
     pool = await getPool();
     console.log('🔄 Checking and adding checkin/checkout columns to Apartments...');
-    
+
     // Add checkin_date, checkin_time, checkout_date, checkout_time to Apartments table if they don't exist
     await pool.request().query(`
       IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'Apartments' AND COLUMN_NAME = 'checkin_date')
@@ -41,7 +41,7 @@ async function migrate() {
         PRINT 'ℹ️ expected_start_at/expected_end_at columns already exist';
       END
     `);
-    
+
     console.log('✅ DATABASE MIGRATION COMPLETE!');
   } catch (err) {
     console.error('❌ MIGRATION ERROR:', err.message);

@@ -1,13 +1,16 @@
 ﻿<!DOCTYPE html>
 <html lang="vi">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="description" content="Đăng nhập hệ thống quản lý phân công nhân viên ViStay">
   <title>Đăng Nhập - ViStay Management</title>
   <link rel="stylesheet" href="style.css">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏨</text></svg>">
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏨</text></svg>">
 </head>
+
 <body class="login-body">
 
   <div class="login-wrapper">
@@ -73,7 +76,7 @@
       const loginBtn = document.getElementById('loginBtn');
       const usernameInput = document.getElementById('username');
       const passwordInput = document.getElementById('password');
-      
+
       const username = usernameInput.value.trim().toLowerCase();
       const password = passwordInput.value;
 
@@ -117,7 +120,7 @@
 
       } catch (err) {
         console.warn('Backend login failed, attempting local fallback:', err.message);
-        
+
         // Local validation fallback
         const validUsers = {
           'vistay': { role: 'admin', name: 'Admin ViStay', staffId: null },
@@ -146,7 +149,7 @@
           localStorage.setItem('vistay_mode', 'local');
 
           showToast('Đăng nhập (Chế độ offline) thành công!', 'info');
-          
+
           setTimeout(() => {
             if (user.role === 'admin' || user.role === 'manager') {
               window.location.href = 'admin.html';
@@ -166,7 +169,7 @@
     document.addEventListener('DOMContentLoaded', () => {
       const token = localStorage.getItem('vistay_token');
       const userStr = localStorage.getItem('vistay_user');
-      
+
       if (token && userStr) {
         try {
           const user = JSON.parse(userStr);
@@ -182,4 +185,5 @@
     });
   </script>
 </body>
+
 </html>

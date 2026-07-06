@@ -524,11 +524,11 @@ router.get('/status-timeline', authenticate, async (req, res) => {
         }
       }
     } else {
-      // 5 ngày trong quá khứ và 25 ngày trong tương lai (tổng cộng 31 ngày)
-      for (let i = -5; i <= 25; i++) {
+      // Bắt đầu từ hôm nay và hiển thị 15 ngày tiếp theo trong tương lai (tổng cộng 15 ngày)
+      for (let i = 0; i < 15; i++) {
         timeBuckets.push(new Date(now.getFullYear(), now.getMonth(), now.getDate() + i, 23, 59, 59));
       }
-      todayIndex = 5;
+      todayIndex = 0;
     }
 
     let queryApartments = `
