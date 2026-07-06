@@ -1594,7 +1594,7 @@ function renderApartmentStatusChart(byBuilding) {
           fill: true
         },
         {
-          label: 'Đang bảo trì',
+          label: 'Tổng vệ sinh',
           data: maintenanceData,
           borderColor: '#3b82f6',
           backgroundColor: 'rgba(59, 130, 246, 0.08)',
@@ -1753,7 +1753,7 @@ function renderModalRoomChart(data) {
           categoryPercentage: 0.9
         },
         {
-          label: 'Đang bảo trì',
+          label: 'Tổng vệ sinh',
           data: maintenanceData,
           backgroundColor: '#3b82f6',
           borderRadius: 3,
