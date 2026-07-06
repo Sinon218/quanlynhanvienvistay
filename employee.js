@@ -1059,14 +1059,19 @@ function initializePage() {
   });
 
   // Auto-recovery: If we are in local mode but server is online, switch back to backend
-  if (localStorage.getItem('vistay_mode') === 'local' && token) {
+  if (localStorage.getItem('vistay_mode') === 'local') {
     fetch(`${API_URL}/auth/me`, {
       method: 'GET',
-      headers: { 'Authorization': `Bearer ${token}` }
+      headers: { 'Authorization': `Bearer ${token}` },
+      cache: 'no-store'
     }).then(res => {
-      if (res.ok) {
-        console.log("Server is online. Switching back to backend mode.");
-        localStorage.setItem('vistay_mode', 'backend');
+      console.log("Server is online. Switching back to backend mode.");
+      localStorage.setItem('vistay_mode', 'backend');
+      if (token === 'local_fallback_token') {
+        localStorage.removeItem('vistay_token');
+        localStorage.removeItem('vistay_user');
+        window.location.href = 'index.html';
+      } else {
         window.location.reload();
       }
     }).catch(err => {
