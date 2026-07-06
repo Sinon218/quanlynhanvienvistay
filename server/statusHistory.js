@@ -77,13 +77,19 @@ async function initStatusHistory() {
       'S2-3420': '3 ngủ', 'S3-3702': '3 ngủ', 'S3-3906': '3 ngủ',
       'S2-2106': '4 ngủ', 'S3-3918': '4 ngủ'
     };
-    for (const [code, type] of Object.entries(roomTypeByCode)) {
-      await pool.request()
-        .input('code', sql.VarChar, code)
-        .input('type', sql.NVarChar, type)
-        .query('UPDATE Apartments SET room_type = @type WHERE code = @code');
+    const checkTypeRes = await pool.request().query("SELECT COUNT(*) as cnt FROM Apartments WHERE room_type IS NULL");
+    if (checkTypeRes.recordset[0].cnt > 0) {
+      console.log('🔄 Seeding room types into Apartments table...');
+      for (const [code, type] of Object.entries(roomTypeByCode)) {
+        await pool.request()
+          .input('code', sql.VarChar, code)
+          .input('type', sql.NVarChar, type)
+          .query('UPDATE Apartments SET room_type = @type WHERE code = @code');
+      }
+      console.log('✅ Room types verified/updated in Apartments table');
+    } else {
+      console.log('ℹ️ Room types already set, skipping seed');
     }
-    console.log('✅ Room types verified/updated in Apartments table');
 
     // Tạo bảng nếu chưa tồn tại
     await pool.request().query(`
