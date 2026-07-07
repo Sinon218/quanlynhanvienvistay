@@ -6,6 +6,7 @@ const { sql, getPool } = require('../db');
 const { authenticate, requireAdmin, requireManagerOrAdmin } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const { sendEventToAll } = require('../sse');
+const { getLocalDate } = require('../utils');
 
 const router = express.Router();
 
@@ -16,13 +17,6 @@ const TECH_LEVEL_PRICES = {
   3: 150000,  // Khó
   4: 250000   // Cực khó
 };
-
-// Helper to get local date string YYYY-MM-DD
-function getLocalDate() {
-  const options = { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' };
-  const formatter = new Intl.DateTimeFormat('en-CA', options);
-  return formatter.format(new Date());
-}
 
 // POST /api/tasks — Admin/Manager tạo task mới
 router.post('/', authenticate, requireManagerOrAdmin, async (req, res) => {

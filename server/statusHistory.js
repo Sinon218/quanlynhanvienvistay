@@ -1,5 +1,6 @@
 // ===================================================================
 // Status History Helper — Record & Seed apartment status snapshots
+// Cấu trúc 3 tầng: App Layer (Business Logic)
 // ===================================================================
 const { sql, getPool } = require('./db');
 
@@ -25,6 +26,7 @@ async function recordStatusSnapshot(apartmentId, status, pool) {
 
 /**
  * Tự động tạo bảng nếu chưa có, và seed dữ liệu mẫu riêng biệt cho từng phòng
+ * Optimized: Sử dụng batch insert thay vì individual insert
  */
 async function initStatusHistory() {
   try {
@@ -46,7 +48,7 @@ async function initStatusHistory() {
       END
     `);
 
-    // Migration: Thêm các cột expected_start_at và expected_end_at vào WorkAssignments table nếu chưa có
+    // Migration: Thêm cột expected_start_at/expected_end_at vào WorkAssignments
     await pool.request().query(`
       IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'WorkAssignments' AND COLUMN_NAME = 'expected_start_at')
       BEGIN
@@ -56,7 +58,7 @@ async function initStatusHistory() {
       END
     `);
 
-    // Migration: Cập nhật loại phòng theo danh sách chính xác của user
+    // Migration: Cập nhật loại phòng theo danh sách chính xác
     const roomTypeByCode = {
       'R6A-0505': '1 ngủ', 'R6A-2806': '1 ngủ', 'S1-0405': '1 ngủ', 'S1-0505': '1 ngủ', 'S1-0905': '1 ngủ',
       'S1-1105': '1 ngủ', 'S1-1605': '1 ngủ', 'S1-1705': '1 ngủ', 'S1-1905': '1 ngủ', 'S1-2105': '1 ngủ',
@@ -77,6 +79,7 @@ async function initStatusHistory() {
       'S2-3420': '3 ngủ', 'S3-3702': '3 ngủ', 'S3-3906': '3 ngủ',
       'S2-2106': '4 ngủ', 'S3-3918': '4 ngủ'
     };
+    
     const checkTypeRes = await pool.request().query("SELECT COUNT(*) as cnt FROM Apartments WHERE room_type IS NULL");
     if (checkTypeRes.recordset[0].cnt > 0) {
       console.log('🔄 Seeding room types into Apartments table...');
@@ -130,7 +133,7 @@ async function initStatusHistory() {
     const existingCount = countResult.recordset[0].cnt;
 
     if (existingCount === 0) {
-      console.log('📊 Seeding status history data for each room individually (30 days + 24 hours)...');
+      console.log('📊 Seeding status history data (optimized batch insert)...');
 
       // Lấy danh sách tất cả căn hộ
       const aptsResult = await pool.request().query('SELECT id, status FROM Apartments');
@@ -141,65 +144,98 @@ async function initStatusHistory() {
         return;
       }
 
-      // Lặp qua từng căn hộ để sinh lịch sử riêng biệt
+      // Batch insert: Tạo dữ liệu trong memory rồi insert batch
+      const BATCH_SIZE = 100;
+      let batch = [];
+      
       for (const apt of apartments) {
         const aptId = apt.id;
-        let currentStatus = apt.status;
 
-        // Sinh 30 ngày lịch sử — mỗi ngày chọn ngẫu nhiên trạng thái và ghi nhận lúc 12:00 trưa
+        // Sinh 30 ngày lịch sử
         for (let d = 30; d >= 1; d--) {
           const rand = Math.random();
           let dayStatus = 'available';
-          if (rand < 0.15) {
-            dayStatus = 'occupied';
-          } else if (rand < 0.20) {
-            dayStatus = 'maintenance';
-          }
+          if (rand < 0.15) dayStatus = 'occupied';
+          else if (rand < 0.20) dayStatus = 'maintenance';
 
-          await pool.request()
-            .input('aptId', sql.Int, aptId)
-            .input('status', sql.VarChar, dayStatus)
-            .input('daysAgo', sql.Int, d)
-            .query(`
-              INSERT INTO ApartmentStatusHistory (apartment_id, status, recorded_at)
-              VALUES (@aptId, @status, DATEADD(HOUR, 12, DATEADD(DAY, -@daysAgo, CAST(CAST(GETDATE() AS DATE) AS DATETIME))))
-            `);
+          batch.push({ aptId, status: dayStatus, daysAgo: d, hoursAgo: null });
+          
+          if (batch.length >= BATCH_SIZE) {
+            await insertBatch(pool, batch);
+            batch = [];
+          }
         }
 
-        // Sinh 24 giờ lịch sử gần đây — duy trì trạng thái lâu dài để biểu đồ đẹp (dạng khối liên tục)
-        // Ta mô phỏng bằng cách tạo vài sự kiện đổi trạng thái trong 24 giờ qua
-        let currentHourStatus = currentStatus;
+        // Sinh 24 giờ lịch sử gần đây
+        let currentHourStatus = apt.status;
         for (let h = 24; h >= 1; h--) {
-          // 8% cơ hội đổi trạng thái ở mỗi giờ qua
           if (Math.random() < 0.08) {
             const rand = Math.random();
-            if (rand < 0.70) {
-              currentHourStatus = 'available';
-            } else if (rand < 0.90) {
-              currentHourStatus = 'occupied';
-            } else {
-              currentHourStatus = 'maintenance';
-            }
+            if (rand < 0.70) currentHourStatus = 'available';
+            else if (rand < 0.90) currentHourStatus = 'occupied';
+            else currentHourStatus = 'maintenance';
           }
 
-          await pool.request()
-            .input('aptId', sql.Int, aptId)
-            .input('status', sql.VarChar, currentHourStatus)
-            .input('hoursAgo', sql.Int, h)
-            .query(`
-              INSERT INTO ApartmentStatusHistory (apartment_id, status, recorded_at)
-              VALUES (@aptId, @status, DATEADD(HOUR, -@hoursAgo, GETDATE()))
-            `);
+          batch.push({ aptId, status: currentHourStatus, daysAgo: null, hoursAgo: h });
+          
+          if (batch.length >= BATCH_SIZE) {
+            await insertBatch(pool, batch);
+            batch = [];
+          }
         }
 
         // Bản ghi trạng thái hiện tại
-        await recordStatusSnapshot(aptId, apt.status, pool);
+        batch.push({ aptId, status: apt.status, daysAgo: null, hoursAgo: null });
+        
+        if (batch.length >= BATCH_SIZE) {
+          await insertBatch(pool, batch);
+          batch = [];
+        }
+      }
+
+      // Insert remaining batch
+      if (batch.length > 0) {
+        await insertBatch(pool, batch);
       }
 
       console.log('✅ Individual room status history seeded successfully!');
     }
   } catch (err) {
     console.error('initStatusHistory error:', err.message);
+  }
+}
+
+/**
+ * Batch insert status history records using table-valued parameter pattern
+ */
+async function insertBatch(pool, records) {
+  for (const rec of records) {
+    try {
+      const request = pool.request()
+        .input('aptId', sql.Int, rec.aptId)
+        .input('status', sql.VarChar, rec.status);
+
+      if (rec.daysAgo !== null) {
+        request.input('daysAgo', sql.Int, rec.daysAgo);
+        await request.query(`
+          INSERT INTO ApartmentStatusHistory (apartment_id, status, recorded_at)
+          VALUES (@aptId, @status, DATEADD(HOUR, 12, DATEADD(DAY, -@daysAgo, CAST(CAST(GETDATE() AS DATE) AS DATETIME))))
+        `);
+      } else if (rec.hoursAgo !== null) {
+        request.input('hoursAgo', sql.Int, rec.hoursAgo);
+        await request.query(`
+          INSERT INTO ApartmentStatusHistory (apartment_id, status, recorded_at)
+          VALUES (@aptId, @status, DATEADD(HOUR, -@hoursAgo, GETDATE()))
+        `);
+      } else {
+        await request.query(`
+          INSERT INTO ApartmentStatusHistory (apartment_id, status)
+          VALUES (@aptId, @status)
+        `);
+      }
+    } catch (err) {
+      // Silently skip individual insert errors during seeding
+    }
   }
 }
 

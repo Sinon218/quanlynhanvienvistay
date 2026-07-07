@@ -1,10 +1,12 @@
 {
-  "name": "quanlynhanvien-root",
-  "version": "1.0.0",
-  "description": "Root scripts for Vistay Employee Management System",
+  "name": "quanlynhanvien-vistay",
+  "version": "2.0.0",
+  "description": "Hệ Thống Quản Lý Nhân Viên ViStay - Cấu trúc 3 tầng",
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "seed": "node server/seed.js"
+    "seed": "node server/seed.js",
+    "migrate": "node server/migrate.js",
+    "migrate:salary": "node server/migrate_salary.js"
   }
 }

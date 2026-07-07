@@ -6,21 +6,11 @@ const { sql, getPool } = require('../db');
 const { authenticate, requireAdmin, requireManagerOrAdmin, requireAdminOrSpecialStaff } = require('../middleware/auth');
 const { recordStatusSnapshot } = require('../statusHistory');
 const { sendEventToAll } = require('../sse');
+const { ensureNotificationsTable } = require('../utils');
 
 const router = express.Router();
 
-async function ensureNotificationsTable(pool) {
-  await pool.request().query(`
-    IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Notifications')
-    BEGIN
-      CREATE TABLE Notifications (
-        id INT IDENTITY(1,1) PRIMARY KEY,
-        message NVARCHAR(500) NOT NULL,
-        created_at DATETIME DEFAULT GETDATE()
-      );
-    END
-  `);
-}
+
 
 // GET /api/apartments — Danh sách căn hộ (Admin: tất cả, Employee: không MK)
 router.get('/', authenticate, async (req, res) => {

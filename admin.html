@@ -425,15 +425,17 @@
     <div id="tab-stats" class="tab-content">
       <!-- Quick Guest Stay Form -->
       <div class="task-form-card" style="margin-bottom: 20px; border-left: 4px solid var(--accent-blue);">
-        <div style="font-weight: 700; margin-bottom: 8px; font-size: 0.95rem; color: var(--accent-blue); display: flex; align-items: center; gap: 6px;">
+        <div
+          style="font-weight: 700; margin-bottom: 8px; font-size: 0.95rem; color: var(--accent-blue); display: flex; align-items: center; gap: 6px;">
           <span>🚪</span> Xếp Lịch / Nhận Khách Nhanh
         </div>
         <div class="task-form-grid" style="display: flex; flex-wrap: wrap; gap: 15px; align-items: flex-end;">
           <div class="rename-input-group" style="flex: 1; min-width: 150px;">
             <label for="quickStayRoomInput">🏢 Nhập mã căn hộ</label>
             <input type="text" id="quickStayRoomInput" list="quickStayRoomList" class="room-filter-select"
-              style="width: 100%; padding: 8px;" placeholder="Gõ mã căn..." oninput="handleQuickStayRoomInput(this.value)"
-              autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly');">
+              style="width: 100%; padding: 8px;" placeholder="Gõ mã căn..."
+              oninput="handleQuickStayRoomInput(this.value)" autocomplete="new-password" readonly
+              onfocus="this.removeAttribute('readonly');">
             <datalist id="quickStayRoomList"></datalist>
           </div>
           <div class="rename-input-group" style="flex: 1; min-width: 130px;">
@@ -442,7 +444,8 @@
           </div>
           <div class="rename-input-group" style="flex: 1; min-width: 90px;">
             <label for="quickStayCheckinTime">⏰ Giờ vào</label>
-            <input type="time" id="quickStayCheckinTime" class="room-filter-select" style="width: 100%; padding: 8px;" value="14:00">
+            <input type="time" id="quickStayCheckinTime" class="room-filter-select" style="width: 100%; padding: 8px;"
+              value="14:00">
           </div>
           <div class="rename-input-group" style="flex: 1; min-width: 130px;">
             <label for="quickStayCheckoutDate">📅 Ngày ra</label>
@@ -450,11 +453,13 @@
           </div>
           <div class="rename-input-group" style="flex: 1; min-width: 90px;">
             <label for="quickStayCheckoutTime">⏰ Giờ ra</label>
-            <input type="time" id="quickStayCheckoutTime" class="room-filter-select" style="width: 100%; padding: 8px;" value="12:00">
+            <input type="time" id="quickStayCheckoutTime" class="room-filter-select" style="width: 100%; padding: 8px;"
+              value="12:00">
           </div>
           <div class="rename-input-group" style="flex: 1; min-width: 140px;">
             <button class="btn btn-save" onclick="quickAddStay()"
-              style="width: 100%; padding: 10px; background: linear-gradient(135deg, #3b82f6, #2563eb);">➕ Xếp lịch khách</button>
+              style="width: 100%; padding: 10px; background: linear-gradient(135deg, #3b82f6, #2563eb);">➕ Xếp lịch
+              khách</button>
           </div>
         </div>
       </div>
@@ -536,7 +541,8 @@
             <span class="section-badge"
               style="background: rgba(167, 139, 250, 0.1); color: var(--accent-purple); border: 1px solid rgba(167, 139, 250, 0.2);">HN
               & HCM</span>
-            <span style="font-size: 0.78rem; color: var(--text-muted);">🔴 Đỏ = Có khách &nbsp;|&nbsp; 🔵 Xanh = Tổng vệ sinh
+            <span style="font-size: 0.78rem; color: var(--text-muted);">🔴 Đỏ = Có khách &nbsp;|&nbsp; 🔵 Xanh = Tổng vệ
+              sinh
               &nbsp;|&nbsp; 🟢 Xanh lá = Trống</span>
           </div>
         </div>

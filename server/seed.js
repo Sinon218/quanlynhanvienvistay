@@ -1,5 +1,6 @@
 // ===================================================================
 // SEED DATABASE SCRIPT - server/seed.js
+// Cấu trúc 3 tầng: Database Layer → App Layer
 // ===================================================================
 const bcrypt = require('bcryptjs');
 const { getPool, sql } = require('./db');
@@ -14,9 +15,46 @@ function removeAccents(str) {
     .replace(/\s+/g, '');
 }
 
+// ===== CẤU HÌNH LƯƠNG CỐ ĐỊNH =====
+const SALARY_CONFIG = {
+  DEFAULT_BASE_SALARY: 5000000,     // 5 triệu VND
+  SPECIAL_BASE_SALARY: 7000000,     // 7 triệu VND (Lộc, Diệu)
+  DEFAULT_PER_ROOM_RATE: 50000,     // 50k/phòng
+  SPECIAL_STAFF: ['Lộc', 'Diệu'],  // Nhân viên lương đặc biệt
+};
+
+// Room type mapping
+const roomTypeByCode = {
+  // 1 ngủ (35 căn)
+  'R6A-0505': '1 ngủ', 'R6A-2806': '1 ngủ', 'S1-0405': '1 ngủ', 'S1-0505': '1 ngủ', 'S1-0905': '1 ngủ',
+  'S1-1105': '1 ngủ', 'S1-1605': '1 ngủ', 'S1-1705': '1 ngủ', 'S1-1905': '1 ngủ', 'S1-2105': '1 ngủ',
+  'S1-2305': '1 ngủ', 'S1-2405': '1 ngủ', 'S1-2505': '1 ngủ', 'S1-2705': '1 ngủ', 'S1-3105': '1 ngủ',
+  'S2-0610': '1 ngủ', 'S2-1110': '1 ngủ', 'S2-1111': '1 ngủ', 'S2-1512': '1 ngủ', 'S2-1712': '1 ngủ',
+  'S2-2512': '1 ngủ', 'S2-2810': '1 ngủ', 'S2-3210': '1 ngủ', 'S2-3810': '1 ngủ', 'S2-3812': '1 ngủ',
+  'S3-0511': '1 ngủ', 'S3-1012': '1 ngủ', 'S3-15A12': '1 ngủ', 'S3-1811': '1 ngủ', 'S3-2012': '1 ngủ',
+  'S3-2412': '1 ngủ', 'S3-2712': '1 ngủ', 'S3-2911': '1 ngủ', 'S3-3411': '1 ngủ', 'S3-3512': '1 ngủ',
+
+  // 2 ngủ (40 căn)
+  'R4-2519': '2 ngủ', 'R5-2423': '2 ngủ', 'S1-2405A': '2 ngủ', 'S1-2505A': '2 ngủ', 'S1-2809': '2 ngủ',
+  'S2-0401': '2 ngủ', 'S2-0501': '2 ngủ', 'S2-0715': '2 ngủ', 'S2-0908': '2 ngủ', 'S2-11A11': '2 ngủ',
+  'S2-1511A': '2 ngủ', 'S2-1808': '2 ngủ', 'S2-1901': '2 ngủ', 'S2-2117': '2 ngủ', 'S2-2211A': '2 ngủ',
+  'S2-2411': '2 ngủ', 'S2-2811A': '2 ngủ', 'S2-2916': '2 ngủ', 'S2-3301': '2 ngủ', 'S2-3316': '2 ngủ',
+  'S2-3411A': '2 ngủ', 'S2-3501': '2 ngủ', 'S2-3517': '2 ngủ', 'S2-3608': '2 ngủ', 'S2-3708': '2 ngủ',
+  'S2-3811A': '2 ngủ', 'S2-3816': '2 ngủ', 'S2-3908': '2 ngủ', 'S3-0715': '2 ngủ', 'S3-0810': '2 ngủ',
+  'S3-0908': '2 ngủ', 'S3-1001': '2 ngủ', 'S3-15A08A': '2 ngủ', 'S3-1616': '2 ngủ', 'S3-1701': '2 ngủ',
+  'S3-1901': '2 ngủ', 'S3-2301': '2 ngủ', 'S3-3001': '2 ngủ', 'S3-3015': '2 ngủ', 'S3-3316': '2 ngủ',
+
+  // 3 ngủ (8 căn)
+  'B-2102': '3 ngủ', 'S1-0508': '3 ngủ', 'S2-1220': '3 ngủ', 'S3-2406': '3 ngủ', 'S3-2909': '3 ngủ',
+  'S2-3420': '3 ngủ', 'S3-3702': '3 ngủ', 'S3-3906': '3 ngủ',
+
+  // 4 ngủ (2 căn)
+  'S2-2106': '4 ngủ', 'S3-3918': '4 ngủ'
+};
+
 // Real apartments provided by user
 const providedRooms = [
-  // S1 (14)
+  // S1
   { code: 'S1-0405', building: 'S1', password: '040505', is_samsung: 0 },
   { code: 'S1-0505', building: 'S1', password: '000555', is_samsung: 1 },
   { code: 'S1-0508', building: 'S1', password: '585868', is_samsung: 1 },
@@ -34,7 +72,7 @@ const providedRooms = [
   { code: 'S1-2809', building: 'S1', password: '280900', is_samsung: 0 },
   { code: 'S1-3105', building: 'S1', password: '333555', is_samsung: 1 },
 
-  // S2 (26)
+  // S2
   { code: 'S2-0401', building: 'S2', password: '040100', is_samsung: 0 },
   { code: 'S2-0501', building: 'S2', password: '050100', is_samsung: 0 },
   { code: 'S2-0610', building: 'S2', password: '760.200', is_samsung: 1 },
@@ -72,7 +110,7 @@ const providedRooms = [
   { code: 'S2-3816', building: 'S2', password: '383883', is_samsung: 1 },
   { code: 'S2-3908', building: 'S2', password: '999888', is_samsung: 0 },
 
-  // S3 (17)
+  // S3
   { code: 'S3-0511', building: 'S3', password: '051100', is_samsung: 0 },
   { code: 'S3-0715', building: 'S3', password: '071500', is_samsung: 0 },
   { code: 'S3-0810', building: 'S3', password: '081000', is_samsung: 0 },
@@ -108,56 +146,11 @@ const providedRooms = [
   { code: 'B-2102', building: 'B', password: '456456*', is_samsung: 0 },
   { code: 'R4-2519', building: 'R4', password: '251900', is_samsung: 0 },
   { code: 'R5-2423', building: 'R5', password: '242300', is_samsung: 0 },
-
-  // R6A (2)
   { code: 'R6A-0505', building: 'R6A', password: '111.000.222.33', is_samsung: 0 },
   { code: 'R6A-2806', building: 'R6A', password: '2222.333.333', is_samsung: 0 }
 ];
 
-const roomTypeByCode = {
-  // 1 ngủ (35 căn)
-  'R6A-0505': '1 ngủ', 'R6A-2806': '1 ngủ', 'S1-0405': '1 ngủ', 'S1-0505': '1 ngủ', 'S1-0905': '1 ngủ',
-  'S1-1105': '1 ngủ', 'S1-1605': '1 ngủ', 'S1-1705': '1 ngủ', 'S1-1905': '1 ngủ', 'S1-2105': '1 ngủ',
-  'S1-2305': '1 ngủ', 'S1-2405': '1 ngủ', 'S1-2505': '1 ngủ', 'S1-2705': '1 ngủ', 'S1-3105': '1 ngủ',
-  'S2-0610': '1 ngủ', 'S2-1110': '1 ngủ', 'S2-1111': '1 ngủ', 'S2-1512': '1 ngủ', 'S2-1712': '1 ngủ',
-  'S2-2512': '1 ngủ', 'S2-2810': '1 ngủ', 'S2-3210': '1 ngủ', 'S2-3810': '1 ngủ', 'S2-3812': '1 ngủ',
-  'S3-0511': '1 ngủ', 'S3-1012': '1 ngủ', 'S3-15A12': '1 ngủ', 'S3-1811': '1 ngủ', 'S3-2012': '1 ngủ',
-  'S3-2412': '1 ngủ', 'S3-2712': '1 ngủ', 'S3-2911': '1 ngủ', 'S3-3411': '1 ngủ', 'S3-3512': '1 ngủ',
-
-  // 2 ngủ (40 căn)
-  'R4-2519': '2 ngủ', 'R5-2423': '2 ngủ', 'S1-2405A': '2 ngủ', 'S1-2505A': '2 ngủ', 'S1-2809': '2 ngủ',
-  'S2-0401': '2 ngủ', 'S2-0501': '2 ngủ', 'S2-0715': '2 ngủ', 'S2-0908': '2 ngủ', 'S2-11A11': '2 ngủ',
-  'S2-1511A': '2 ngủ', 'S2-1808': '2 ngủ', 'S2-1901': '2 ngủ', 'S2-2117': '2 ngủ', 'S2-2211A': '2 ngủ',
-  'S2-2411': '2 ngủ', 'S2-2811A': '2 ngủ', 'S2-2916': '2 ngủ', 'S2-3301': '2 ngủ', 'S2-3316': '2 ngủ',
-  'S2-3411A': '2 ngủ', 'S2-3501': '2 ngủ', 'S2-3517': '2 ngủ', 'S2-3608': '2 ngủ', 'S2-3708': '2 ngủ',
-  'S2-3811A': '2 ngủ', 'S2-3816': '2 ngủ', 'S2-3908': '2 ngủ', 'S3-0715': '2 ngủ', 'S3-0810': '2 ngủ',
-  'S3-0908': '2 ngủ', 'S3-1001': '2 ngủ', 'S3-15A08A': '2 ngủ', 'S3-1616': '2 ngủ', 'S3-1701': '2 ngủ',
-  'S3-1901': '2 ngủ', 'S3-2301': '2 ngủ', 'S3-3001': '2 ngủ', 'S3-3015': '2 ngủ', 'S3-3316': '2 ngủ',
-
-  // 3 ngủ (8 căn)
-  'B-2102': '3 ngủ', 'S1-0508': '3 ngủ', 'S2-1220': '3 ngủ', 'S3-2406': '3 ngủ', 'S3-2909': '3 ngủ',
-  'S2-3420': '3 ngủ', 'S3-3702': '3 ngủ', 'S3-3906': '3 ngủ',
-
-  // 4 ngủ (2 căn)
-  'S2-2106': '4 ngủ', 'S3-3918': '4 ngủ'
-};
-
-// Generate 90 placeholder rooms for Hồ Chí Minh to reach exactly 150
-const placeholderRooms = [];
-const targetTotal = 150;
-const missingCount = targetTotal - providedRooms.length;
-
-for (let i = 1; i <= missingCount; i++) {
-  const roomNum = String(i).padStart(3, '0');
-  placeholderRooms.push({
-    code: `HCM-${roomNum}`,
-    building: 'HCM',
-    password: '???',
-    is_samsung: 0
-  });
-}
-
-const allRooms = [...providedRooms, ...placeholderRooms].map((room) => ({
+const allRooms = providedRooms.map((room) => ({
   ...room,
   room_type: roomTypeByCode[room.code] || '2 ngủ'
 }));
@@ -180,29 +173,45 @@ async function seed() {
     pool = await getPool();
 
     console.log('🧹 Clearing existing database tables...');
+    // Xóa theo thứ tự để tránh lỗi FK constraint
+    try { await pool.request().query('DELETE FROM ApartmentStays'); } catch(e) {}
+    try { await pool.request().query('DELETE FROM ApartmentStatusHistory'); } catch(e) {}
     await pool.request().query('DELETE FROM AuditLog');
     await pool.request().query('DELETE FROM Notifications');
+    try { await pool.request().query('DELETE FROM Tasks'); } catch(e) {}
     await pool.request().query('DELETE FROM WorkAssignments');
     await pool.request().query('DELETE FROM SalaryRecords');
     await pool.request().query('DELETE FROM Users');
     await pool.request().query('DELETE FROM Staff');
     await pool.request().query('DELETE FROM Apartments');
 
-    console.log('👥 Seeding Staff...');
+    // Reset identity seeds
+    try { await pool.request().query('DBCC CHECKIDENT (Staff, RESEED, 0)'); } catch(e) {}
+    try { await pool.request().query('DBCC CHECKIDENT (Users, RESEED, 0)'); } catch(e) {}
+    try { await pool.request().query('DBCC CHECKIDENT (Apartments, RESEED, 0)'); } catch(e) {}
+
+    console.log('👥 Seeding Staff with fixed salaries...');
     const staffIds = [];
     for (const staff of staffData) {
+      const isSpecial = SALARY_CONFIG.SPECIAL_STAFF.includes(staff.name);
+      const baseSalary = isSpecial ? SALARY_CONFIG.SPECIAL_BASE_SALARY : SALARY_CONFIG.DEFAULT_BASE_SALARY;
+      const perRoomRate = SALARY_CONFIG.DEFAULT_PER_ROOM_RATE;
+
       const result = await pool.request()
         .input('name', sql.NVarChar, staff.name)
         .input('default_name', sql.NVarChar, staff.default_name)
         .input('type', sql.VarChar, staff.type)
         .input('room_role', sql.Int, staff.room_role)
         .input('tech_role', sql.Int, staff.tech_role)
+        .input('base_salary', sql.Decimal(12, 0), baseSalary)
+        .input('per_room_rate', sql.Decimal(10, 0), perRoomRate)
         .query(`
-          INSERT INTO Staff (name, default_name, type, room_role, tech_role)
+          INSERT INTO Staff (name, default_name, type, room_role, tech_role, base_salary, per_room_rate)
           OUTPUT INSERTED.id
-          VALUES (@name, @default_name, @type, @room_role, @tech_role)
+          VALUES (@name, @default_name, @type, @room_role, @tech_role, @base_salary, @per_room_rate)
         `);
       staffIds.push({ id: result.recordset[0].id, name: staff.name, type: staff.type });
+      console.log(`   ✓ ${staff.name}: ${baseSalary.toLocaleString('vi-VN')} VND`);
     }
 
     console.log('🔑 Seeding Users (Admin & Staff Accounts)...');
@@ -217,11 +226,12 @@ async function seed() {
         VALUES (@username, @password_hash, @role, NULL)
       `);
 
-    // Employee Accounts: username = lower case non-accented name, password = 12345678
+    // Employee/Manager Accounts
     const employeeHash = await bcrypt.hash('12345678', 10);
     for (const s of staffIds) {
-      // Map names like "Liên" to "lien", "Nhân viên Part-time 1" to "parttime1"
       let username = '';
+      let role = 'employee';
+      
       if (s.name.includes('Part-time 1')) {
         username = 'parttime1';
       } else if (s.name.includes('Part-time 2')) {
@@ -230,10 +240,15 @@ async function seed() {
         username = removeAccents(s.name);
       }
 
+      // Lộc và Diệu là manager
+      if (s.name === 'Lộc' || s.name === 'Diệu') {
+        role = 'manager';
+      }
+
       await pool.request()
         .input('username', sql.VarChar, username)
         .input('password_hash', sql.VarChar, employeeHash)
-        .input('role', sql.VarChar, 'employee')
+        .input('role', sql.VarChar, role)
         .input('staff_id', sql.Int, s.id)
         .query(`
           INSERT INTO Users (username, password_hash, role, staff_id)
@@ -255,16 +270,19 @@ async function seed() {
         `);
     }
 
+    console.log('');
     console.log('✅ DATABASE SEED COMPLETE!');
+    console.log('====================================================');
+    console.log('📊 CẤU HÌNH LƯƠNG CỐ ĐỊNH:');
+    console.log(`   - Lương cơ bản: ${SALARY_CONFIG.DEFAULT_BASE_SALARY.toLocaleString('vi-VN')} VND (Tất cả NV)`);
+    console.log(`   - Lương cơ bản: ${SALARY_CONFIG.SPECIAL_BASE_SALARY.toLocaleString('vi-VN')} VND (Lộc, Diệu)`);
+    console.log(`   - Đơn giá/phòng: ${SALARY_CONFIG.DEFAULT_PER_ROOM_RATE.toLocaleString('vi-VN')} VND`);
     console.log('----------------------------------------------------');
-    console.log('Tài khoản đăng nhập hệ thống:');
-    console.log('1. Quản trị viên (Admin):');
-    console.log('   - Username: vistay');
-    console.log('   - Password: (Mật khẩu bạn thiết lập, ví dụ: 12345678)');
-    console.log('2. Nhân viên (Employee):');
-    console.log('   - Username: lien, thien, thuong, van, dieu, hoan, parttime1, parttime2');
-    console.log('   - Password: (Mặc định: 12345678)');
-    console.log('----------------------------------------------------');
+    console.log('🔐 Tài khoản đăng nhập hệ thống:');
+    console.log('1. Admin: vistay / 12345678');
+    console.log('2. Manager: loc / 12345678, dieu / 12345678');
+    console.log('3. NV: lien, thien, thuong, van, hoan, parttime1, parttime2 / 12345678');
+    console.log('====================================================');
   } catch (err) {
     console.error('❌ SEED ERROR:', err);
   } finally {

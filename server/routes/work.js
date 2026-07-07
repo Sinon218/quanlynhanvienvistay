@@ -7,32 +7,11 @@ const { authenticate, requireAdmin, requireManagerOrAdmin } = require('../middle
 const upload = require('../middleware/upload');
 const { recordStatusSnapshot } = require('../statusHistory');
 const { sendEventToAll } = require('../sse');
+const { ensureNotificationsTable, getLocalDate } = require('../utils');
 
 const router = express.Router();
 
-// Helper to get local date string YYYY-MM-DD
-function getLocalDate() {
-  const options = { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' };
-  const formatter = new Intl.DateTimeFormat('en-CA', options);
-  return formatter.format(new Date());
-}
 
-function getCleaningStaffLimit(roomType, taskType = 'out') {
-  return Infinity;
-}
-
-async function ensureNotificationsTable(pool) {
-  await pool.request().query(`
-    IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Notifications')
-    BEGIN
-      CREATE TABLE Notifications (
-        id INT IDENTITY(1,1) PRIMARY KEY,
-        message NVARCHAR(500) NOT NULL,
-        created_at DATETIME DEFAULT GETDATE()
-      );
-    END
-  `);
-}
 
 // POST /api/work/assign — Giao căn hộ cho NV (Admin/Manager)
 router.post('/assign', authenticate, requireManagerOrAdmin, async (req, res) => {
@@ -57,23 +36,7 @@ router.post('/assign', authenticate, requireManagerOrAdmin, async (req, res) => 
       return res.status(404).json({ error: 'Không tìm thấy căn hộ.' });
     }
 
-    const roomType = aptRes.recordset[0].room_type;
-    const limit = getCleaningStaffLimit(roomType, type);
-
-    // 1. Kiểm tra giới hạn người/ngày cho căn hộ này
-    const countCheck = await pool.request()
-      .input('apartmentId', sql.Int, apartment_id)
-      .input('date', sql.Date, date)
-      .query(`
-        SELECT COUNT(*) as count FROM WorkAssignments 
-        WHERE apartment_id = @apartmentId AND assigned_date = @date AND status <> 'rejected'
-      `);
-
-    if (Number.isFinite(limit) && countCheck.recordset[0].count >= limit) {
-      return res.status(400).json({ error: `Căn hộ này đã được giao cho tối đa ${limit} nhân viên trong ngày.` });
-    }
-
-    // 2. Kiểm tra trùng lặp cho nhân viên này
+    // 1. Kiểm tra trùng lặp cho nhân viên này
     const check = await pool.request()
       .input('staffId', sql.Int, staff_id)
       .input('apartmentId', sql.Int, apartment_id)

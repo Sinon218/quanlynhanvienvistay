@@ -1,11 +1,29 @@
 // ===================================================================
 // Salary Routes — Calculation and Config
+// Cấu trúc 3 tầng: App Layer (Business Logic)
 // ===================================================================
 const express = require('express');
 const { sql, getPool } = require('../db');
 const { authenticate, requireAdmin, requireSelfOrAdmin } = require('../middleware/auth');
 
 const router = express.Router();
+
+// ===== CẤU HÌNH LƯƠNG CỐ ĐỊNH =====
+const SALARY_CONFIG = {
+  DEFAULT_BASE_SALARY: 5000000,     // 5 triệu VND
+  SPECIAL_BASE_SALARY: 7000000,     // 7 triệu VND (Lộc, Diệu)
+  DEFAULT_PER_ROOM_RATE: 50000,     // 50k/phòng
+  SPECIAL_STAFF_NAMES: ['Lộc', 'Diệu'],
+};
+
+// Helper: Lấy lương cơ bản theo tên nhân viên
+function getBaseSalaryForStaff(staffName, dbBaseSalary) {
+  if (dbBaseSalary && dbBaseSalary > 0) return dbBaseSalary;
+  if (SALARY_CONFIG.SPECIAL_STAFF_NAMES.includes(staffName)) {
+    return SALARY_CONFIG.SPECIAL_BASE_SALARY;
+  }
+  return SALARY_CONFIG.DEFAULT_BASE_SALARY;
+}
 
 // Helper to calculate room shares dynamically
 async function calculateDynamicRooms(month, year) {
@@ -109,8 +127,10 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
           s.id as staff_id,
           s.name,
           s.type,
-          ISNULL(sr.base_salary, s.base_salary) as base_salary,
-          ISNULL(sr.per_room_rate, s.per_room_rate) as per_room_rate,
+          s.base_salary as staff_base_salary,
+          s.per_room_rate as staff_per_room_rate,
+          sr.base_salary as sr_base_salary,
+          sr.per_room_rate as sr_per_room_rate,
           sr.total_rooms as saved_total_rooms,
           ISNULL(sr.bonus, 0) as bonus,
           ISNULL(sr.deductions, 0) as deductions,
@@ -123,8 +143,14 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
 
     // Tính toán lương động nếu chưa được lưu chính thức
     const salaryTable = result.recordset.map(row => {
-      const baseSalary = row.base_salary || 0;
-      const rate = row.per_room_rate || 50000; // Mặc định 50k/căn nếu chưa cấu hình
+      // Ưu tiên: SalaryRecords > Staff table > Cấu hình cố định
+      const baseSalary = row.sr_base_salary != null 
+        ? row.sr_base_salary 
+        : getBaseSalaryForStaff(row.name, row.staff_base_salary);
+      
+      const rate = row.sr_per_room_rate != null
+        ? row.sr_per_room_rate
+        : (row.staff_per_room_rate || SALARY_CONFIG.DEFAULT_PER_ROOM_RATE);
       
       // Nếu có total_rooms lưu trong DB thì dùng, không thì lấy từ tính toán động
       const calculatedRooms = staffRooms[row.staff_id] || 0;
@@ -195,8 +221,10 @@ router.get('/:staffId', authenticate, requireSelfOrAdmin, async (req, res) => {
           s.id as staff_id,
           s.name,
           s.type,
-          ISNULL(sr.base_salary, s.base_salary) as base_salary,
-          ISNULL(sr.per_room_rate, s.per_room_rate) as per_room_rate,
+          s.base_salary as staff_base_salary,
+          s.per_room_rate as staff_per_room_rate,
+          sr.base_salary as sr_base_salary,
+          sr.per_room_rate as sr_per_room_rate,
           sr.total_rooms as saved_total_rooms,
           ISNULL(sr.bonus, 0) as bonus,
           ISNULL(sr.deductions, 0) as deductions,
@@ -211,8 +239,13 @@ router.get('/:staffId', authenticate, requireSelfOrAdmin, async (req, res) => {
     }
 
     const row = result.recordset[0];
-    const baseSalary = row.base_salary || 0;
-    const rate = row.per_room_rate || 50000;
+    const baseSalary = row.sr_base_salary != null 
+      ? row.sr_base_salary 
+      : getBaseSalaryForStaff(row.name, row.staff_base_salary);
+    
+    const rate = row.sr_per_room_rate != null
+      ? row.sr_per_room_rate
+      : (row.staff_per_room_rate || SALARY_CONFIG.DEFAULT_PER_ROOM_RATE);
     
     const calculatedRooms = staffRooms[row.staff_id] || 0;
     const totalRooms = row.saved_total_rooms !== null ? parseFloat(row.saved_total_rooms) : calculatedRooms;
@@ -292,7 +325,7 @@ router.post('/save', authenticate, requireAdmin, async (req, res) => {
         .input('bonus', sql.Decimal(12,0), bon)
         .input('deductions', sql.Decimal(12,0), ded)
         .input('total', sql.Decimal(12,0), total)
-        .input('notes', sql.NVarChar, notes)
+        .input('notes', sql.NVarChar, notes || '')
         .query(`
           UPDATE SalaryRecords 
           SET base_salary = @base, per_room_rate = @rate, total_rooms = @rooms, 
@@ -311,7 +344,7 @@ router.post('/save', authenticate, requireAdmin, async (req, res) => {
         .input('bonus', sql.Decimal(12,0), bon)
         .input('deductions', sql.Decimal(12,0), ded)
         .input('total', sql.Decimal(12,0), total)
-        .input('notes', sql.NVarChar, notes)
+        .input('notes', sql.NVarChar, notes || '')
         .query(`
           INSERT INTO SalaryRecords (staff_id, month, year, base_salary, per_room_rate, total_rooms, bonus, deductions, total_salary, notes)
           VALUES (@staffId, @month, @year, @base, @rate, @rooms, @bonus, @deductions, @total, @notes)
