@@ -3,6 +3,16 @@
 -- Hệ Thống Quản Lý Nhân Viên ViStay
 -- ===================================================================
 
+USE master;
+GO
+
+IF EXISTS (SELECT name FROM sys.databases WHERE name = N'ungdungquanlynhanvienvistay')
+BEGIN
+    ALTER DATABASE ungdungquanlynhanvienvistay SET SINGLE_USER WITH ROLLBACK IMMEDIATE;
+    DROP DATABASE ungdungquanlynhanvienvistay;
+END
+GO
+
 CREATE DATABASE ungdungquanlynhanvienvistay;
 GO
 
@@ -45,6 +55,7 @@ CREATE TABLE Apartments (
     room_type NVARCHAR(20) NOT NULL DEFAULT N'2 ngủ',
     status VARCHAR(20) NOT NULL DEFAULT 'available' 
         CHECK (status IN ('available', 'occupied', 'cleaning', 'maintenance')),
+    default_cleaning_rate DECIMAL(10,0) NULL, -- Thêm cột giá dọn dẹp động
     created_at DATETIME DEFAULT GETDATE()
 );
 GO

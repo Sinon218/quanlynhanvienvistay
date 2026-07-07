@@ -22,6 +22,4 @@ ORDER BY id;
 GO
 
 PRINT N'✅ Salary migration complete!';
-PRINT N'   - 5,000,000 VND cho tất cả nhân viên';
-PRINT N'   - 7,000,000 VND cho Lộc và Diệu';
 GO
