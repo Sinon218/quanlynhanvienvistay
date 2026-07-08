@@ -206,36 +206,37 @@ async function initStatusHistory() {
 }
 
 /**
- * Batch insert status history records using table-valued parameter pattern
+ * Batch insert status history records using optimized multi-row INSERT query
  */
 async function insertBatch(pool, records) {
-  for (const rec of records) {
-    try {
-      const request = pool.request()
-        .input('aptId', sql.Int, rec.aptId)
-        .input('status', sql.VarChar, rec.status);
+  if (!records || records.length === 0) return;
+  try {
+    const request = pool.request();
+    const valuesSql = [];
 
+    records.forEach((rec, idx) => {
+      request.input(`aptId_${idx}`, sql.Int, rec.aptId);
+      request.input(`status_${idx}`, sql.VarChar, rec.status);
+
+      let dateExpression = 'GETDATE()';
       if (rec.daysAgo !== null) {
-        request.input('daysAgo', sql.Int, rec.daysAgo);
-        await request.query(`
-          INSERT INTO ApartmentStatusHistory (apartment_id, status, recorded_at)
-          VALUES (@aptId, @status, DATEADD(HOUR, 12, DATEADD(DAY, -@daysAgo, CAST(CAST(GETDATE() AS DATE) AS DATETIME))))
-        `);
+        request.input(`daysAgo_${idx}`, sql.Int, rec.daysAgo);
+        dateExpression = `DATEADD(HOUR, 12, DATEADD(DAY, -@daysAgo_${idx}, CAST(CAST(GETDATE() AS DATE) AS DATETIME)))`;
       } else if (rec.hoursAgo !== null) {
-        request.input('hoursAgo', sql.Int, rec.hoursAgo);
-        await request.query(`
-          INSERT INTO ApartmentStatusHistory (apartment_id, status, recorded_at)
-          VALUES (@aptId, @status, DATEADD(HOUR, -@hoursAgo, GETDATE()))
-        `);
-      } else {
-        await request.query(`
-          INSERT INTO ApartmentStatusHistory (apartment_id, status)
-          VALUES (@aptId, @status)
-        `);
+        request.input(`hoursAgo_${idx}`, sql.Int, rec.hoursAgo);
+        dateExpression = `DATEADD(HOUR, -@hoursAgo_${idx}, GETDATE())`;
       }
-    } catch (err) {
-      // Silently skip individual insert errors during seeding
-    }
+
+      valuesSql.push(`(@aptId_${idx}, @status_${idx}, ${dateExpression})`);
+    });
+
+    const queryStr = `
+      INSERT INTO ApartmentStatusHistory (apartment_id, status, recorded_at)
+      VALUES ${valuesSql.join(',\n')}
+    `;
+    await request.query(queryStr);
+  } catch (err) {
+    console.error('❌ insertBatch error:', err.message);
   }
 }
 

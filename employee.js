@@ -1065,14 +1065,18 @@ function initializePage() {
       headers: { 'Authorization': `Bearer ${token}` },
       cache: 'no-store'
     }).then(res => {
-      console.log("Server is online. Switching back to backend mode.");
-      localStorage.setItem('vistay_mode', 'backend');
-      if (token === 'local_fallback_token') {
-        localStorage.removeItem('vistay_token');
-        localStorage.removeItem('vistay_user');
-        window.location.href = 'index.html';
+      if (res.ok) {
+        console.log("Server is online. Switching back to backend mode.");
+        localStorage.setItem('vistay_mode', 'backend');
+        if (token === 'local_fallback_token') {
+          localStorage.removeItem('vistay_token');
+          localStorage.removeItem('vistay_user');
+          window.location.href = 'index.html';
+        } else {
+          window.location.reload();
+        }
       } else {
-        window.location.reload();
+        console.log("Server returned error. Staying in local mode.");
       }
     }).catch(err => {
       console.log("Server is offline. Staying in local mode.");
