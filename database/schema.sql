@@ -1,6 +1,7 @@
 -- ===================================================================
--- DATABASE: ungdungquanlynhanvienvistay
+-- DATABASE SCHEMA: ungdungquanlynhanvienvistay
 -- Hệ Thống Quản Lý Nhân Viên ViStay
+-- Chạy file này trong SSMS để tạo mới toàn bộ database
 -- ===================================================================
 
 USE master;
@@ -34,11 +35,12 @@ CREATE TABLE Staff (
 GO
 
 -- ===== BẢNG 2: Users (Tài khoản đăng nhập) =====
+-- Role: admin, employee, manager
 CREATE TABLE Users (
     id INT IDENTITY(1,1) PRIMARY KEY,
     username VARCHAR(50) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(20) NOT NULL CHECK (role IN ('admin', 'employee')),
+    role VARCHAR(20) NOT NULL CONSTRAINT CK_Users_Role CHECK (role IN ('admin', 'employee', 'manager')),
     staff_id INT NULL FOREIGN KEY REFERENCES Staff(id),
     is_active BIT NOT NULL DEFAULT 1,
     created_at DATETIME DEFAULT GETDATE()
@@ -46,6 +48,7 @@ CREATE TABLE Users (
 GO
 
 -- ===== BẢNG 3: Apartments (Căn hộ) =====
+-- Status: available, occupied, maintenance (không có cleaning)
 CREATE TABLE Apartments (
     id INT IDENTITY(1,1) PRIMARY KEY,
     code VARCHAR(20) NOT NULL UNIQUE,
@@ -54,13 +57,19 @@ CREATE TABLE Apartments (
     is_samsung BIT NOT NULL DEFAULT 0,
     room_type NVARCHAR(20) NOT NULL DEFAULT N'2 ngủ',
     status VARCHAR(20) NOT NULL DEFAULT 'available' 
-        CHECK (status IN ('available', 'occupied', 'cleaning', 'maintenance')),
-    default_cleaning_rate DECIMAL(10,0) NULL, -- Thêm cột giá dọn dẹp động
+        CONSTRAINT CK_Apartments_Status CHECK (status IN ('available', 'occupied', 'maintenance')),
+    default_cleaning_rate DECIMAL(10,0) NULL,
+    checkin_date DATE NULL,
+    checkin_time VARCHAR(10) NULL,
+    checkout_date DATE NULL,
+    checkout_time VARCHAR(10) NULL,
+    maintenance_duration INT NULL,
     created_at DATETIME DEFAULT GETDATE()
 );
 GO
 
 -- ===== BẢNG 4: WorkAssignments (Phân công trong ngày) =====
+-- Status: pending, accepted, in-progress, completed, rejected, approved
 CREATE TABLE WorkAssignments (
     id INT IDENTITY(1,1) PRIMARY KEY,
     staff_id INT NOT NULL FOREIGN KEY REFERENCES Staff(id),
@@ -70,10 +79,12 @@ CREATE TABLE WorkAssignments (
     assigned_role INT NOT NULL DEFAULT 1 CHECK (assigned_role IN (0, 1, 2)),
     assigned_date DATE NOT NULL DEFAULT CAST(GETDATE() AS DATE),
     status VARCHAR(20) NOT NULL DEFAULT 'pending' 
-        CHECK (status IN ('pending', 'accepted', 'in-progress', 'completed', 'rejected')),
+        CONSTRAINT CK_WorkAssignments_Status CHECK (status IN ('pending', 'accepted', 'in-progress', 'completed', 'rejected', 'approved')),
     completed_at DATETIME NULL,
     proof_image NVARCHAR(MAX) NULL,
     notes NVARCHAR(500) NULL,
+    expected_start_at DATETIME NULL,
+    expected_end_at DATETIME NULL,
     created_at DATETIME DEFAULT GETDATE()
 );
 GO
@@ -85,7 +96,8 @@ CREATE TABLE SalaryRecords (
     month INT NOT NULL CHECK (month BETWEEN 1 AND 12),
     year INT NOT NULL,
     base_salary DECIMAL(12,0) NULL,
-    total_rooms INT NOT NULL DEFAULT 0,
+    per_room_rate DECIMAL(10,0) NULL,
+    total_rooms DECIMAL(6,2) NOT NULL DEFAULT 0,
     bonus DECIMAL(12,0) NOT NULL DEFAULT 0,
     deductions DECIMAL(12,0) NOT NULL DEFAULT 0,
     total_salary DECIMAL(12,0) NULL,
@@ -114,7 +126,8 @@ CREATE TABLE Notifications (
 );
 GO
 
--- ===== BẢNG 8: Tasks (Công việc tùy ý giao cho NV) =====
+-- ===== BẢNG 8: Tasks (Công việc kỹ thuật) =====
+-- Status: pending, accepted, in-progress, completed, rejected, approved
 CREATE TABLE Tasks (
     id INT IDENTITY(1,1) PRIMARY KEY,
     staff_id INT NOT NULL FOREIGN KEY REFERENCES Staff(id),
@@ -122,9 +135,14 @@ CREATE TABLE Tasks (
     description NVARCHAR(1000) NULL,
     assigned_date DATE NOT NULL DEFAULT CAST(GETDATE() AS DATE),
     status VARCHAR(20) NOT NULL DEFAULT 'pending' 
-        CHECK (status IN ('pending', 'accepted', 'in-progress', 'completed', 'rejected')),
+        CONSTRAINT CK_Tasks_Status CHECK (status IN ('pending', 'accepted', 'in-progress', 'completed', 'rejected', 'approved')),
     completed_at DATETIME NULL,
     proof_image NVARCHAR(MAX) NULL,
+    is_self_assigned BIT NOT NULL DEFAULT 0,
+    before_image NVARCHAR(MAX) NULL,
+    tech_level INT NULL,
+    tech_price DECIMAL(10,0) NULL,
+    reject_reason NVARCHAR(500) NULL,
     created_at DATETIME DEFAULT GETDATE()
 );
 GO
@@ -138,13 +156,29 @@ CREATE TABLE ApartmentStatusHistory (
 );
 GO
 
+-- ===== BẢNG 10: ApartmentStays (Lịch sử lưu trú) =====
+CREATE TABLE ApartmentStays (
+    id INT IDENTITY(1,1) PRIMARY KEY,
+    apartment_id INT NOT NULL FOREIGN KEY REFERENCES Apartments(id) ON DELETE CASCADE,
+    checkin_date DATE NOT NULL,
+    checkin_time VARCHAR(10) NOT NULL,
+    checkout_date DATE NOT NULL,
+    checkout_time VARCHAR(10) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT GETDATE()
+);
+GO
+
 -- ===== INDEXES =====
 CREATE INDEX IX_WorkAssignments_StaffDate ON WorkAssignments(staff_id, assigned_date);
 CREATE INDEX IX_WorkAssignments_ApartmentDate ON WorkAssignments(apartment_id, assigned_date);
 CREATE INDEX IX_Apartments_Building ON Apartments(building);
 CREATE INDEX IX_SalaryRecords_StaffMonth ON SalaryRecords(staff_id, year, month);
 CREATE INDEX IX_ApartmentStatusHistory_AptDate ON ApartmentStatusHistory(apartment_id, recorded_at);
+CREATE INDEX IX_ApartmentStays_AptDate ON ApartmentStays(apartment_id, checkin_date, checkout_date);
+CREATE INDEX IX_Tasks_StaffDate ON Tasks(staff_id, assigned_date);
 GO
 
 PRINT N'✅ Schema created successfully!';
+PRINT N'   Bao gồm: Staff, Users(admin/employee/manager), Apartments, WorkAssignments,';
+PRINT N'   SalaryRecords, AuditLog, Notifications, Tasks, ApartmentStatusHistory, ApartmentStays';
 GO

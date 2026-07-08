@@ -5,8 +5,6 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "node --watch server/index.js",
-    "seed": "node server/seed.js",
-    "migrate": "node server/migrate.js",
-    "migrate:salary": "node server/migrate_salary.js"
+    "seed": "node server/seed.js"
   }
 }
