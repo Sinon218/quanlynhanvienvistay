@@ -187,6 +187,12 @@ function checkAuth() {
     handleLogout();
     return;
   }
+  
+  // Tự động khôi phục chế độ backend khi tải trang nếu không phải token offline
+  if (token !== 'local_fallback_token') {
+    localStorage.setItem('vistay_mode', 'backend');
+  }
+
   try {
     currentUser = JSON.parse(userStr);
     if (currentUser.role !== 'admin' && currentUser.role !== 'manager') {
@@ -2899,12 +2905,16 @@ function initializePage() {
       if (res.ok) {
         console.log("Server is online. Switching back to backend mode.");
         localStorage.setItem('vistay_mode', 'backend');
+        const offlineBanner = document.getElementById('offlineAlertBanner');
+        if (offlineBanner) offlineBanner.style.display = 'none';
+        
         if (token === 'local_fallback_token') {
           localStorage.removeItem('vistay_token');
           localStorage.removeItem('vistay_user');
           window.location.href = 'index.html';
         } else {
-          window.location.reload();
+          // Khởi chạy lại để lấy dữ liệu backend trực tiếp mà không cần reload trang
+          initializePage();
         }
       } else {
         console.log("Server returned error. Staying in local mode.");
