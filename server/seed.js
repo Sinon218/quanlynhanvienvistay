@@ -15,12 +15,15 @@ function removeAccents(str) {
     .replace(/\s+/g, '');
 }
 
+const CONFIG = require('./config');
+const { SALARY, ROOM_RATES } = CONFIG;
+
 // ===== CẤU HÌNH LƯƠNG CỐ ĐỊNH =====
 const SALARY_CONFIG = {
-  DEFAULT_BASE_SALARY: 5000000,     // 5 triệu VND
-  SPECIAL_BASE_SALARY: 7000000,     // 7 triệu VND (Lộc, Diệu)
-  DEFAULT_PER_ROOM_RATE: 50000,     // 50k/phòng
-  SPECIAL_STAFF: ['Lộc', 'Diệu'],  // Nhân viên lương đặc biệt
+  DEFAULT_BASE_SALARY: SALARY.DEFAULT_BASE_SALARY,
+  SPECIAL_BASE_SALARY: SALARY.SPECIAL_BASE_SALARY,
+  DEFAULT_PER_ROOM_RATE: ROOM_RATES.DEFAULT,
+  SPECIAL_STAFF: SALARY.SPECIAL_STAFF,
 };
 
 // Room type mapping

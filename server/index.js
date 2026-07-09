@@ -71,6 +71,12 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// ===== Global Configuration Config Endpoint =====
+app.get('/api/config', (req, res) => {
+  const config = require('./config');
+  res.json(config);
+});
+
 // ===== 404 Handler =====
 app.use('/api/*', (req, res) => {
   res.status(404).json({ error: `API endpoint không tồn tại: ${req.method} ${req.originalUrl}` });

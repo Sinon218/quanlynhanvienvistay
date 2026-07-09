@@ -10,13 +10,8 @@ const { getLocalDate } = require('../utils');
 
 const router = express.Router();
 
-// Bảng giá theo cấp độ kỹ thuật
-const TECH_LEVEL_PRICES = {
-  1: 50000,   // Dễ
-  2: 100000,  // Trung bình
-  3: 150000,  // Khó
-  4: 250000   // Cực khó
-};
+const { TECH_PRICES } = require('../config');
+const TECH_LEVEL_PRICES = TECH_PRICES;
 
 // POST /api/tasks — Admin/Manager tạo task mới
 router.post('/', authenticate, requireManagerOrAdmin, async (req, res) => {

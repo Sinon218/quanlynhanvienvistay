@@ -8,12 +8,14 @@ const { authenticate, requireAdmin, requireSelfOrAdmin } = require('../middlewar
 
 const router = express.Router();
 
-// ===== CẤU HÌNH LƯƠNG CỐ ĐỊNH =====
+const CONFIG = require('../config');
+const { SALARY, ROOM_RATES } = CONFIG;
+
 const SALARY_CONFIG = {
-  DEFAULT_BASE_SALARY: 5000000,     // 5 triệu VND
-  SPECIAL_BASE_SALARY: 7000000,     // 7 triệu VND (Lộc, Diệu)
-  DEFAULT_PER_ROOM_RATE: 50000,     // 50k/phòng
-  SPECIAL_STAFF_NAMES: ['Lộc', 'Diệu'],
+  DEFAULT_BASE_SALARY: SALARY.DEFAULT_BASE_SALARY,
+  SPECIAL_BASE_SALARY: SALARY.SPECIAL_BASE_SALARY,
+  DEFAULT_PER_ROOM_RATE: ROOM_RATES.DEFAULT,
+  SPECIAL_STAFF_NAMES: SALARY.SPECIAL_STAFF,
 };
 
 // Helper: Lấy lương cơ bản theo tên nhân viên
@@ -32,11 +34,13 @@ async function calculateDynamicRooms(month, year) {
     .input('month', sql.Int, month)
     .input('year', sql.Int, year)
     .query(`
-      SELECT id, staff_id, apartment_id, assigned_date, assigned_role
-      FROM WorkAssignments
-      WHERE status = 'approved'
-        AND MONTH(assigned_date) = @month
-        AND YEAR(assigned_date) = @year
+      SELECT wa.id, wa.staff_id, wa.apartment_id, wa.assigned_date, wa.assigned_role, wa.task_type,
+             a.room_type
+      FROM WorkAssignments wa
+      JOIN Apartments a ON wa.apartment_id = a.id
+      WHERE wa.status = 'approved'
+        AND MONTH(wa.assigned_date) = @month
+        AND YEAR(wa.assigned_date) = @year
     `);
 
   const assignments = res.recordset;
@@ -82,13 +86,21 @@ async function calculateDynamicRooms(month, year) {
   });
 
   // Sum by staff_id
-  const staffRooms = {};
+  const staffCalculated = {};
   assignments.forEach(a => {
     const share = shares[a.id] || 0;
-    staffRooms[a.staff_id] = (staffRooms[a.staff_id] || 0) + share;
+    const taskRates = ROOM_RATES[a.task_type] || ROOM_RATES['out'];
+    const rate = taskRates[a.room_type] || ROOM_RATES.DEFAULT;
+    const bonus = share * rate;
+    
+    if (!staffCalculated[a.staff_id]) {
+      staffCalculated[a.staff_id] = { rooms: 0, bonus: 0 };
+    }
+    staffCalculated[a.staff_id].rooms += share;
+    staffCalculated[a.staff_id].bonus += bonus;
   });
 
-  return staffRooms;
+  return staffCalculated;
 }
 
 // GET /api/salary — Bảng lương toàn bộ nhân viên (Admin only)
@@ -153,11 +165,17 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
         : (row.staff_per_room_rate || SALARY_CONFIG.DEFAULT_PER_ROOM_RATE);
       
       // Nếu có total_rooms lưu trong DB thì dùng, không thì lấy từ tính toán động
-      const calculatedRooms = staffRooms[row.staff_id] || 0;
-      const totalRooms = row.saved_total_rooms !== null ? parseFloat(row.saved_total_rooms) : calculatedRooms;
+      const calculatedData = staffRooms[row.staff_id] || { rooms: 0, bonus: 0 };
+      const totalRooms = row.saved_total_rooms !== null ? parseFloat(row.saved_total_rooms) : calculatedData.rooms;
       const roundedRooms = Math.round(totalRooms * 100) / 100;
 
-      const roomBonus = roundedRooms * rate;
+      let roomBonus = 0;
+      if (row.record_id) {
+        roomBonus = roundedRooms * rate;
+      } else {
+        roomBonus = calculatedData.bonus;
+      }
+      
       const techTaskSalary = techSalaries[row.staff_id] || 0;
       const totalSalary = baseSalary + roomBonus + techTaskSalary + row.bonus - row.deductions;
 
@@ -228,6 +246,7 @@ router.get('/:staffId', authenticate, requireSelfOrAdmin, async (req, res) => {
           sr.total_rooms as saved_total_rooms,
           ISNULL(sr.bonus, 0) as bonus,
           ISNULL(sr.deductions, 0) as deductions,
+          sr.id as record_id,
           sr.notes
         FROM Staff s
         LEFT JOIN SalaryRecords sr ON s.id = sr.staff_id AND sr.month = @month AND sr.year = @year
@@ -247,11 +266,16 @@ router.get('/:staffId', authenticate, requireSelfOrAdmin, async (req, res) => {
       ? row.sr_per_room_rate
       : (row.staff_per_room_rate || SALARY_CONFIG.DEFAULT_PER_ROOM_RATE);
     
-    const calculatedRooms = staffRooms[row.staff_id] || 0;
-    const totalRooms = row.saved_total_rooms !== null ? parseFloat(row.saved_total_rooms) : calculatedRooms;
+    const calculatedData = staffRooms[row.staff_id] || { rooms: 0, bonus: 0 };
+    const totalRooms = row.saved_total_rooms !== null ? parseFloat(row.saved_total_rooms) : calculatedData.rooms;
     const roundedRooms = Math.round(totalRooms * 100) / 100;
 
-    const roomBonus = roundedRooms * rate;
+    let roomBonus = 0;
+    if (row.record_id) {
+      roomBonus = roundedRooms * rate;
+    } else {
+      roomBonus = calculatedData.bonus;
+    }
     const totalSalary = baseSalary + roomBonus + techTaskSalary + row.bonus - row.deductions;
 
     res.json({
@@ -266,6 +290,7 @@ router.get('/:staffId', authenticate, requireSelfOrAdmin, async (req, res) => {
       bonus: row.bonus,
       deductions: row.deductions,
       total_salary: totalSalary,
+      record_id: row.record_id,
       notes: row.notes || ''
     });
   } catch (err) {

@@ -21,11 +21,26 @@ let selectedRoomId = null;
 let timelineData = null;
 
 // Bảng giá theo cấp độ kỹ thuật
-const TECH_LEVEL_PRICES = { 1: 20000, 2: 40000, 3: 800000, 4: 150000 };
+let TECH_LEVEL_PRICES = { 1: 50000, 2: 100000, 3: 150000, 4: 250000 };
 const TECH_LEVEL_NAMES = { 1: 'Dễ', 2: 'Trung bình', 3: 'Khó', 4: 'Cực khó' };
 const TECH_LEVEL_COLORS = { 1: '#22c55e', 2: '#f59e0b', 3: '#ef4444', 4: '#dc2626' };
 const TECH_LEVEL_BG = { 1: 'rgba(34,197,94,0.15)', 2: 'rgba(245,158,11,0.15)', 3: 'rgba(239,68,68,0.15)', 4: 'rgba(220,38,38,0.15)' };
 const TECH_LEVEL_STARS = { 1: '⭐', 2: '⭐⭐', 3: '⭐⭐⭐', 4: '⭐⭐⭐⭐' };
+
+// Global Configuration
+let appConfig = null;
+async function loadGlobalConfig() {
+  try {
+    const res = await apiCall('/config');
+    appConfig = res;
+    if (res.TECH_PRICES) {
+      TECH_LEVEL_PRICES = res.TECH_PRICES;
+      console.log("[CONFIG] Loaded TECH_PRICES from server:", TECH_LEVEL_PRICES);
+    }
+  } catch (err) {
+    console.warn("[CONFIG] Failed to load config from server, using local fallback. Error:", err.message);
+  }
+}
 
 // Auth check
 function checkAuth() {
@@ -1035,8 +1050,9 @@ async function checkNewNotifications() {
 }
 
 // ===== EVENT BINDINGS =====
-function initializePage() {
+async function initializePage() {
   checkAuth();
+  await loadGlobalConfig();
   setupRealtimeEvents();
 
   // Khởi động hệ thống kiểm tra thông báo đổi mật khẩu

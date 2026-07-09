@@ -34,11 +34,26 @@ let selectedRoomId = null;
 let selectedSalaryId = null;
 
 // Bảng giá theo cấp độ kỹ thuật
-const TECH_LEVEL_PRICES = { 1: 50000, 2: 100000, 3: 150000, 4: 250000 };
+let TECH_LEVEL_PRICES = { 1: 50000, 2: 100000, 3: 150000, 4: 250000 };
 const TECH_LEVEL_NAMES = { 1: 'Dễ', 2: 'Trung bình', 3: 'Khó', 4: 'Cực khó' };
 const TECH_LEVEL_COLORS = { 1: '#22c55e', 2: '#f59e0b', 3: '#ef4444', 4: '#dc2626' };
 const TECH_LEVEL_BG = { 1: 'rgba(34,197,94,0.15)', 2: 'rgba(245,158,11,0.15)', 3: 'rgba(239,68,68,0.15)', 4: 'rgba(220,38,38,0.15)' };
 const TECH_LEVEL_STARS = { 1: '⭐', 2: '⭐⭐', 3: '⭐⭐⭐', 4: '⭐⭐⭐⭐' };
+
+// Global Configuration
+let appConfig = null;
+async function loadGlobalConfig() {
+  try {
+    const res = await apiCall('/config');
+    appConfig = res;
+    if (res.TECH_PRICES) {
+      TECH_LEVEL_PRICES = res.TECH_PRICES;
+      console.log("[CONFIG] Loaded TECH_PRICES from server:", TECH_LEVEL_PRICES);
+    }
+  } catch (err) {
+    console.warn("[CONFIG] Failed to load config from server, using local fallback. Error:", err.message);
+  }
+}
 const ROOM_TYPE_ORDER = ['1 ngủ', '2 ngủ', '3 ngủ', '4 ngủ'];
 const ROOM_TYPE_COLORS = {
   '1 ngủ': '#22c55e',
@@ -278,15 +293,15 @@ async function apiCall(endpoint, method = 'GET', body = null) {
 
 // ===== LOCAL SIMULATION DATABASE (OFFLINE MODE) =====
 const MOCK_STAFF = [
-  { id: 1, name: 'Liên', default_name: 'Liên', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
-  { id: 2, name: 'Thiên', default_name: 'Thiên', type: 'full-time', room_role: 2, tech_role: 1, base_salary: 0, per_room_rate: 50000 },
-  { id: 3, name: 'Thương', default_name: 'Thương', type: 'full-time', room_role: 2, tech_role: 1, base_salary: 0, per_room_rate: 50000 },
-  { id: 4, name: 'Vân', default_name: 'Vân', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
-  { id: 5, name: 'Diệu', default_name: 'Diệu', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
-  { id: 6, name: 'Hoàn', default_name: 'Hoàn', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
-  { id: 7, name: 'Nhân viên Part-time 1', default_name: 'Nhân viên Part-time 1', type: 'part-time', room_role: 2, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
-  { id: 8, name: 'Nhân viên Part-time 2', default_name: 'Nhân viên Part-time 2', type: 'part-time', room_role: 2, tech_role: 0, base_salary: 0, per_room_rate: 50000 },
-  { id: 9, name: 'Lộc', default_name: 'Lộc', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 0, per_room_rate: 50000 }
+  { id: 1, name: 'Liên', default_name: 'Liên', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 5000000, per_room_rate: 50000 },
+  { id: 2, name: 'Thiên', default_name: 'Thiên', type: 'full-time', room_role: 2, tech_role: 1, base_salary: 5000000, per_room_rate: 50000 },
+  { id: 3, name: 'Thương', default_name: 'Thương', type: 'full-time', room_role: 2, tech_role: 1, base_salary: 5000000, per_room_rate: 50000 },
+  { id: 4, name: 'Vân', default_name: 'Vân', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 5000000, per_room_rate: 50000 },
+  { id: 5, name: 'Diệu', default_name: 'Diệu', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 7000000, per_room_rate: 50000 },
+  { id: 6, name: 'Hoàn', default_name: 'Hoàn', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 5000000, per_room_rate: 50000 },
+  { id: 7, name: 'Nhân viên Part-time 1', default_name: 'Nhân viên Part-time 1', type: 'part-time', room_role: 2, tech_role: 0, base_salary: 5000000, per_room_rate: 50000 },
+  { id: 8, name: 'Nhân viên Part-time 2', default_name: 'Nhân viên Part-time 2', type: 'part-time', room_role: 2, tech_role: 0, base_salary: 5000000, per_room_rate: 50000 },
+  { id: 9, name: 'Lộc', default_name: 'Lộc', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 7000000, per_room_rate: 50000 }
 ];
 
 const PROVIDED_ROOMS = [
@@ -2865,9 +2880,10 @@ async function saveChangePassword() {
 }
 
 // ===== EVENT BINDINGS =====
-function initializePage() {
+async function initializePage() {
   console.log("[INIT] initializePage started");
   checkAuth();
+  await loadGlobalConfig();
   setupRealtimeEvents();
 
   // Khởi động hệ thống kiểm tra thông báo đổi mật khẩu
