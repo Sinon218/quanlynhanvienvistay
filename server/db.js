@@ -15,7 +15,7 @@ const config = {
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   options: {
-    encrypt: false,
+    encrypt: true,
     trustServerCertificate: true,
     keepAlive: false,
     enableArithAbort: true,
@@ -26,8 +26,8 @@ const config = {
     idleTimeoutMillis: 30000,
     acquireTimeoutMillis: 30000,
   },
-  connectionTimeout: 15000,
-  requestTimeout: 30000,
+  connectionTimeout: 30000,
+  requestTimeout: 60000,
 };
 
 if (process.env.DB_PORT) {
@@ -42,9 +42,16 @@ let reconnectAttempts = 0;
 const MAX_RECONNECT_ATTEMPTS = 5;
 
 async function getPool() {
-  // Fast path: return healthy pool
+  // Fast path: return healthy pool (with health check ping)
   if (activePool && activePool.connected) {
-    return activePool;
+    try {
+      await activePool.request().query('SELECT 1');
+      return activePool;
+    } catch (err) {
+      console.warn('📡 Cached SQL connection lost, reconnecting...', err.message);
+      activePool = null;
+      poolPromise = null;
+    }
   }
 
   // If we have a pending connection, wait for it

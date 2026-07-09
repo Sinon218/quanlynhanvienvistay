@@ -160,6 +160,70 @@ function handleLocalMockCall(endpoint, method, body) {
   let localWork = getLocalData('vistay_mock_work', []);
   let localSalary = getLocalData('vistay_mock_salary', []);
 
+  // GET /config — Trả về cấu hình mặc định
+  if (endpoint === '/config' && method === 'GET') {
+    return Promise.resolve({
+      SALARY: {
+        DEFAULT_BASE_SALARY: 5000000,
+        SPECIAL_BASE_SALARY: 7000000,
+        SPECIAL_STAFF: ['Lộc', 'Diệu'],
+      },
+      ROOM_RATES: {
+        'ss_luu': { '1 ngủ': 30000, '2 ngủ': 60000, '3 ngủ': 100000, '4 ngủ': 120000 },
+        'out': { '1 ngủ': 45000, '2 ngủ': 90000, '3 ngủ': 150000, '4 ngủ': 180000 },
+        'tong_ve_sinh': { '1 ngủ': 45000, '2 ngủ': 90000, '3 ngủ': 150000, '4 ngủ': 180000 },
+        DEFAULT: 50000
+      },
+      TECH_PRICES: { 1: 50000, 2: 100000, 3: 150000, 4: 250000 }
+    });
+  }
+
+  // GET /apartments/notifications — Mock thông báo rỗng
+  if (endpoint === '/apartments/notifications' && method === 'GET') {
+    return Promise.resolve([]);
+  }
+
+  // GET /apartments/status-timeline — Mock timeline dữ liệu
+  if (endpoint.startsWith('/apartments/status-timeline') && method === 'GET') {
+    const params = new URLSearchParams(endpoint.split('?')[1] || '');
+    const mode = params.get('mode') || 'daily';
+
+    const labels = [];
+    const todayDate = new Date();
+    let todayIndex = 0;
+
+    if (mode === 'hourly') {
+      for (let h = 0; h < 24; h++) {
+        labels.push(`${String(h).padStart(2, '0')}:00`);
+      }
+      todayIndex = todayDate.getHours();
+    } else {
+      for (let d = -7; d <= 7; d++) {
+        const dt = new Date(Date.now() + d * 86400000);
+        const dd = String(dt.getDate()).padStart(2, '0');
+        const mm = String(dt.getMonth() + 1).padStart(2, '0');
+        labels.push(`${dd}/${mm}`);
+        if (d === 0) todayIndex = labels.length - 1;
+      }
+    }
+
+    const rooms = localRooms.map(room => {
+      const currentStatus = room.status || 'available';
+      const segments = [{ status: currentStatus, start_index: 0, span: labels.length }];
+      return {
+        id: room.id,
+        code: room.code,
+        building: room.building,
+        current_status: currentStatus,
+        segments,
+        assignments: [],
+        maintenance_duration: room.maintenance_duration || null,
+      };
+    });
+
+    return Promise.resolve({ labels, rooms, todayIndex });
+  }
+
   // GET /work/today
   if (endpoint === '/work/today' && method === 'GET') {
     const todayStr = new Date().toISOString().split('T')[0];
