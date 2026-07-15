@@ -2,7 +2,7 @@
 // EMPLOYEE PORTAL JS - employee.js
 // ===================================================================
 
-const API_URL = `${window.location.origin}/api`;
+const API_URL = (window.location.protocol === 'file:') ? 'http://localhost:3000/api' : `${window.location.origin}/api`;
 let token = localStorage.getItem('vistay_token');
 let currentUser = null;
 
@@ -612,19 +612,37 @@ function renderTaskList(tasks) {
       `;
     } else if (task.status === 'in-progress') {
       const needsPhoto = task.assigned_role === 1;
+      const hasPartner = task.has_role2_partner && task.has_role2_partner > 0;
+      
+      let partnerCheckboxHtml = '';
+      if (task.assigned_role === 1 && hasPartner) {
+        partnerCheckboxHtml = `
+          <label style="display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: var(--text-secondary); margin-bottom: 6px; cursor: pointer; user-select: none;">
+            <input type="checkbox" id="partner-worked-${task.id}" checked style="width: 14px; height: 14px; cursor: pointer;">
+            <span>Người làm 2 có đi làm cùng</span>
+          </label>
+        `;
+      }
+
       if (needsPhoto) {
         actionHtml = `
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <input type="file" id="file-${task.id}" accept="image/*" capture="environment" style="display: none;" onchange="onFileSelected(${task.id})">
-            <button class="btn btn-save" onclick="document.getElementById('file-${task.id}').click()" style="padding: 6px 10px; font-size: 0.75rem; background: linear-gradient(135deg, #eab308, #ca8a04); border: none;">
-              <span id="lbl-${task.id}">📸 Chụp ảnh</span>
-            </button>
-            <button class="btn btn-save" onclick="completeWork(${task.id}, true)" style="padding: 6px 10px; font-size: 0.75rem; background: linear-gradient(135deg, #10b981, #059669);">✓ Hoàn thành</button>
+          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+            ${partnerCheckboxHtml}
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="file" id="file-${task.id}" accept="image/*" capture="environment" style="display: none;" onchange="onFileSelected(${task.id})">
+              <button class="btn btn-save" onclick="document.getElementById('file-${task.id}').click()" style="padding: 6px 10px; font-size: 0.75rem; background: linear-gradient(135deg, #eab308, #ca8a04); border: none;">
+                <span id="lbl-${task.id}">📸 Chụp ảnh</span>
+              </button>
+              <button class="btn btn-save" onclick="completeWork(${task.id}, true)" style="padding: 6px 10px; font-size: 0.75rem; background: linear-gradient(135deg, #10b981, #059669);">✓ Hoàn thành</button>
+            </div>
           </div>
         `;
       } else {
         actionHtml = `
-          <button class="btn btn-save" onclick="completeWork(${task.id}, false)" style="padding: 6px 10px; font-size: 0.75rem; background: linear-gradient(135deg, #10b981, #059669);">✓ Hoàn thành</button>
+          <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
+            ${partnerCheckboxHtml}
+            <button class="btn btn-save" onclick="completeWork(${task.id}, false)" style="padding: 6px 10px; font-size: 0.75rem; background: linear-gradient(135deg, #10b981, #059669);">✓ Hoàn thành</button>
+          </div>
         `;
       }
     } else if (task.status === 'completed') {
@@ -679,6 +697,11 @@ function onFileSelected(id) {
 async function completeWork(id, needsPhoto) {
   const fileInput = document.getElementById(`file-${id}`);
   const formData = new FormData();
+
+  const partnerCheckbox = document.getElementById(`partner-worked-${id}`);
+  if (partnerCheckbox) {
+    formData.append('partner_worked', partnerCheckbox.checked);
+  }
 
   if (needsPhoto) {
     if (!fileInput || fileInput.files.length === 0) {
@@ -1291,8 +1314,9 @@ function renderEmployeeApartmentGrid() {
     const pwHtml = room.password ? `
       <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px; background: rgba(0,0,0,0.15); padding: 4px 8px; border-radius: 4px;">
         <span style="font-size: 0.72rem; color: var(--text-secondary);">MK:</span>
-        <span class="pw-text" id="emp-pw-${room.id}" style="font-family: monospace; font-size: 0.8rem; font-weight: 700; flex: 1;">${room.password}</span>
-        ${isPrivileged ? `<button class="pw-edit-btn" onclick="event.stopPropagation(); openEmpPasswordModal(${room.id}, '${room.code}', '${room.password}')" style="background: transparent; border: none; cursor: pointer; padding: 0 4px; font-size: 0.75rem; color: var(--accent-amber);">✏️</button>` : ''}
+        <span class="pw-text" id="emp-pw-${room.id}" style="font-family: monospace; font-size: 0.8rem; font-weight: 700; flex: 1;">••••••</span>
+        <button class="pw-toggle-btn" onclick="event.stopPropagation(); toggleEmpPasswordDisplay(${room.id})" style="background: transparent; border: none; cursor: pointer; padding: 0 4px; font-size: 0.8rem;">👁️</button>
+        ${isPrivileged ? `<button class="pw-edit-btn" onclick="event.stopPropagation(); openEmpPasswordModal(${room.id}, '${room.code}')" style="background: transparent; border: none; cursor: pointer; padding: 0 4px; font-size: 0.75rem; color: var(--accent-amber);">✏️</button>` : ''}
       </div>
     ` : '';
 
@@ -1400,11 +1424,13 @@ function renderEmployeeApartmentSummaryTable() {
   container.innerHTML = html;
 }
 
-function toggleEmpPasswordDisplay(roomId, password) {
+function toggleEmpPasswordDisplay(roomId) {
   const textEl = document.getElementById(`emp-pw-${roomId}`);
   if (!textEl) return;
+  const room = apartmentList.find(r => r.id === roomId);
+  if (!room) return;
   if (textEl.textContent === '••••••') {
-    textEl.textContent = password;
+    textEl.textContent = room.password;
   } else {
     textEl.textContent = '••••••';
   }
@@ -1591,8 +1617,10 @@ async function saveEmpRoomStatus() {
   }
 }
 
-function openEmpPasswordModal(roomId, code, password) {
+function openEmpPasswordModal(roomId, code) {
   selectedRoomId = roomId;
+  const room = apartmentList.find(r => r.id === roomId);
+  const password = room ? room.password : '—';
   const modal = document.getElementById('empRoomPasswordModal');
   if (!modal) return;
 

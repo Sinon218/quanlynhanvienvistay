@@ -254,12 +254,18 @@ router.put('/:id/complete', authenticate, upload.single('proof'), async (req, re
       }
     }
 
+    let partnerWorked = null;
+    if (req.body.partner_worked !== undefined && req.body.partner_worked !== '') {
+      partnerWorked = (req.body.partner_worked === 'true' || req.body.partner_worked === '1' || req.body.partner_worked === true) ? 1 : 0;
+    }
+
     await pool.request()
       .input('id', sql.Int, req.params.id)
       .input('proofImage', sql.NVarChar, imagePath)
+      .input('partnerWorked', sql.Bit, partnerWorked)
       .query(`
         UPDATE WorkAssignments 
-        SET status = 'completed', completed_at = GETDATE(), proof_image = @proofImage
+        SET status = 'completed', completed_at = GETDATE(), proof_image = @proofImage, partner_worked = @partnerWorked
         WHERE id = @id
       `);
 
@@ -279,7 +285,13 @@ router.get('/today', authenticate, async (req, res) => {
     const date = getLocalDate();
 
     let query = `
-      SELECT wa.*, a.code, a.building, a.is_samsung, s.name as staff_name
+      SELECT wa.*, a.code, a.building, a.is_samsung, s.name as staff_name,
+             (SELECT COUNT(*) FROM WorkAssignments wa2 
+              WHERE wa2.apartment_id = wa.apartment_id 
+                AND wa2.assigned_date = wa.assigned_date 
+                AND wa2.staff_id <> wa.staff_id 
+                AND wa2.assigned_role = 2
+                AND wa2.status <> 'rejected') as has_role2_partner
       FROM WorkAssignments wa
       JOIN Apartments a ON wa.apartment_id = a.id
       JOIN Staff s ON wa.staff_id = s.id

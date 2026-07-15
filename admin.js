@@ -2,7 +2,7 @@
 // ADMIN PORTAL JS - admin.js
 // ===================================================================
 
-const API_URL = `${window.location.origin}/api`;
+const API_URL = (window.location.protocol === 'file:') ? 'http://localhost:3000/api' : `${window.location.origin}/api`;
 let token = localStorage.getItem('vistay_token');
 let currentUser = null;
 
@@ -1154,8 +1154,8 @@ function renderRoomCardHtml(room) {
       <div style="display: flex; align-items: center; gap: 6px; margin-bottom: 8px; background: rgba(0,0,0,0.15); padding: 4px 8px; border-radius: 4px;">
         <span style="font-size: 0.72rem; color: var(--text-secondary);">MK:</span>
         <span class="pw-text" id="pw-${room.id}" style="font-family: monospace; font-size: 0.8rem; font-weight: 700; flex: 1;">••••••</span>
-        <button class="pw-toggle-btn" onclick="event.stopPropagation(); togglePasswordDisplay(${room.id}, '${room.password}')" style="background: transparent; border: none; cursor: pointer; padding: 0 4px; font-size: 0.8rem;">👁️</button>
-        <button class="pw-edit-btn" onclick="event.stopPropagation(); openRoomPasswordModal(${room.id}, '${room.code}', '${room.password}')" style="background: transparent; border: none; cursor: pointer; padding: 0 4px; font-size: 0.75rem; color: var(--accent-amber);">✏️</button>
+        <button class="pw-toggle-btn" onclick="event.stopPropagation(); togglePasswordDisplay(${room.id})" style="background: transparent; border: none; cursor: pointer; padding: 0 4px; font-size: 0.8rem;">👁️</button>
+        <button class="pw-edit-btn" onclick="event.stopPropagation(); openRoomPasswordModal(${room.id}, '${room.code}')" style="background: transparent; border: none; cursor: pointer; padding: 0 4px; font-size: 0.75rem; color: var(--accent-amber);">✏️</button>
       </div>
 
       <div class="room-status-badge ${statusClass}" style="align-self: flex-start; margin-top: auto;">
@@ -1203,10 +1203,12 @@ function renderApartmentGrid() {
   grid.innerHTML = html;
 }
 
-function togglePasswordDisplay(roomId, password) {
+function togglePasswordDisplay(roomId) {
   const textEl = document.getElementById(`pw-${roomId}`);
+  const room = apartmentList.find(r => r.id === roomId) || summaryApartmentList.find(r => r.id === roomId);
+  if (!textEl || !room) return;
   if (textEl.textContent === '••••••') {
-    textEl.textContent = password;
+    textEl.textContent = room.password;
   } else {
     textEl.textContent = '••••••';
   }
@@ -1392,8 +1394,10 @@ function getTaskTypeClass(type) {
 }
 
 // ===== ROOM PASSWORD MODAL =====
-function openRoomPasswordModal(roomId, code, password) {
+function openRoomPasswordModal(roomId, code) {
   selectedRoomId = roomId;
+  const room = apartmentList.find(r => r.id === roomId) || summaryApartmentList.find(r => r.id === roomId);
+  const password = room ? room.password : '—';
   const modal = document.getElementById('roomPasswordModal');
   document.getElementById('roomPwModalNumber').textContent = `Căn ${code}`;
   document.getElementById('roomPwModalOld').textContent = password;
@@ -1518,11 +1522,19 @@ function setBuildingFilter(b) {
 // ==================== TAB 3: STATS ====================
 async function loadStatsTab() {
   try {
-    // Tải danh sách căn hộ để tổng hợp
-    summaryApartmentList = await apiCall('/apartments?building=all&status=all');
+    // Tải danh sách căn hộ để tổng hợp và thống kê hoàn thành công việc
+    const [apts, statsResult] = await Promise.all([
+      apiCall('/apartments?building=all&status=all'),
+      apiCall('/work/all-stats')
+    ]);
+
+    summaryApartmentList = apts;
+    statsData = statsResult;
+
     renderRoomSummaryTable();
     renderStatsMatrix();
     loadApartmentStatusTimeline();
+    renderStatsTable();
 
     // Khởi tạo ngày cho Form Nhận Khách Nhanh
     const today = new Date();
@@ -2831,7 +2843,8 @@ async function submitRejectTask() {
 function viewProof(url, title) {
   const modal = document.getElementById('viewProofModal');
   document.getElementById('proofModalTitle').textContent = `🖼️ Ảnh Minh Chứng - ${title}`;
-  document.getElementById('proofModalImage').src = url.startsWith('http') ? url : `${window.location.origin}${url}`;
+  const origin = (window.location.protocol === 'file:') ? 'http://localhost:3000' : window.location.origin;
+  document.getElementById('proofModalImage').src = url.startsWith('http') ? url : `${origin}${url}`;
   modal.classList.add('active');
 }
 

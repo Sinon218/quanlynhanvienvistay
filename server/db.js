@@ -6,7 +6,8 @@ const sql = require('mssql');
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 
 const serverParts = (process.env.DB_SERVER || '').split('\\');
-const serverHost = serverParts[0] || 'localhost';
+let serverHost = serverParts[0] || '127.0.0.1';
+if (serverHost === 'localhost') serverHost = '127.0.0.1';
 const instanceName = serverParts[1] || null;
 
 const config = {
@@ -15,7 +16,7 @@ const config = {
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
   options: {
-    encrypt: true,
+    encrypt: false,
     trustServerCertificate: true,
     keepAlive: false,
     enableArithAbort: true,
@@ -36,90 +37,73 @@ if (process.env.DB_PORT) {
   config.options.instanceName = instanceName;
 }
 
-let poolPromise = null;
-let activePool = null;
-let reconnectAttempts = 0;
-const MAX_RECONNECT_ATTEMPTS = 5;
+let pool = null;
+let connectionPromise = null;
 
 async function getPool() {
-  // Fast path: return healthy pool (with health check ping)
-  if (activePool && activePool.connected) {
+  // 1. If we have a healthy pool, return it
+  if (pool && pool.connected) {
     try {
-      await activePool.request().query('SELECT 1');
-      return activePool;
+      await pool.request().query('SELECT 1');
+      return pool;
     } catch (err) {
-      console.warn('📡 Cached SQL connection lost, reconnecting...', err.message);
-      activePool = null;
-      poolPromise = null;
+      console.warn('📡 Cached SQL connection lost, cleaning up...', err.message);
+      try { await pool.close(); } catch (e) {}
+      pool = null;
+      connectionPromise = null;
     }
   }
 
-  // If we have a pending connection, wait for it
-  if (poolPromise) {
+  // 2. If there is an ongoing connection attempt, wait for it
+  if (connectionPromise) {
     try {
-      const p = await poolPromise;
+      const p = await connectionPromise;
       if (p && p.connected) {
-        activePool = p;
-        reconnectAttempts = 0;
         return p;
       }
     } catch (err) {
-      poolPromise = null;
+      // If the ongoing connection failed, we will try to establish a new one below
     }
+    connectionPromise = null;
   }
 
-  // Create new connection
-  if (!poolPromise) {
-    poolPromise = (async () => {
-      try {
-        // Close stale pool
-        if (activePool) {
-          try { await activePool.close(); } catch (e) {}
-          activePool = null;
+  // 3. Start a new connection attempt
+  connectionPromise = (async () => {
+    try {
+      const newPool = new sql.ConnectionPool(config);
+      await newPool.connect();
+      console.log('✅ Connected to SQL Server:', process.env.DB_NAME);
+
+      newPool.on('error', err => {
+        console.error('📡 SQL Pool Error:', err.message);
+        if (pool === newPool) {
+          pool = null;
         }
+      });
 
-        if (reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-          console.error(`❌ Max reconnection attempts (${MAX_RECONNECT_ATTEMPTS}) reached. Resetting counter.`);
-          reconnectAttempts = 0;
-        }
+      pool = newPool;
+      return newPool;
+    } catch (err) {
+      console.error('❌ SQL Connection Error:', err.message);
+      connectionPromise = null;
+      throw err;
+    }
+  })();
 
-        reconnectAttempts++;
-        const newPool = new sql.ConnectionPool(config);
-        await newPool.connect();
-        console.log('✅ Connected to SQL Server:', process.env.DB_NAME);
-        reconnectAttempts = 0;
-
-        newPool.on('error', err => {
-          console.error('📡 SQL Pool Error:', err.message);
-          activePool = null;
-          poolPromise = null;
-        });
-
-        activePool = newPool;
-        return newPool;
-      } catch (err) {
-        console.error(`❌ SQL Connection Error (attempt ${reconnectAttempts}/${MAX_RECONNECT_ATTEMPTS}):`, err.message);
-        poolPromise = null;
-        activePool = null;
-        throw err;
-      }
-    })();
-  }
-
-  return poolPromise;
+  return connectionPromise;
 }
 
 // Graceful close
 async function closePool() {
-  if (activePool) {
+  if (pool) {
     try {
-      await activePool.close();
+      await pool.close();
       console.log('📴 SQL connection pool closed.');
     } catch (e) {
       console.error('Error closing pool:', e.message);
     }
-    activePool = null;
-    poolPromise = null;
+    pool = null;
+    connectionPromise = null;
   }
 }
 

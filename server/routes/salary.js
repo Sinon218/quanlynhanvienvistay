@@ -34,7 +34,7 @@ async function calculateDynamicRooms(month, year) {
     .input('month', sql.Int, month)
     .input('year', sql.Int, year)
     .query(`
-      SELECT wa.id, wa.staff_id, wa.apartment_id, wa.assigned_date, wa.assigned_role, wa.task_type,
+      SELECT wa.id, wa.staff_id, wa.apartment_id, wa.assigned_date, wa.assigned_role, wa.task_type, wa.partner_worked,
              a.room_type
       FROM WorkAssignments wa
       JOIN Apartments a ON wa.apartment_id = a.id
@@ -63,18 +63,27 @@ async function calculateDynamicRooms(month, year) {
       const r1 = a1.assigned_role;
       const r2 = a2.assigned_role;
 
-      if (r1 === r2) {
-        shares[a1.id] = 0.5;
-        shares[a2.id] = 0.5;
-      } else if (r1 === 1 && (r2 === 2 || r2 === 0)) {
-        shares[a1.id] = 2/3;
-        shares[a2.id] = 1/3;
-      } else if (r2 === 1 && (r1 === 2 || r1 === 0)) {
-        shares[a1.id] = 1/3;
-        shares[a2.id] = 2/3;
+      // Check if one of them is role 1 and reported partner did not work
+      const role1Assignment = r1 === 1 ? a1 : (r2 === 1 ? a2 : null);
+      const role2Assignment = r1 === 2 ? a1 : (r2 === 2 ? a2 : null);
+
+      if (role1Assignment && role2Assignment && (role1Assignment.partner_worked === false || role1Assignment.partner_worked === 0)) {
+        shares[role1Assignment.id] = 1.0;
+        shares[role2Assignment.id] = 0.0;
       } else {
-        shares[a1.id] = 0.5;
-        shares[a2.id] = 0.5;
+        if (r1 === r2) {
+          shares[a1.id] = 0.5;
+          shares[a2.id] = 0.5;
+        } else if (r1 === 1 && (r2 === 2 || r2 === 0)) {
+          shares[a1.id] = 2/3;
+          shares[a2.id] = 1/3;
+        } else if (r2 === 1 && (r1 === 2 || r1 === 0)) {
+          shares[a1.id] = 1/3;
+          shares[a2.id] = 2/3;
+        } else {
+          shares[a1.id] = 0.5;
+          shares[a2.id] = 0.5;
+        }
       }
     } else {
       // More than 2, split equally

@@ -85,6 +85,7 @@ CREATE TABLE WorkAssignments (
     notes NVARCHAR(500) NULL,
     expected_start_at DATETIME NULL,
     expected_end_at DATETIME NULL,
+    partner_worked BIT NULL DEFAULT NULL,
     created_at DATETIME DEFAULT GETDATE()
 );
 GO
