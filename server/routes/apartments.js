@@ -105,6 +105,110 @@ router.get('/stats', authenticate, async (req, res) => {
   }
 });
 
+// GET /api/apartments/status-timeline — Sơ đồ trạng thái dòng thời gian
+router.get('/status-timeline', authenticate, async (req, res) => {
+  try {
+    const { building, mode } = req.query;
+    const isHourly = mode === 'hourly';
+    const pool = await getPool();
+
+    let roomQuery = 'SELECT id, code, building, room_type, status AS current_status, maintenance_duration, checkin_date, checkout_date FROM Apartments WHERE 1=1';
+    const reqRooms = pool.request();
+
+    if (building && building !== 'all') {
+      if (building === 'SkyLake') {
+        roomQuery += " AND building IN ('S1', 'S2', 'S3')";
+      } else if (building === 'Royal') {
+        roomQuery += " AND building = 'R6A'";
+      } else if (building === 'Imperia') {
+        roomQuery += " AND building = 'B'";
+      } else {
+        roomQuery += ' AND building = @building';
+        reqRooms.input('building', sql.NVarChar, building);
+      }
+    }
+
+    roomQuery += ' ORDER BY building, code';
+    const roomsRes = await reqRooms.query(roomQuery);
+    const rooms = roomsRes.recordset;
+
+    const labels = [];
+    let todayIndex = 0;
+    const now = new Date();
+
+    if (isHourly) {
+      todayIndex = now.getHours();
+      for (let h = 0; h < 24; h++) {
+        labels.push(`${String(h).padStart(2, '0')}h`);
+      }
+    } else {
+      // 7 days window: 3 days before today, today (idx 3), 3 days after
+      todayIndex = 3;
+      for (let i = -3; i <= 3; i++) {
+        const d = new Date(now);
+        d.setDate(now.getDate() + i);
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        labels.push(`${dd}/${mm}`);
+      }
+    }
+
+    const totalBuckets = labels.length;
+
+    const formattedRooms = rooms.map(room => {
+      let segments = [];
+      const currentStatus = room.current_status || 'available';
+
+      if (currentStatus === 'available') {
+        segments.push({
+          start_index: 0,
+          span: totalBuckets,
+          status: 'available'
+        });
+      } else if (currentStatus === 'occupied') {
+        const startIdx = Math.max(0, todayIndex - 1);
+        const span = Math.min(totalBuckets - startIdx, 3);
+        if (startIdx > 0) {
+          segments.push({ start_index: 0, span: startIdx, status: 'available' });
+        }
+        segments.push({ start_index: startIdx, span: span, status: 'occupied' });
+        if (startIdx + span < totalBuckets) {
+          segments.push({ start_index: startIdx + span, span: totalBuckets - (startIdx + span), status: 'available' });
+        }
+      } else if (currentStatus === 'maintenance') {
+        const startIdx = Math.max(0, todayIndex);
+        const span = Math.min(totalBuckets - startIdx, 2);
+        if (startIdx > 0) {
+          segments.push({ start_index: 0, span: startIdx, status: 'available' });
+        }
+        segments.push({ start_index: startIdx, span: span, status: 'maintenance' });
+        if (startIdx + span < totalBuckets) {
+          segments.push({ start_index: startIdx + span, span: totalBuckets - (startIdx + span), status: 'available' });
+        }
+      }
+
+      return {
+        id: room.id,
+        code: room.code,
+        building: room.building,
+        room_type: room.room_type,
+        current_status: currentStatus,
+        maintenance_duration: room.maintenance_duration,
+        segments
+      };
+    });
+
+    res.json({
+      labels,
+      todayIndex,
+      rooms: formattedRooms
+    });
+  } catch (err) {
+    console.error('Get status timeline error:', err);
+    res.status(500).json({ error: 'Lỗi server khi tải dòng thời gian.' });
+  }
+});
+
 // PUT /api/apartments/:id/status — Đổi trạng thái (Tất cả nhân viên đã xác thực)
 router.put('/:id/status', authenticate, async (req, res) => {
   try {

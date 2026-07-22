@@ -58,8 +58,8 @@ function checkAuth() {
   try {
     currentUser = JSON.parse(userStr);
 
-    // Ensure techRole is set for Thiên and Thương (IDs 2 & 3)
-    if (currentUser.staffId === 2 || currentUser.staffId === 3 || currentUser.username === 'thien' || currentUser.username === 'thuong') {
+    // Ensure techRole is set for Thiên and Chiến (IDs 2 & 3)
+    if (currentUser.staffId === 2 || currentUser.staffId === 3 || currentUser.username === 'thien' || currentUser.username === 'chien') {
       currentUser.techRole = 1;
     }
 
@@ -74,10 +74,11 @@ function checkAuth() {
       if (switchBtn) switchBtn.style.display = 'inline-block';
     }
 
-    // Show "Tạo việc kỹ thuật" button for tech staff (techRole >= 1)
+    // Show "Tạo việc kỹ thuật" button and load dedicated tech section for tech staff (techRole >= 1)
     if (currentUser.techRole && currentUser.techRole >= 1) {
       const selfAssignBtn = document.getElementById('btnSelfAssignCard');
       if (selfAssignBtn) selfAssignBtn.style.display = 'inline-flex';
+      loadEmployeeTechTasks();
     }
   } catch (e) {
     handleLogout();
@@ -2291,6 +2292,113 @@ function setupRealtimeEvents() {
     }
   } catch (err) {
     console.error('Failed to setup real-time events:', err);
+  }
+}
+
+// ===== DEDICATED TECH STAFF FUNCTIONS =====
+async function loadEmployeeTechTasks() {
+  const section = document.getElementById('techStaffSection');
+  const container = document.getElementById('employeeTechTasksList');
+  if (!section || !container) return;
+
+  if (!currentUser || !currentUser.techRole) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+
+  try {
+    const tasks = await apiCall(`/tech/tasks?staff_id=${currentUser.staffId}`);
+    
+    if (!tasks || tasks.length === 0) {
+      container.innerHTML = `
+        <div style="text-align: center; padding: 20px; color: var(--text-muted); font-size: 0.88rem;">
+          🎉 Bạn không có công việc kỹ thuật/bảo trì nào cần xử lý.
+        </div>
+      `;
+      return;
+    }
+
+    const priorityLabels = {
+      low: 'Thấp', medium: 'Trung bình', high: 'Cao', urgent: '🔥 Khẩn cấp'
+    };
+
+    const statusBadges = {
+      pending: '<span style="background: rgba(245,158,11,0.15); color: #d97706; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600;">⏳ Chờ xử lý</span>',
+      in_progress: '<span style="background: rgba(59,130,246,0.15); color: #2563eb; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600;">🔧 Đang sửa</span>',
+      completed: '<span style="background: rgba(16,185,129,0.15); color: #059669; padding: 2px 8px; border-radius: 10px; font-size: 0.75rem; font-weight: 600;">🟢 Hoàn thành</span>'
+    };
+
+    container.innerHTML = tasks.map(t => {
+      const issueName = t.custom_issue_name || t.category_name || 'Công việc kỹ thuật';
+      return `
+        <div style="background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; padding: 14px; display: flex; flex-direction: column; gap: 10px;">
+          
+          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+              <span style="font-weight: 800; font-size: 1.05rem; color: var(--accent-purple);">🏢 ${t.apartment_code}</span>
+              <div style="font-weight: 700; font-size: 0.92rem; color: var(--text-primary); margin-top: 2px;">
+                ${issueName}
+              </div>
+              <div style="font-size: 0.75rem; color: var(--text-muted);">
+                Cấp độ: ${t.difficulty_label || 'Dễ'} • Mức ưu tiên: ${priorityLabels[t.priority] || 'Trung bình'}
+              </div>
+            </div>
+            <div>${statusBadges[t.status] || ''}</div>
+          </div>
+
+          ${t.description ? `
+            <div style="font-size: 0.82rem; color: var(--text-secondary); background: rgba(0,0,0,0.02); padding: 6px 10px; border-radius: 6px;">
+              ${t.description}
+            </div>
+          ` : ''}
+
+          <!-- Media Files (2 Photos + 1 Video) -->
+          <div style="display: flex; gap: 8px; margin-top: 4px;">
+            ${t.photo1_url ? `
+              <a href="${t.photo1_url}" target="_blank" style="flex: 1; height: 70px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border-color); display: block;">
+                <img src="${t.photo1_url}" style="width: 100%; height: 100%; object-fit: cover;">
+              </a>
+            ` : ''}
+            ${t.photo2_url ? `
+              <a href="${t.photo2_url}" target="_blank" style="flex: 1; height: 70px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border-color); display: block;">
+                <img src="${t.photo2_url}" style="width: 100%; height: 100%; object-fit: cover;">
+              </a>
+            ` : ''}
+            ${t.video_url ? `
+              <div style="flex: 1; height: 70px; border-radius: 6px; overflow: hidden; border: 1px solid var(--border-color); background: #000;">
+                <video src="${t.video_url}" style="width: 100%; height: 100%; object-fit: cover;" controls></video>
+              </div>
+            ` : ''}
+          </div>
+
+          <!-- Actions -->
+          <div style="display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--border-color); padding-top: 8px; margin-top: 4px;">
+            ${t.status === 'pending' ? `
+              <button onclick="updateEmployeeTechTaskStatus(${t.id}, 'in_progress')" class="btn" style="padding: 6px 12px; font-weight: 600; font-size: 0.8rem; background: #3b82f6; color: white; border: none; border-radius: 6px; cursor: pointer;">🔧 Nhận việc & Bắt đầu sửa</button>
+            ` : ''}
+            ${t.status === 'in_progress' ? `
+              <button onclick="updateEmployeeTechTaskStatus(${t.id}, 'completed')" class="btn" style="padding: 6px 12px; font-weight: 600; font-size: 0.8rem; background: #10b981; color: white; border: none; border-radius: 6px; cursor: pointer;">🟢 Báo Hoàn thành</button>
+            ` : ''}
+          </div>
+
+        </div>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error('Failed to load employee tech tasks:', err);
+  }
+}
+
+async function updateEmployeeTechTaskStatus(taskId, status) {
+  try {
+    await apiCall(`/tech/tasks/${taskId}/status`, 'PUT', { status });
+    showToast('✅ Đã cập nhật trạng thái công việc kỹ thuật!');
+    loadEmployeeTechTasks();
+  } catch (err) {
+    console.error('Update status error:', err);
+    showToast('❌ Lỗi cập nhật trạng thái.');
   }
 }
 

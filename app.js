@@ -6,7 +6,7 @@
 const DEFAULT_STAFF = [
   { id: 1, name: 'Liên',   defaultName: 'Liên',   type: 'full-time', roomRole: 1, techRole: 0 },
   { id: 2, name: 'Thiên',  defaultName: 'Thiên',  type: 'full-time', roomRole: 2, techRole: 1 },
-  { id: 3, name: 'Thương', defaultName: 'Thương', type: 'full-time', roomRole: 2, techRole: 1 },
+  { id: 3, name: 'Chiến', defaultName: 'Chiến', type: 'full-time', roomRole: 2, techRole: 1 },
   { id: 4, name: 'Vân',    defaultName: 'Vân',    type: 'full-time', roomRole: 1, techRole: 0 },
   { id: 5, name: 'Diệu',  defaultName: 'Diệu',  type: 'full-time', roomRole: 1, techRole: 0 },
   { id: 6, name: 'Hoàn',   defaultName: 'Hoàn',   type: 'full-time', roomRole: 1, techRole: 0 },

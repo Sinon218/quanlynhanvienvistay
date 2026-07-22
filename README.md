@@ -61,7 +61,7 @@ quanlynhanvien/
 | Admin | vistay | 12345678 |
 | Manager | loc | 12345678 |
 | Manager | dieu | 12345678 |
-| NV | lien, thien, thuong, van, hoan | 12345678 |
+| NV | lien, thien, chien, van, hoan | 12345678 |
 | NV Part-time | parttime1, parttime2 | 12345678 |
 
 ### Scripts

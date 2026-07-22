@@ -10,13 +10,16 @@ BEGIN
     INSERT INTO Staff (name, default_name, type, room_role, tech_role, base_salary, per_room_rate) VALUES
     (N'Liên',    N'Liên',   'full-time', 1, 0, 5000000, 50000),
     (N'Thiên',   N'Thiên',  'full-time', 2, 1, 5000000, 50000),
-    (N'Thương',  N'Thương', 'full-time', 2, 1, 5000000, 50000),
+    (N'Chiến',   N'Chiến',  'full-time', 2, 1, 5000000, 50000),
     (N'Vân',     N'Vân',    'full-time', 1, 0, 5000000, 50000),
     (N'Diệu',    N'Diệu',   'full-time', 1, 0, 7000000, 50000),
     (N'Hoàn',    N'Hoàn',   'full-time', 1, 0, 5000000, 50000),
     (N'Lộc',     N'Lộc',    'full-time', 1, 0, 7000000, 50000),
     (N'Nhân viên Part-time 1', N'Nhân viên Part-time 1', 'part-time', 2, 0, 5000000, 50000),
-    (N'Nhân viên Part-time 2', N'Nhân viên Part-time 2', 'part-time', 2, 0, 5000000, 50000);
+    (N'Nhân viên Part-time 2', N'Nhân viên Part-time 2', 'part-time', 2, 0, 5000000, 50000),
+    (N'Nhân viên Part-time 3', N'Nhân viên Part-time 3', 'part-time', 2, 0, 5000000, 50000),
+    (N'Nhân viên Part-time 4', N'Nhân viên Part-time 4', 'part-time', 2, 0, 5000000, 50000),
+    (N'Nhân viên Part-time 5', N'Nhân viên Part-time 5', 'part-time', 2, 0, 5000000, 50000);
 END
 GO
 

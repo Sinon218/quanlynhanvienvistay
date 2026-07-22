@@ -9,9 +9,31 @@ if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
 }
 
+function getLocalDateString() {
+  const d = new Date();
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function sanitizeFolderName(name) {
+  if (!name) return 'Chung';
+  return name.replace(/[\\/:*?"<>|]/g, '_').trim();
+}
+
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
-    cb(null, uploadDir);
+    const rawStaffName = (req.user && (req.user.staffName || req.user.username)) || 'Chung';
+    const staffFolder = sanitizeFolderName(rawStaffName);
+    const dateFolder = getLocalDateString();
+
+    const targetDir = path.join(uploadDir, staffFolder, dateFolder);
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+
+    cb(null, targetDir);
   },
   filename: function (req, file, cb) {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);

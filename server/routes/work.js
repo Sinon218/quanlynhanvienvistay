@@ -7,9 +7,30 @@ const { authenticate, requireAdmin, requireManagerOrAdmin } = require('../middle
 const upload = require('../middleware/upload');
 const { recordStatusSnapshot } = require('../statusHistory');
 const { sendEventToAll } = require('../sse');
-const { ensureNotificationsTable, getLocalDate } = require('../utils');
+const path = require('path');
+const { deletePhotosByDate } = require('../services/photoCleanup');
 
 const router = express.Router();
+
+// DELETE /api/work/photos/delete-by-date — Xóa tất cả ảnh dọn phòng theo ngày (Admin/Manager)
+router.delete('/photos/delete-by-date', authenticate, requireManagerOrAdmin, async (req, res) => {
+  try {
+    const { date } = req.body && req.body.date ? req.body : req.query;
+    if (!date) {
+      return res.status(400).json({ error: 'Vui lòng chọn ngày cần xóa ảnh (định dạng YYYY-MM-DD).' });
+    }
+
+    const result = await deletePhotosByDate(date);
+    sendEventToAll({ type: 'WORK_UPDATE', action: 'delete_photos', date });
+    res.json({
+      message: `Đã xóa ${result.deletedCount} tệp ảnh dọn phòng của ngày ${date}.`,
+      deletedCount: result.deletedCount
+    });
+  } catch (err) {
+    console.error('Delete photos by date error:', err);
+    res.status(500).json({ error: err.message || 'Lỗi server khi xóa ảnh.' });
+  }
+});
 
 
 
@@ -243,15 +264,14 @@ router.put('/:id/complete', authenticate, upload.single('proof'), async (req, re
     const needsPhoto = assignedRole === 1;
 
     let imagePath = null;
-    if (needsPhoto) {
-      if (!req.file) {
-        return res.status(400).json({ error: 'Vui lòng chụp hoặc tải ảnh lên làm minh chứng hoàn thành công việc.' });
-      }
-      imagePath = `/uploads/${req.file.filename}`;
-    } else {
-      if (req.file) {
-        imagePath = `/uploads/${req.file.filename}`;
-      }
+    const uploadBaseDir = path.join(__dirname, '..', '..', 'ảnh dọn phòng của nhân viên');
+    if (req.file) {
+      const relPath = path.relative(uploadBaseDir, req.file.path).replace(/\\/g, '/');
+      imagePath = `/uploads/${relPath}`;
+    }
+
+    if (needsPhoto && !imagePath) {
+      return res.status(400).json({ error: 'Vui lòng chụp hoặc tải ảnh lên làm minh chứng hoàn thành công việc.' });
     }
 
     let partnerWorked = null;

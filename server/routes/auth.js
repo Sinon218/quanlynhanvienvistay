@@ -51,7 +51,7 @@ router.post('/login', async (req, res) => {
         staffName: user.staff_name,
         techRole: user.tech_role,
       },
-      process.env.JWT_SECRET,
+      process.env.JWT_SECRET || 'vistay_secret_key_2026_secure',
       { expiresIn: process.env.JWT_EXPIRES_IN || '24h' }
     );
 

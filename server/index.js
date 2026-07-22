@@ -14,8 +14,10 @@ const apartmentRoutes = require('./routes/apartments');
 const workRoutes = require('./routes/work');
 const salaryRoutes = require('./routes/salary');
 const taskRoutes = require('./routes/tasks');
+const techRoutes = require('./routes/tech');
 const { initStatusHistory } = require('./statusHistory');
 const { sseMiddleware } = require('./sse');
+const { autoCleanHousekeepingPhotosOlderThan30Days } = require('./services/photoCleanup');
 
 // ===== Initialize Express App =====
 const app = express();
@@ -57,6 +59,7 @@ app.use('/api/apartments', apartmentRoutes);
 app.use('/api/work', workRoutes);
 app.use('/api/salary', salaryRoutes);
 app.use('/api/tasks', taskRoutes);
+app.use('/api/tech', techRoutes);
 
 // ===== Real-time Event Stream =====
 app.get('/api/events', sseMiddleware);
@@ -122,6 +125,12 @@ const server = app.listen(PORT, () => {
 
   // Khởi tạo bảng lịch sử trạng thái phòng và seed dữ liệu nếu cần
   initStatusHistory().catch(err => console.error('Init status history failed:', err.message));
+
+  // Tự động kiểm tra & dọn dẹp ảnh dọn phòng của nhân viên buồng phòng quá 30 ngày
+  autoCleanHousekeepingPhotosOlderThan30Days().catch(err => console.error('Auto photo cleanup failed:', err.message));
+  setInterval(() => {
+    autoCleanHousekeepingPhotosOlderThan30Days().catch(err => console.error('Auto photo cleanup failed:', err.message));
+  }, 24 * 60 * 60 * 1000);
 });
 
 // ===== Graceful Shutdown =====

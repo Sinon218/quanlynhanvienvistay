@@ -164,7 +164,7 @@ const allRooms = providedRooms.map((room) => ({
 const staffData = [
   { name: 'Liên',   default_name: 'Liên',   type: 'full-time', room_role: 1, tech_role: 0 },
   { name: 'Thiên',  default_name: 'Thiên',  type: 'full-time', room_role: 2, tech_role: 1 },
-  { name: 'Thương', default_name: 'Thương', type: 'full-time', room_role: 2, tech_role: 1 },
+  { name: 'Chiến', default_name: 'Chiến', type: 'full-time', room_role: 2, tech_role: 1 },
   { name: 'Vân',    default_name: 'Vân',    type: 'full-time', room_role: 1, tech_role: 0 },
   { name: 'Diệu',  default_name: 'Diệu',  type: 'full-time', room_role: 1, tech_role: 0 },
   { name: 'Hoàn',   default_name: 'Hoàn',   type: 'full-time', room_role: 1, tech_role: 0 },
@@ -180,6 +180,8 @@ async function seed() {
 
     console.log('🧹 Clearing existing database tables...');
     // Xóa theo thứ tự để tránh lỗi FK constraint
+    try { await pool.request().query('DELETE FROM TechTasks'); } catch(e) {}
+    try { await pool.request().query('DELETE FROM TechIssueCategories'); } catch(e) {}
     try { await pool.request().query('DELETE FROM ApartmentStays'); } catch(e) {}
     try { await pool.request().query('DELETE FROM ApartmentStatusHistory'); } catch(e) {}
     await pool.request().query('DELETE FROM AuditLog');
@@ -276,6 +278,105 @@ async function seed() {
         `);
     }
 
+    console.log('🛠️ Seeding Tech Issue Categories (4 Difficulty Levels)...');
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'TechIssueCategories')
+      BEGIN
+        CREATE TABLE TechIssueCategories (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          name NVARCHAR(200) NOT NULL,
+          difficulty_level INT NOT NULL DEFAULT 1 CHECK (difficulty_level BETWEEN 1 AND 4),
+          difficulty_label NVARCHAR(50) NOT NULL DEFAULT N'Dễ',
+          is_custom BIT NOT NULL DEFAULT 0,
+          is_active BIT NOT NULL DEFAULT 1,
+          created_at DATETIME DEFAULT GETDATE()
+        );
+      END
+    `);
+
+    await pool.request().query(`
+      IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'TechTasks')
+      BEGIN
+        CREATE TABLE TechTasks (
+          id INT IDENTITY(1,1) PRIMARY KEY,
+          apartment_code VARCHAR(20) NOT NULL,
+          issue_category_id INT NULL FOREIGN KEY REFERENCES TechIssueCategories(id),
+          custom_issue_name NVARCHAR(200) NULL,
+          description NVARCHAR(1000) NULL,
+          difficulty_level INT NOT NULL DEFAULT 1 CHECK (difficulty_level BETWEEN 1 AND 4),
+          photo1_url NVARCHAR(MAX) NULL,
+          photo2_url NVARCHAR(MAX) NULL,
+          video_url NVARCHAR(MAX) NULL,
+          priority VARCHAR(20) NOT NULL DEFAULT 'medium',
+          status VARCHAR(20) NOT NULL DEFAULT 'pending',
+          assigned_staff_id INT NULL FOREIGN KEY REFERENCES Staff(id),
+          created_by_user_id INT NULL FOREIGN KEY REFERENCES Users(id),
+          ai_diagnosis_json NVARCHAR(MAX) NULL,
+          created_at DATETIME DEFAULT GETDATE(),
+          started_at DATETIME NULL,
+          completed_at DATETIME NULL
+        );
+      END
+    `);
+
+    const techCategories = [
+      // CẤP ĐỘ 1: DỄ
+      { name: 'Sơn tường', level: 1, label: 'Dễ' },
+      { name: 'Vệ sinh điều hoà', level: 1, label: 'Dễ' },
+      { name: 'Dán decal', level: 1, label: 'Dễ' },
+      { name: 'Giặt rèm trắng', level: 1, label: 'Dễ' },
+      { name: 'Lắp khoá trong', level: 1, label: 'Dễ' },
+      { name: 'Siết ốc', level: 1, label: 'Dễ' },
+      { name: 'Thay vòi sen', level: 1, label: 'Dễ' },
+      { name: 'Thay bóng đèn', level: 1, label: 'Dễ' },
+      { name: 'Dán chặn cửa', level: 1, label: 'Dễ' },
+      { name: 'Đặt thuốc gián', level: 1, label: 'Dễ' },
+      { name: 'Lắp bộ lọc nước', level: 1, label: 'Dễ' },
+      { name: 'Vệ sinh quạt', level: 1, label: 'Dễ' },
+
+      // CẤP ĐỘ 2: TRUNG BÌNH
+      { name: 'Vệ sinh máy giặt cửa đứng', level: 2, label: 'Trung bình' },
+      { name: 'Silicon', level: 2, label: 'Trung bình' },
+      { name: 'Sơn trần', level: 2, label: 'Trung bình' },
+      { name: 'Sơn bả', level: 2, label: 'Trung bình' },
+      { name: 'Xử lý bản lề cửa', level: 2, label: 'Trung bình' },
+      { name: 'Vệ sinh sofa và đệm', level: 2, label: 'Trung bình' },
+      { name: 'Vệ sinh rèm dày', level: 2, label: 'Trung bình' },
+      { name: 'Sơn chân bàn ghế', level: 2, label: 'Trung bình' },
+      { name: 'Treo đèn thả bàn ăn và đèn ốp', level: 2, label: 'Trung bình' },
+      { name: 'Vệ sinh cây nước', level: 2, label: 'Trung bình' },
+
+      // CẤP ĐỘ 3: KHÓ
+      { name: 'Vệ sinh máy giặt cửa ngang', level: 3, label: 'Khó' },
+      { name: 'Thay miệng cửa ban công', level: 3, label: 'Khó' },
+      { name: 'Thay vòng bi', level: 3, label: 'Khó' },
+      { name: 'Vệ sinh lưới điều hoà âm trần', level: 3, label: 'Khó' },
+      { name: 'Xử lý bồn cầu và cống thoát nước', level: 3, label: 'Khó' },
+      { name: 'Sửa giàn phơi', level: 3, label: 'Khó' },
+
+      // CẤP ĐỘ 4: CẦN CHUYÊN MÔN
+      { name: 'Sửa tivi', level: 4, label: 'Cần chuyên môn' },
+      { name: 'Sửa tủ lạnh', level: 4, label: 'Cần chuyên môn' },
+      { name: 'Sửa lò vi sóng', level: 4, label: 'Cần chuyên môn' },
+      { name: 'Sửa điều hoà', level: 4, label: 'Cần chuyên môn' },
+      { name: 'Sửa rèm chống côn trùng', level: 4, label: 'Cần chuyên môn' },
+
+      // KHÁC
+      { name: 'Khác...', level: 1, label: 'Dễ', is_custom: 1 }
+    ];
+
+    for (const cat of techCategories) {
+      await pool.request()
+        .input('name', sql.NVarChar, cat.name)
+        .input('level', sql.Int, cat.level)
+        .input('label', sql.NVarChar, cat.label)
+        .input('custom', sql.Bit, cat.is_custom ? 1 : 0)
+        .query(`
+          INSERT INTO TechIssueCategories (name, difficulty_level, difficulty_label, is_custom)
+          VALUES (@name, @level, @label, @custom)
+        `);
+    }
+
     console.log('');
     console.log('✅ DATABASE SEED COMPLETE!');
     console.log('====================================================');
@@ -287,7 +388,7 @@ async function seed() {
     console.log('🔐 Tài khoản đăng nhập hệ thống:');
     console.log('1. Admin: vistay / 12345678');
     console.log('2. Manager: loc / 12345678, dieu / 12345678');
-    console.log('3. NV: lien, thien, thuong, van, hoan, parttime1, parttime2 / 12345678');
+    console.log('3. NV: lien, thien, chien, van, hoan, parttime1, parttime2 / 12345678');
     console.log('====================================================');
   } catch (err) {
     console.error('❌ SEED ERROR:', err);

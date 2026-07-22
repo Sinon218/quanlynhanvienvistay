@@ -41,7 +41,7 @@ BEGIN
 END
 GO
 
--- 4. Cập nhật chức danh hệ số 2 cho anh Thương và anh Thiên
-UPDATE Staff SET tech_level = 2 WHERE name LIKE N'%Thương%' OR name LIKE N'%Thiên%';
-PRINT N'✅ Đã đồng bộ hệ số kỹ thuật (tech_level = 2) cho anh Thương và anh Thiên.';
+-- 4. Cập nhật chức danh hệ số 2 cho anh Chiến và anh Thiên
+UPDATE Staff SET tech_level = 2 WHERE name LIKE N'%Chiến%' OR name LIKE N'%Thiên%';
+PRINT N'✅ Đã đồng bộ hệ số kỹ thuật (tech_level = 2) cho anh Chiến và anh Thiên.';
 GO

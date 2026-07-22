@@ -74,10 +74,11 @@
     <!-- ===== NAVIGATION TABS ===== -->
     <nav class="admin-tabs">
       <button class="tab-btn active" onclick="switchTab(event, 'assignment')">📋 Phân công ngày</button>
-      <button class="tab-btn" onclick="switchTab(event, 'apartments')">🏠 Căn hộ & MK</button>
+      <button class="tab-btn" onclick="switchTab(event, 'apartments')">🏠 Quản lý buồng phòng & đổi MK căn hộ</button>
       <button class="tab-btn" onclick="switchTab(event, 'tasks')">📝 Giao việc</button>
       <button class="tab-btn" id="tabBtnStats" onclick="switchTab(event, 'stats')">📊 Thống kê</button>
       <button class="tab-btn" id="tabBtnSalary" onclick="switchTab(event, 'salary')">💰 Bảng lương</button>
+      <button class="tab-btn" id="tabBtnTech" onclick="switchTab(event, 'tech')">🛠️ Công việc kỹ thuật</button>
     </nav>
 
     <!-- ==================== TAB 1: ASSIGNMENT ==================== -->
@@ -204,6 +205,25 @@
               <!-- Rendered by JS -->
             </tbody>
           </table>
+        </div>
+      <!-- Quản lý & Xóa Ảnh Dọn Phòng theo ngày -->
+      <section class="section" style="margin-top: 24px; background: rgba(30, 41, 59, 0.4); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px;">
+        <div class="section-header" style="margin-bottom: 12px;">
+          <span class="section-icon">📷</span>
+          <h2 class="section-title" style="font-size: 1.1rem; color: #f59e0b;">Quản Lý & Dọn Dẹp Ảnh Dọn Phòng</h2>
+          <span class="section-badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b;">Tự động xóa sau 30 ngày</span>
+        </div>
+        <p style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.4;">
+          Ảnh dọn phòng được lưu theo thư mục tên nhân viên và từng ngày (<code>ảnh dọn phòng của nhân viên/[Tên Nhân Viên]/[Ngày]/</code>). Hệ thống sẽ tự động dọn dẹp các ảnh quá 30 ngày. Bạn cũng có thể chủ động xóa tất cả ảnh dọn phòng của một ngày bằng công cụ bên dưới.
+        </p>
+        <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <label for="deletePhotoDateInput" style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary);">📅 Chọn ngày cần xóa ảnh:</label>
+            <input type="date" id="deletePhotoDateInput" class="room-filter-select" style="padding: 6px 10px; font-size: 0.85rem;">
+          </div>
+          <button class="btn" onclick="deleteHousekeepingPhotosByDate()" style="background: #ef4444; color: white; border: none; padding: 7px 16px; font-size: 0.85rem; font-weight: 600; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+            🗑️ Xóa toàn bộ ảnh ngày này
+          </button>
         </div>
       </section>
     </div>
@@ -359,7 +379,7 @@
         <div class="section-header">
           <span class="section-icon">🏠</span>
           <h2 class="section-title">Quản Lý Mật Khẩu & Trạng Thái</h2>
-          <span class="section-badge rooms-badge">150 Căn Hộ</span>
+          <span class="section-badge rooms-badge" id="totalApartmentBadge">— Căn Hộ</span>
         </div>
 
         <!-- Stats Bar -->
@@ -641,6 +661,182 @@
       </section>
     </div>
 
+    <!-- ==================== TAB: TECH TASKS ==================== -->
+    <div id="tab-tech" class="tab-content">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 12px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <h2 style="font-size: 1.25rem; font-weight: 700; color: var(--text-primary); margin: 0;">🛠️ Quản Lý Công Việc Kỹ Thuật (Bảo Trì)</h2>
+        </div>
+        <button class="btn btn-save" onclick="openCreateTechTaskModal()" style="padding: 8px 16px; font-weight: 600; background: linear-gradient(135deg, #059669, #10b981);">
+          ➕ Tạo công việc kỹ thuật mới
+        </button>
+      </div>
+
+      <!-- Tech Stats Cards -->
+      <div class="room-stats" style="margin-bottom: 20px;">
+        <div class="stat-item stat-total">
+          <span class="stat-num" id="techStatTotal">0</span>
+          <span class="stat-label">Tổng việc kỹ thuật</span>
+        </div>
+        <div class="stat-item" style="border: 1px solid #f59e0b; background: rgba(245, 158, 11, 0.08);">
+          <span class="stat-num" id="techStatPending" style="color: #f59e0b;">0</span>
+          <span class="stat-label">⏳ Chờ xử lý</span>
+        </div>
+        <div class="stat-item" style="border: 1px solid #3b82f6; background: rgba(59, 130, 246, 0.08);">
+          <span class="stat-num" id="techStatInProgress" style="color: #3b82f6;">0</span>
+          <span class="stat-label">🔧 Đang sửa</span>
+        </div>
+        <div class="stat-item stat-available">
+          <span class="stat-num" id="techStatCompleted" style="color: #10b981;">0</span>
+          <span class="stat-label">🟢 Đã hoàn thành</span>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="task-form-card" style="margin-bottom: 20px; padding: 12px 16px;">
+        <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+          <div>
+            <label style="font-weight: 600; font-size: 0.85rem; margin-right: 8px;">Lọc trạng thái:</label>
+            <select id="techTaskFilterStatus" onchange="loadTechTasks()" class="room-filter-select" style="padding: 6px 10px;">
+              <option value="">Tất cả trạng thái</option>
+              <option value="pending">Chờ xử lý</option>
+              <option value="in_progress">Đang sửa</option>
+              <option value="completed">Đã hoàn thành</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-weight: 600; font-size: 0.85rem; margin-right: 8px;">Lọc nhân viên:</label>
+            <select id="techTaskFilterStaff" onchange="loadTechTasks()" class="room-filter-select" style="padding: 6px 10px;">
+              <option value="">Tất cả nhân viên</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tech Tasks Grid / List -->
+      <div id="techTasksContainer" class="tech-tasks-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px;">
+        <!-- Rendered by JS -->
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===== MODAL: TẠO CÔNG VIỆC KỸ THUẬT ===== -->
+  <div id="createTechTaskModal" class="modal-overlay">
+    <div class="modal" style="max-width: 650px; width: 92%;">
+      <div class="modal-header">
+        <h2>🛠️ Tạo Công Việc Kỹ Thuật Cần Sửa</h2>
+        <button class="modal-close" onclick="closeCreateTechTaskModal()">✕</button>
+      </div>
+      <div class="modal-body" style="display: flex; flex-direction: column; gap: 16px;">
+        
+        <!-- Room Selector -->
+        <div>
+          <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 4px;">🏢 Chọn căn hộ <span style="color: red;">*</span></label>
+          <input type="text" id="techTaskRoomInput" list="techTaskRoomList" class="room-filter-select" style="width: 100%; padding: 8px;" placeholder="Gõ mã căn hộ..." oninput="autoSuggestTechTask()">
+          <datalist id="techTaskRoomList"></datalist>
+        </div>
+
+        <!-- AI Auto-Suggest Box -->
+        <div id="techAutoSuggestBox" style="display: none; background: rgba(59, 130, 246, 0.08); border: 1px solid #3b82f6; padding: 10px; border-radius: 6px; font-size: 0.83rem;">
+          <div id="techAutoSuggestContent" style="color: var(--text-primary); line-height: 1.4;"></div>
+        </div>
+
+        <!-- Category Dropdown from DB -->
+        <div>
+          <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 4px;">🔧 Bảng chọn lỗi kỹ thuật (Cơ sở dữ liệu) <span style="color: red;">*</span></label>
+          <select id="techTaskCategorySelect" onchange="handleTechCategoryChange(this.value)" class="room-filter-select" style="width: 100%; padding: 8px;">
+            <option value="">-- Chọn loại lỗi kỹ thuật --</option>
+          </select>
+        </div>
+
+        <!-- Custom Issue Name Input (Hidden by default, shown when "Khác..." selected) -->
+        <div id="techCustomIssueGroup" style="display: none; background: rgba(245, 158, 11, 0.08); padding: 10px; border-radius: 6px; border: 1px dashed #f59e0b;">
+          <label style="font-weight: 600; font-size: 0.85rem; color: #d97706; display: block; margin-bottom: 4px;">✏️ Nhập tên lỗi kỹ thuật mới (Khác)</label>
+          <input type="text" id="techCustomIssueInput" class="room-filter-select" style="width: 100%; padding: 8px;" placeholder="Ví dụ: Hỏng ổ cắm điện ban công...">
+        </div>
+
+        <!-- Priority & Level -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div>
+            <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 4px;">⚠️ Mức độ ưu tiên</label>
+            <select id="techTaskPrioritySelect" class="room-filter-select" style="width: 100%; padding: 8px;">
+              <option value="low">Thấp (Bảo trì định kỳ)</option>
+              <option value="medium" selected>Trung bình</option>
+              <option value="high">Cao</option>
+              <option value="urgent">Khẩn cấp</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 4px;">👤 Phân công kỹ thuật viên</label>
+            <select id="techTaskStaffSelect" class="room-filter-select" style="width: 100%; padding: 8px;" onchange="autoSuggestTechTask()">
+              <option value="">-- Chưa giao (Chờ nhận) --</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Description & AI Assist -->
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <label style="font-weight: 600; font-size: 0.85rem;">📝 Mô tả chi tiết hiện trạng</label>
+            <button type="button" class="btn" onclick="runAiDiagnosis()" style="padding: 3px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #8b5cf6, #6d28d9); color: white; border: none; border-radius: 4px; font-weight: 600; cursor: pointer;">
+              🤖 Chẩn đoán lỗi bằng AI
+            </button>
+          </div>
+          <textarea id="techTaskDescInput" rows="3" class="room-filter-select" style="width: 100%; padding: 8px;" placeholder="Mô tả hiện trạng hỏng hóc, vị trí, biểu hiện..." oninput="autoSuggestTechTask()"></textarea>
+        </div>
+
+        <!-- AI Result Box -->
+        <div id="techAiBox" style="display: none; background: rgba(139, 92, 246, 0.08); border: 1px solid #8b5cf6; padding: 10px; border-radius: 6px; font-size: 0.83rem;">
+          <div style="font-weight: 700; color: #7c3aed; margin-bottom: 4px;" id="techAiTitle">🤖 Gợi ý AI Chẩn đoán:</div>
+          <div id="techAiContent" style="color: var(--text-primary); line-height: 1.4;"></div>
+        </div>
+
+        <!-- Media Upload Section (2 Photos + 1 Video) -->
+        <div style="border-top: 1px dashed var(--border-color); padding-top: 12px;">
+          <label style="font-weight: 700; font-size: 0.88rem; display: block; margin-bottom: 8px; color: var(--accent-purple);">
+            📸 Tệp truyền thông minh họa (Yêu cầu 2 Ảnh & 1 Video)
+          </label>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px;">
+            <!-- Photo 1 -->
+            <div style="border: 1px dashed var(--border-color); padding: 8px; border-radius: 6px; text-align: center; background: var(--bg-card);">
+              <label style="font-size: 0.78rem; font-weight: 600; display: block; margin-bottom: 4px;">🖼️ Ảnh 1 (Hiện trạng)</label>
+              <input type="file" id="techPhoto1Input" accept="image/*" onchange="previewTechMedia(this, 'previewPhoto1')" style="display: none;">
+              <div id="previewPhoto1Container" onclick="document.getElementById('techPhoto1Input').click()" style="width: 100%; height: 90px; border: 1px dashed var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; background: rgba(0,0,0,0.02);">
+                <span id="previewPhoto1Text" style="font-size: 0.75rem; color: var(--text-muted);">📷 Chọn Ảnh 1</span>
+                <img id="previewPhoto1" style="display: none; width: 100%; height: 100%; object-fit: cover;">
+              </div>
+            </div>
+
+            <!-- Photo 2 -->
+            <div style="border: 1px dashed var(--border-color); padding: 8px; border-radius: 6px; text-align: center; background: var(--bg-card);">
+              <label style="font-size: 0.78rem; font-weight: 600; display: block; margin-bottom: 4px;">🖼️ Ảnh 2 (Cận cảnh)</label>
+              <input type="file" id="techPhoto2Input" accept="image/*" onchange="previewTechMedia(this, 'previewPhoto2')" style="display: none;">
+              <div id="previewPhoto2Container" onclick="document.getElementById('techPhoto2Input').click()" style="width: 100%; height: 90px; border: 1px dashed var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; background: rgba(0,0,0,0.02);">
+                <span id="previewPhoto2Text" style="font-size: 0.75rem; color: var(--text-muted);">📷 Chọn Ảnh 2</span>
+                <img id="previewPhoto2" style="display: none; width: 100%; height: 100%; object-fit: cover;">
+              </div>
+            </div>
+
+            <!-- Video 1 -->
+            <div style="border: 1px dashed var(--border-color); padding: 8px; border-radius: 6px; text-align: center; background: var(--bg-card);">
+              <label style="font-size: 0.78rem; font-weight: 600; display: block; margin-bottom: 4px;">🎥 Video (Quay hỏng)</label>
+              <input type="file" id="techVideoInput" accept="video/*" onchange="previewTechVideo(this)" style="display: none;">
+              <div id="previewVideoContainer" onclick="document.getElementById('techVideoInput').click()" style="width: 100%; height: 90px; border: 1px dashed var(--border-color); border-radius: 4px; display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden; background: rgba(0,0,0,0.02);">
+                <span id="previewVideoText" style="font-size: 0.75rem; color: var(--text-muted);">🎥 Chọn Video</span>
+                <video id="previewVideo" controls style="display: none; width: 100%; height: 100%; object-fit: cover;"></video>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-cancel" onclick="closeCreateTechTaskModal()">Hủy</button>
+        <button class="btn btn-save" onclick="submitCreateTechTask()" style="background: linear-gradient(135deg, #059669, #10b981);">💾 Tạo công việc</button>
+      </div>
+    </div>
   </div>
 
   <!-- ===== MODAL: PHÂN VAI TRÒ ===== -->
