@@ -2,7 +2,7 @@
 // Tech Tasks Routes — Quản lý Công việc Kỹ thuật Bảo trì
 // ===================================================================
 const express = require('express');
-const { sql, getPool } = require('../db');
+const { sql, getPool, queryDb } = require('../db');
 const { authenticate, requireManagerOrAdmin } = require('../middleware/auth');
 const { sendEventToAll } = require('../sse');
 const multer = require('multer');
@@ -46,9 +46,9 @@ const techUpload = multer({
 // Dataset-based pattern matching for tech issue classification
 const AI_FAULT_DATASET = {
   keywords: {
-    'điều hoà': { categoryPattern: 'điều hoà', defaultLevel: 1, suggestions: ['Vệ sinh điều hoà', 'Vệ sinh lưới điều hoà âm trần', 'Sửa điều hoà'] },
-    'điều hòa': { categoryPattern: 'điều hoà', defaultLevel: 1, suggestions: ['Vệ sinh điều hoà', 'Vệ sinh lưới điều hoà âm trần', 'Sửa điều hoà'] },
-    'máy lạnh': { categoryPattern: 'điều hoà', defaultLevel: 1, suggestions: ['Vệ sinh điều hoà', 'Sửa điều hoà'] },
+    'điều hòa': { categoryPattern: 'điều hòa', defaultLevel: 1, suggestions: ['Vệ sinh điều hòa', 'Vệ sinh lưới điều hòa âm trần', 'Sửa điều hòa'] },
+    'điều hoà': { categoryPattern: 'điều hòa', defaultLevel: 1, suggestions: ['Vệ sinh điều hòa', 'Vệ sinh lưới điều hòa âm trần', 'Sửa điều hòa'] },
+    'máy lạnh': { categoryPattern: 'điều hòa', defaultLevel: 1, suggestions: ['Vệ sinh điều hòa', 'Sửa điều hòa'] },
     'tivi': { categoryPattern: 'tivi', defaultLevel: 4, suggestions: ['Sửa tivi'] },
     'tv': { categoryPattern: 'tivi', defaultLevel: 4, suggestions: ['Sửa tivi'] },
     'tủ lạnh': { categoryPattern: 'tủ lạnh', defaultLevel: 4, suggestions: ['Sửa tủ lạnh'] },
@@ -61,8 +61,8 @@ const AI_FAULT_DATASET = {
     'bóng đèn': { categoryPattern: 'bóng đèn', defaultLevel: 1, suggestions: ['Thay bóng đèn'] },
     'đèn': { categoryPattern: 'đèn', defaultLevel: 1, suggestions: ['Thay bóng đèn', 'Treo đèn thả bàn ăn và đèn ốp'] },
     'ốc': { categoryPattern: 'ốc', defaultLevel: 1, suggestions: ['Siết ốc'] },
-    'khoá': { categoryPattern: 'khoá', defaultLevel: 1, suggestions: ['Lắp khoá trong'] },
-    'khóa': { categoryPattern: 'khoá', defaultLevel: 1, suggestions: ['Lắp khoá trong'] },
+    'khóa': { categoryPattern: 'khóa', defaultLevel: 1, suggestions: ['Lắp khóa trong'] },
+    'khoá': { categoryPattern: 'khóa', defaultLevel: 1, suggestions: ['Lắp khóa trong'] },
     'sơn': { categoryPattern: 'sơn', defaultLevel: 1, suggestions: ['Sơn tường', 'Sơn trần', 'Sơn bả', 'Sơn chân bàn ghế'] },
     'sơn tường': { categoryPattern: 'sơn tường', defaultLevel: 1, suggestions: ['Sơn tường'] },
     'sơn trần': { categoryPattern: 'sơn trần', defaultLevel: 2, suggestions: ['Sơn trần'] },
@@ -87,7 +87,7 @@ const AI_FAULT_DATASET = {
     'silicon': { categoryPattern: 'silicon', defaultLevel: 2, suggestions: ['Silicon'] },
     'cây nước': { categoryPattern: 'cây nước', defaultLevel: 2, suggestions: ['Vệ sinh cây nước'] },
     'bàn ghế': { categoryPattern: 'bàn ghế', defaultLevel: 2, suggestions: ['Sơn chân bàn ghế'] },
-    'âm trần': { categoryPattern: 'âm trần', defaultLevel: 3, suggestions: ['Vệ sinh lưới điều hoà âm trần'] },
+    'âm trần': { categoryPattern: 'âm trần', defaultLevel: 3, suggestions: ['Vệ sinh lưới điều hòa âm trần'] },
     'rò rỉ': { categoryPattern: 'rò rỉ', defaultLevel: 3, suggestions: ['Xử lý bồn cầu và cống thoát nước'] },
     'nước chảy': { categoryPattern: 'nước chảy', defaultLevel: 3, suggestions: ['Xử lý bồn cầu và cống thoát nước'] },
   },
@@ -148,14 +148,15 @@ function analyzeDescription(description) {
 // ============================================================
 router.get('/categories', authenticate, async (req, res) => {
   try {
-    const pool = await getPool();
-    const result = await pool.request()
-      .query(`
-        SELECT id, name, difficulty_level, difficulty_label, is_custom
-        FROM TechIssueCategories
-        WHERE is_active = 1
-        ORDER BY difficulty_level ASC, name ASC
-      `);
+    const result = await queryDb(async (pool) => {
+      return await pool.request()
+        .query(`
+          SELECT id, name, difficulty_level, difficulty_label, is_custom
+          FROM TechIssueCategories
+          WHERE is_active = 1
+          ORDER BY difficulty_level ASC, name ASC
+        `);
+    });
     res.json(result.recordset);
   } catch (err) {
     console.error('Get tech categories error:', err);
@@ -176,16 +177,17 @@ router.post('/categories', authenticate, requireManagerOrAdmin, async (req, res)
     const level = parseInt(difficulty_level) || 1;
     const levelLabels = { 1: 'Dễ', 2: 'Trung bình', 3: 'Khó', 4: 'Cần chuyên môn' };
 
-    const pool = await getPool();
-    const result = await pool.request()
-      .input('name', sql.NVarChar, name.trim())
-      .input('level', sql.Int, level)
-      .input('label', sql.NVarChar, levelLabels[level] || 'Dễ')
-      .query(`
-        INSERT INTO TechIssueCategories (name, difficulty_level, difficulty_label, is_custom)
-        OUTPUT INSERTED.id, INSERTED.name, INSERTED.difficulty_level, INSERTED.difficulty_label
-        VALUES (@name, @level, @label, 1)
-      `);
+    const result = await queryDb(async (pool) => {
+      return await pool.request()
+        .input('name', sql.NVarChar, name.trim())
+        .input('level', sql.Int, level)
+        .input('label', sql.NVarChar, levelLabels[level] || 'Dễ')
+        .query(`
+          INSERT INTO TechIssueCategories (name, difficulty_level, difficulty_label, is_custom)
+          OUTPUT INSERTED.id, INSERTED.name, INSERTED.difficulty_level, INSERTED.difficulty_label
+          VALUES (@name, @level, @label, 1)
+        `);
+    });
 
     res.json({ message: 'Đã thêm danh mục lỗi mới.', category: result.recordset[0] });
   } catch (err) {
@@ -199,41 +201,43 @@ router.post('/categories', authenticate, requireManagerOrAdmin, async (req, res)
 // ============================================================
 router.get('/tasks', authenticate, async (req, res) => {
   try {
-    const pool = await getPool();
     const { status, staff_id } = req.query;
 
-    let query = `
-      SELECT t.*, 
-        c.name AS category_name, c.difficulty_label,
-        s.name AS assigned_staff_name,
-        u.username AS created_by_username
-      FROM TechTasks t
-      LEFT JOIN TechIssueCategories c ON t.issue_category_id = c.id
-      LEFT JOIN Staff s ON t.assigned_staff_id = s.id
-      LEFT JOIN Users u ON t.created_by_user_id = u.id
-      WHERE 1=1
-    `;
-    const request = pool.request();
+    const result = await queryDb(async (pool) => {
+      let query = `
+        SELECT t.*, 
+          c.name AS category_name, c.difficulty_label,
+          s.name AS assigned_staff_name,
+          u.username AS created_by_username
+        FROM TechTasks t
+        LEFT JOIN TechIssueCategories c ON t.issue_category_id = c.id
+        LEFT JOIN Staff s ON t.assigned_staff_id = s.id
+        LEFT JOIN Users u ON t.created_by_user_id = u.id
+        WHERE 1=1
+      `;
+      const request = pool.request();
 
-    if (status) {
-      query += ' AND t.status = @status';
-      request.input('status', sql.VarChar, status);
-    }
+      if (status) {
+        query += ' AND t.status = @status';
+        request.input('status', sql.VarChar, status);
+      }
 
-    if (staff_id) {
-      query += ' AND t.assigned_staff_id = @staffId';
-      request.input('staffId', sql.Int, parseInt(staff_id));
-    }
+      if (staff_id) {
+        query += ' AND t.assigned_staff_id = @staffId';
+        request.input('staffId', sql.Int, parseInt(staff_id));
+      }
 
-    // If user is employee (not admin/manager), only show their assigned tasks
-    if (req.user.role === 'employee' && req.user.staffId) {
-      query += ' AND t.assigned_staff_id = @myStaffId';
-      request.input('myStaffId', sql.Int, req.user.staffId);
-    }
+      // If user is employee (not admin/manager), only show their assigned tasks
+      if (req.user.role === 'employee' && req.user.staffId) {
+        query += ' AND t.assigned_staff_id = @myStaffId';
+        request.input('myStaffId', sql.Int, req.user.staffId);
+      }
 
-    query += ' ORDER BY t.created_at DESC';
+      query += ' ORDER BY t.created_at DESC';
 
-    const result = await request.query(query);
+      return await request.query(query);
+    });
+
     res.json(result.recordset);
   } catch (err) {
     console.error('Get tech tasks error:', err);
@@ -288,29 +292,30 @@ router.post('/tasks', authenticate, requireManagerOrAdmin, (req, res) => {
       if (!video_url && video_base64) video_url = video_base64;
 
       const level = parseInt(difficulty_level) || 1;
-      const pool = await getPool();
 
-      const result = await pool.request()
-        .input('apartmentCode', sql.VarChar, apartment_code)
-        .input('issueCategoryId', sql.Int, issue_category_id ? parseInt(issue_category_id) : null)
-        .input('customIssueName', sql.NVarChar, custom_issue_name || null)
-        .input('description', sql.NVarChar, (description || '').trim())
-        .input('difficultyLevel', sql.Int, level)
-        .input('photo1', sql.NVarChar(sql.MAX), photo1_url)
-        .input('photo2', sql.NVarChar(sql.MAX), photo2_url)
-        .input('video', sql.NVarChar(sql.MAX), video_url)
-        .input('priority', sql.VarChar, priority || 'medium')
-        .input('assignedStaffId', sql.Int, assigned_staff_id ? parseInt(assigned_staff_id) : null)
-        .input('createdByUserId', sql.Int, req.user.id)
-        .query(`
-          INSERT INTO TechTasks 
-            (apartment_code, issue_category_id, custom_issue_name, description, difficulty_level,
-             photo1_url, photo2_url, video_url, priority, status, assigned_staff_id, created_by_user_id)
-          OUTPUT INSERTED.id
-          VALUES 
-            (@apartmentCode, @issueCategoryId, @customIssueName, @description, @difficultyLevel,
-             @photo1, @photo2, @video, @priority, 'pending', @assignedStaffId, @createdByUserId)
-        `);
+      const result = await queryDb(async (pool) => {
+        return await pool.request()
+          .input('apartmentCode', sql.VarChar, apartment_code)
+          .input('issueCategoryId', sql.Int, issue_category_id ? parseInt(issue_category_id) : null)
+          .input('customIssueName', sql.NVarChar, custom_issue_name || null)
+          .input('description', sql.NVarChar, (description || '').trim())
+          .input('difficultyLevel', sql.Int, level)
+          .input('photo1', sql.NVarChar(sql.MAX), photo1_url)
+          .input('photo2', sql.NVarChar(sql.MAX), photo2_url)
+          .input('video', sql.NVarChar(sql.MAX), video_url)
+          .input('priority', sql.VarChar, priority || 'medium')
+          .input('assignedStaffId', sql.Int, assigned_staff_id ? parseInt(assigned_staff_id) : null)
+          .input('createdByUserId', sql.Int, req.user.id)
+          .query(`
+            INSERT INTO TechTasks 
+              (apartment_code, issue_category_id, custom_issue_name, description, difficulty_level,
+               photo1_url, photo2_url, video_url, priority, status, assigned_staff_id, created_by_user_id)
+            OUTPUT INSERTED.id
+            VALUES 
+              (@apartmentCode, @issueCategoryId, @customIssueName, @description, @difficultyLevel,
+               @photo1, @photo2, @video, @priority, 'pending', @assignedStaffId, @createdByUserId)
+          `);
+      });
 
       sendEventToAll({ type: 'TECH_TASK_UPDATE', action: 'create', taskId: result.recordset[0].id });
       res.json({ message: 'Tạo công việc kỹ thuật thành công.', id: result.recordset[0].id });
@@ -334,28 +339,28 @@ router.put('/tasks/:id/status', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Trạng thái không hợp lệ.' });
     }
 
-    const pool = await getPool();
-    
-    // Check if employee is assigned to this task
-    if (req.user.role === 'employee') {
-      const check = await pool.request()
-        .input('id', sql.Int, parseInt(id))
-        .input('staffId', sql.Int, req.user.staffId)
-        .query('SELECT id FROM TechTasks WHERE id = @id AND assigned_staff_id = @staffId');
-      
-      if (check.recordset.length === 0) {
-        return res.status(403).json({ error: 'Bạn không có quyền cập nhật công việc này.' });
+    await queryDb(async (pool) => {
+      // Check if employee is assigned to this task
+      if (req.user.role === 'employee') {
+        const check = await pool.request()
+          .input('id', sql.Int, parseInt(id))
+          .input('staffId', sql.Int, req.user.staffId)
+          .query('SELECT id FROM TechTasks WHERE id = @id AND assigned_staff_id = @staffId');
+        
+        if (check.recordset.length === 0) {
+          return res.status(403).json({ error: 'Bạn không có quyền cập nhật công việc này.' });
+        }
       }
-    }
 
-    let extraFields = '';
-    if (status === 'in_progress') extraFields = ', started_at = GETDATE()';
-    if (status === 'completed') extraFields = ', completed_at = GETDATE()';
+      let extraFields = '';
+      if (status === 'in_progress') extraFields = ', started_at = GETDATE()';
+      if (status === 'completed') extraFields = ', completed_at = GETDATE()';
 
-    await pool.request()
-      .input('id', sql.Int, parseInt(id))
-      .input('status', sql.VarChar, status)
-      .query(`UPDATE TechTasks SET status = @status ${extraFields} WHERE id = @id`);
+      await pool.request()
+        .input('id', sql.Int, parseInt(id))
+        .input('status', sql.VarChar, status)
+        .query(`UPDATE TechTasks SET status = @status ${extraFields} WHERE id = @id`);
+    });
 
     sendEventToAll({ type: 'TECH_TASK_UPDATE', action: 'status_change', taskId: parseInt(id), status });
     res.json({ message: 'Cập nhật trạng thái thành công.' });
@@ -371,11 +376,12 @@ router.put('/tasks/:id/status', authenticate, async (req, res) => {
 router.delete('/tasks/:id', authenticate, requireManagerOrAdmin, async (req, res) => {
   try {
     const { id } = req.params;
-    const pool = await getPool();
 
-    await pool.request()
-      .input('id', sql.Int, parseInt(id))
-      .query('DELETE FROM TechTasks WHERE id = @id');
+    await queryDb(async (pool) => {
+      await pool.request()
+        .input('id', sql.Int, parseInt(id))
+        .query('DELETE FROM TechTasks WHERE id = @id');
+    });
 
     sendEventToAll({ type: 'TECH_TASK_UPDATE', action: 'delete', taskId: parseInt(id) });
     res.json({ message: 'Đã xoá công việc kỹ thuật.' });
@@ -404,16 +410,17 @@ router.post('/ai-detect', authenticate, async (req, res) => {
 
     // If AI found matches, also try to find matching category IDs from DB
     if (analysis.matched) {
-      const pool = await getPool();
-      for (const suggestion of analysis.suggestions) {
-        const dbResult = await pool.request()
-          .input('name', sql.NVarChar, suggestion.issueName)
-          .query('SELECT id FROM TechIssueCategories WHERE name = @name AND is_active = 1');
-        
-        if (dbResult.recordset.length > 0) {
-          suggestion.categoryId = dbResult.recordset[0].id;
+      await queryDb(async (pool) => {
+        for (const suggestion of analysis.suggestions) {
+          const dbResult = await pool.request()
+            .input('name', sql.NVarChar, suggestion.issueName)
+            .query('SELECT id FROM TechIssueCategories WHERE name = @name AND is_active = 1');
+          
+          if (dbResult.recordset.length > 0) {
+            suggestion.categoryId = dbResult.recordset[0].id;
+          }
         }
-      }
+      });
     }
 
     res.json({
@@ -434,16 +441,17 @@ router.post('/ai-detect', authenticate, async (req, res) => {
 // ============================================================
 router.get('/stats', authenticate, async (req, res) => {
   try {
-    const pool = await getPool();
-    const result = await pool.request().query(`
-      SELECT 
-        COUNT(*) AS total,
-        SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
-        SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) AS in_progress,
-        SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
-        SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled
-      FROM TechTasks
-    `);
+    const result = await queryDb(async (pool) => {
+      return await pool.request().query(`
+        SELECT 
+          COUNT(*) AS total,
+          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
+          SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) AS in_progress,
+          SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
+          SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled
+        FROM TechTasks
+      `);
+    });
     res.json(result.recordset[0]);
   } catch (err) {
     console.error('Tech stats error:', err);
@@ -462,52 +470,56 @@ router.post('/auto-suggest', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Vui lòng nhập mã căn hộ.' });
     }
 
-    const pool = await getPool();
-
-    // 1. Lấy thông tin căn hộ
-    const aptResult = await pool.request()
-      .input('code', sql.VarChar, apartment_code)
-      .query('SELECT id, code, building, room_type, status FROM Apartments WHERE code = @code');
-
-    if (aptResult.recordset.length === 0) {
-      return res.status(404).json({ error: 'Không tìm thấy căn hộ.' });
-    }
-    const apartment = aptResult.recordset[0];
-
-    // 2. Lấy thông tin kỹ thuật viên (nếu có)
+    let apartment = null;
     let technician = null;
-    if (staff_id) {
-      const techResult = await pool.request()
-        .input('staffId', sql.Int, parseInt(staff_id))
-        .query('SELECT id, name, tech_role, tech_level FROM Staff WHERE id = @staffId');
-      if (techResult.recordset.length > 0) {
-        technician = techResult.recordset[0];
+    let history = [];
+    let allCategories = [];
+
+    await queryDb(async (pool) => {
+      // 1. Lấy thông tin căn hộ
+      const aptResult = await pool.request()
+        .input('code', sql.VarChar, apartment_code)
+        .query('SELECT id, code, building, room_type, status FROM Apartments WHERE code = @code');
+
+      if (aptResult.recordset.length === 0) {
+        return res.status(404).json({ error: 'Không tìm thấy căn hộ.' });
       }
-    }
+      apartment = aptResult.recordset[0];
 
-    // 3. Lấy lịch sử lỗi kỹ thuật của căn hộ này (gần nhất)
-    const historyResult = await pool.request()
-      .input('apartmentCode', sql.VarChar, apartment_code)
-      .query(`
-        SELECT TOP 5 
-          c.name AS category_name, c.difficulty_level, c.difficulty_label,
-          t.description, t.created_at
-        FROM TechTasks t
-        LEFT JOIN TechIssueCategories c ON t.issue_category_id = c.id
-        WHERE t.apartment_code = @apartmentCode AND t.status = 'completed'
-        ORDER BY t.created_at DESC
-      `);
-    const history = historyResult.recordset;
+      // 2. Lấy thông tin kỹ thuật viên (nếu có)
+      if (staff_id) {
+        const techResult = await pool.request()
+          .input('staffId', sql.Int, parseInt(staff_id))
+          .query('SELECT id, name, tech_role, tech_level FROM Staff WHERE id = @staffId');
+        if (techResult.recordset.length > 0) {
+          technician = techResult.recordset[0];
+        }
+      }
 
-    // 4. Lấy tất cả danh mục active
-    const categoriesResult = await pool.request()
-      .query(`
-        SELECT id, name, difficulty_level, difficulty_label 
-        FROM TechIssueCategories 
-        WHERE is_active = 1 AND is_custom = 0
-        ORDER BY difficulty_level ASC, name ASC
-      `);
-    const allCategories = categoriesResult.recordset;
+      // 3. Lấy lịch sử lỗi kỹ thuật của căn hộ này (gần nhất)
+      const historyResult = await pool.request()
+        .input('apartmentCode', sql.VarChar, apartment_code)
+        .query(`
+          SELECT TOP 5 
+            c.name AS category_name, c.difficulty_level, c.difficulty_label,
+            t.description, t.created_at
+          FROM TechTasks t
+          LEFT JOIN TechIssueCategories c ON t.issue_category_id = c.id
+          WHERE t.apartment_code = @apartmentCode AND t.status = 'completed'
+          ORDER BY t.created_at DESC
+        `);
+      history = historyResult.recordset;
+
+      // 4. Lấy tất cả danh mục active
+      const categoriesResult = await pool.request()
+        .query(`
+          SELECT id, name, difficulty_level, difficulty_label 
+          FROM TechIssueCategories 
+          WHERE is_active = 1 AND is_custom = 0
+          ORDER BY difficulty_level ASC, name ASC
+        `);
+      allCategories = categoriesResult.recordset;
+    });
 
     // 5. Phân tích và gợi ý dựa trên nhiều yếu tố
     const suggestions = [];
@@ -568,22 +580,22 @@ router.post('/auto-suggest', authenticate, async (req, res) => {
     if (suggestions.length === 0) {
       const roomTypeDefaults = {
         '1 ngủ': [
-          { name: 'Vệ sinh điều hoà', level: 1 },
+          { name: 'Vệ sinh điều hòa', level: 1 },
           { name: 'Thay bóng đèn', level: 1 },
           { name: 'Vệ sinh quạt', level: 1 }
         ],
         '2 ngủ': [
-          { name: 'Vệ sinh điều hoà', level: 1 },
+          { name: 'Vệ sinh điều hòa', level: 1 },
           { name: 'Vệ sinh máy giặt cửa đứng', level: 2 },
           { name: 'Xử lý bản lề cửa', level: 2 }
         ],
         '3 ngủ': [
-          { name: 'Vệ sinh điều hoà', level: 1 },
+          { name: 'Vệ sinh điều hòa', level: 1 },
           { name: 'Vệ sinh máy giặt cửa ngang', level: 3 },
           { name: 'Xử lý bồn cầu và cống thoát nước', level: 3 }
         ],
         '4 ngủ': [
-          { name: 'Vệ sinh lưới điều hoà âm trần', level: 3 },
+          { name: 'Vệ sinh lưới điều hòa âm trần', level: 3 },
           { name: 'Sửa giàn phơi', level: 3 },
           { name: 'Vệ sinh máy giặt cửa ngang', level: 3 }
         ]

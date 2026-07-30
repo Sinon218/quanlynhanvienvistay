@@ -149,7 +149,7 @@
           }));
           localStorage.setItem('vistay_mode', 'local');
 
-          showToast('Đăng nhập (Chế độ offline) thành công!', 'info');
+          showToast('⚠️ Chế độ offline: Dữ liệu mock (150套房), không phải database thật (95套房)!', 'warning');
 
           setTimeout(() => {
             if (user.role === 'admin' || user.role === 'manager') {

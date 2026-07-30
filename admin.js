@@ -40,6 +40,111 @@ const TECH_LEVEL_COLORS = { 1: '#22c55e', 2: '#f59e0b', 3: '#ef4444', 4: '#dc262
 const TECH_LEVEL_BG = { 1: 'rgba(34,197,94,0.15)', 2: 'rgba(245,158,11,0.15)', 3: 'rgba(239,68,68,0.15)', 4: 'rgba(220,38,38,0.15)' };
 const TECH_LEVEL_STARS = { 1: '⭐', 2: '⭐⭐', 3: '⭐⭐⭐', 4: '⭐⭐⭐⭐' };
 
+// ===================================================================
+// 技术故障与工作难度分类表 (Technical Faults & Difficulty Data)
+// ===================================================================
+const TECH_FAULT_LEVELS = {
+  1: {
+    levelName: "级别 1 - 简单 (Level 1 - Easy)",
+    levelNameVi: "Cấp 1 — Dễ",
+    price: 50000,
+    tasks: [
+      { name: "刷墙", nameVi: "Sơn tường", keywords: ["sơn", "tường", "paint", "wall"] },
+      { name: "清洗空调", nameVi: "Vệ sinh điều hòa", keywords: ["vệ sinh", "điều hòa", "máy lạnh", "clean", "ac"] },
+      { name: "贴贴纸/告示", nameVi: "Dán decal/tờ rơi", keywords: ["dán", "decal", "tờ rơi", "sticker", "notice"] },
+      { name: "洗白窗帘", nameVi: "Giặt rèm trắng", keywords: ["giặt", "rèm", "trắng", "wash", "curtain"] },
+      { name: "装内锁", nameVi: "Lắp khóa trong", keywords: ["lắp", "khóa", "lock", "install"] },
+      { name: "拧紧螺丝", nameVi: "Siết ốc", keywords: ["siết", "ốc", "screw", "tighten"] },
+      { name: "换花洒", nameVi: "Thay vòi sen", keywords: ["thay", "vòi sen", "shower", "replace"] },
+      { name: "换灯泡", nameVi: "Thay bóng đèn", keywords: ["thay", "bóng đèn", "đèn", "bulb", "light"] },
+      { name: "贴门阻/门碰", nameVi: "Dán chặn cửa", keywords: ["chặn cửa", "cửa", "door", "stopper"] },
+      { name: "放蟑螂药", nameVi: "Đặt thuốc gián", keywords: ["gián", "thuốc", "cockroach", "pest"] },
+      { name: "装净水器", nameVi: "Lắp bộ lọc nước", keywords: ["lọc nước", "máy lọc", "water filter", "install"] },
+      { name: "洗风扇", nameVi: "Vệ sinh quạt", keywords: ["quạt", "fan", "clean"] }
+    ]
+  },
+  2: {
+    levelName: "级别 2 - 中等 (Level 2 - Medium)",
+    levelNameVi: "Cấp 2 — Trung bình",
+    price: 100000,
+    tasks: [
+      { name: "洗波轮洗衣机", nameVi: "Vệ sinh máy giặt cửa đứng", keywords: ["máy giặt", "cửa đứng", "washing machine", "top load"] },
+      { name: "打硅胶/密封胶", nameVi: "Silicon/mẻo", keywords: ["silicon", "mẻo", "seal", "silicone"] },
+      { name: "刷天花板", nameVi: "Sơn trần", keywords: ["sơn", "trần", "ceiling", "paint"] },
+      { name: "刮腻子刷漆", nameVi: "Sơn bả", keywords: ["sơn bả", "bả", "plaster", "putty"] },
+      { name: "修门合页/铰链", nameVi: "Xử lý bản lề cửa", keywords: ["bản lề", "cửa", "hinge", "door"] },
+      { name: "洗沙发床垫", nameVi: "Vệ sinh sofa và đệm", keywords: ["sofa", "đệm", "nệm", "couch", "mattress"] },
+      { name: "洗厚窗帘", nameVi: "Vệ sinh rèm dày", keywords: ["rèm", "dày", "curtain", "thick"] },
+      { name: "刷桌椅脚漆", nameVi: "Sơn chân bàn ghế", keywords: ["sơn", "chân bàn", "chân ghế", "table", "chair"] },
+      { name: "挂餐厅吊灯/吸顶灯", nameVi: "Treo đèn thả bàn ăn và đèn ốp", keywords: ["đèn", "treo", "thả", "ốp", "lamp", "light", "chandelier"] },
+      { name: "洗饮水机", nameVi: "Vệ sinh cây nước", keywords: ["cây nước", "饮水机", "water dispenser", "clean"] }
+    ]
+  },
+  3: {
+    levelName: "级别 3 - 困难 (Level 3 - Hard)",
+    levelNameVi: "Cấp 3 — Khó",
+    price: 150000,
+    tasks: [
+      { name: "洗滚筒洗衣机", nameVi: "Vệ sinh máy giặt cửa ngang", keywords: ["máy giặt", "cửa ngang", "front load", "washing machine"] },
+      { name: "换阳台门框/门槛", nameVi: "Thay miệng cửa ban công", keywords: ["cửa ban công", "khung cửa", "threshold", "balcony"] },
+      { name: "换轴承", nameVi: "Thay vòng bi", keywords: ["vòng bi", "bearing", "replace"] },
+      { name: "洗中央空调滤网", nameVi: "Vệ sinh lưới điều hòa âm trần", keywords: ["điều hòa âm trần", "lưới", "filter", "central ac"] },
+      { name: "通马桶及下水道", nameVi: "Xử lý bồn cầu và cống thoát nước", keywords: ["bồn cầu", "cống", "toilet", "drain", "clog"] },
+      { name: "修晾衣架", nameVi: "Sửa giàn phơi", keywords: ["giàn phơi", "phơi đồ", "drying rack", "repair"] }
+    ]
+  },
+  4: {
+    levelName: "级别 4 - 需专业技能 (Level 4 - Expert/Specialized)",
+    levelNameVi: "Cấp 4 — Cần chuyên môn",
+    price: 250000,
+    tasks: [
+      { name: "修电视", nameVi: "Sửa tivi", keywords: ["tivi", "tv", "sửa", "repair"] },
+      { name: "修冰箱", nameVi: "Sửa tủ lạnh", keywords: ["tủ lạnh", "fridge", "refrigerator", "sửa"] },
+      { name: "修微波炉", nameVi: "Sửa lò vi sóng", keywords: ["lò vi sóng", "microwave", "sửa"] },
+      { name: "修空调", nameVi: "Sửa điều hòa", keywords: ["sửa", "điều hòa", "máy lạnh", "ac repair"] },
+      { name: "修防虫纱窗", nameVi: "Sửa rèm chống côn trùng", keywords: ["rèm", "côn trùng", "mạng", "screen", "insect"] }
+    ]
+  }
+};
+
+function buildTechJobDropdownHTML() {
+  let html = '<option value="">-- Chọn công việc kỹ thuật --</option>';
+  const levelLabels = {
+    1: '⭐ Cấp 1 — Dễ (50,000đ)',
+    2: '⭐⭐ Cấp 2 — Trung bình (100,000đ)',
+    3: '⭐⭐⭐ Cấp 3 — Khó (150,000đ)',
+    4: '⭐⭐⭐⭐ Cấp 4 — Cần chuyên môn (250,000đ)'
+  };
+  for (const [level, data] of Object.entries(TECH_FAULT_LEVELS)) {
+    html += `<optgroup label="${levelLabels[level]}">`;
+    for (const task of data.tasks) {
+      html += `<option value="${task.nameVi}" data-level="${level}">${task.nameVi}</option>`;
+    }
+    html += '</optgroup>';
+  }
+  return html;
+}
+
+function assessTaskDifficulty(description) {
+  if (!description || !description.trim()) return null;
+  const desc = description.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  let bestMatch = { level: null, confidence: 0, taskName: '' };
+  for (const [level, data] of Object.entries(TECH_FAULT_LEVELS)) {
+    for (const task of data.tasks) {
+      for (const kw of task.keywords) {
+        const kwNorm = kw.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        if (desc.includes(kwNorm)) {
+          const confidence = kwNorm.length / desc.length;
+          if (confidence > bestMatch.confidence) {
+            bestMatch = { level: parseInt(level), confidence, taskName: task.nameVi };
+          }
+        }
+      }
+    }
+  }
+  return bestMatch.level ? bestMatch : null;
+}
+
 // Global Configuration
 let appConfig = null;
 async function loadGlobalConfig() {
@@ -284,10 +389,13 @@ async function apiCall(endpoint, method = 'GET', body = null) {
       console.error(`[API CALL] api error for ${endpoint}:`, err);
       throw err;
     }
-    console.warn(`API call to ${endpoint} failed: ${err.message}. Falling back to local offline mode for this call.`);
+    console.warn(`[API CALL] network error for ${endpoint}: ${err.message}. Switching to offline mode.`);
     if (!token || token === 'local_fallback_token') {
       localStorage.setItem('vistay_mode', 'local');
+      localStorage.setItem('vistay_offline_warning', '1');
     }
+    const offlineBanner = document.getElementById('offlineAlertBanner');
+    if (offlineBanner) offlineBanner.style.display = 'block';
     return handleLocalMockCall(endpoint, method, body);
   }
 }
@@ -519,6 +627,9 @@ function handleLocalMockCall(endpoint, method, body) {
       const params = new URLSearchParams(endpoint.split('?')[1] || '');
       const building = params.get('building') || 'all';
       const mode = params.get('mode') || 'daily';
+      const daysParam = parseInt(params.get('days')) || 15;
+      const monthParam = params.get('month') ? parseInt(params.get('month')) : null;
+      const yearParam = params.get('year') ? parseInt(params.get('year')) : null;
       const isHourly = mode === 'hourly';
 
       let filteredRooms = localRooms;
@@ -538,9 +649,21 @@ function handleLocalMockCall(endpoint, method, body) {
         for (let h = 0; h < 24; h++) {
           labels.push(`${String(h).padStart(2, '0')}h`);
         }
+      } else if (monthParam && yearParam) {
+        const daysInMonth = new Date(yearParam, monthParam, 0).getDate();
+        for (let d = 1; d <= daysInMonth; d++) {
+          const dd = String(d).padStart(2, '0');
+          const mm = String(monthParam).padStart(2, '0');
+          labels.push(`${dd}/${mm}`);
+        }
+        if (now.getFullYear() === yearParam && now.getMonth() + 1 === monthParam) {
+          todayIndex = now.getDate() - 1;
+        } else {
+          todayIndex = -1;
+        }
       } else {
-        todayIndex = 3;
-        for (let i = -3; i <= 3; i++) {
+        todayIndex = 0;
+        for (let i = 0; i < daysParam; i++) {
           const d = new Date(now);
           d.setDate(now.getDate() + i);
           const dd = String(d.getDate()).padStart(2, '0');
@@ -585,7 +708,8 @@ function handleLocalMockCall(endpoint, method, body) {
       return Promise.resolve({
         labels,
         todayIndex,
-        rooms: roomsResult
+        rooms: roomsResult,
+        totalDays: labels.length
       });
     }
 
@@ -650,7 +774,7 @@ function handleLocalMockCall(endpoint, method, body) {
 
   // 3. Work assignments endpoints
   if (endpoint === '/work/assign' && method === 'POST') {
-    const { staff_id, apartment_id, task_type, planned_start_at, planned_end_at } = body;
+    const { staff_id, apartment_id, task_type, expected_start_at, expected_end_at } = body;
 
     // Check limit of assignees based on room type
     const date = new Date().toISOString().split('T')[0];
@@ -677,8 +801,8 @@ function handleLocalMockCall(endpoint, method, body) {
       assigned_role: task_type === 'tong_ve_sinh' ? 2 : (staffObj.room_role || 1),
       status: 'pending',
       assigned_date: date,
-      planned_start_at: planned_start_at || null,
-      planned_end_at: planned_end_at || null
+      expected_start_at: expected_start_at || null,
+      expected_end_at: expected_end_at || null
     });
     saveLocalData('vistay_mock_work', localWork);
     return Promise.resolve({ message: 'Giao việc thành công.' });
@@ -907,6 +1031,7 @@ function switchTab(e, tabId) {
   if (activeTab) activeTab.classList.add('active');
 
   // Trigger loads based on active tab
+  if (tabId === 'dashboard') loadDashboardTab();
   if (tabId === 'assignment') loadAssignmentTab();
   if (tabId === 'apartments') loadApartmentsTab();
   if (tabId === 'tasks') loadTasksTab();
@@ -941,6 +1066,10 @@ async function loadAssignmentTab() {
 
     console.log("[ASSIGNMENT] populating quick assign selects...");
     populateQuickAssignSelects();
+
+    // Populate staff select for photo deletion
+    populatePhotoDeleteStaffSelect();
+
     console.log("[ASSIGNMENT] loadAssignmentTab completed successfully");
   } catch (err) {
     console.error("[ASSIGNMENT] loadAssignmentTab error:", err);
@@ -2145,6 +2274,25 @@ function onChartRoomChanged() {
 }
 
 let timelineMode = 'daily';
+let timelineMonth = new Date().getMonth() + 1;
+let timelineYear = new Date().getFullYear();
+let timelineDays = 30;
+
+function changeTimelineMonth(delta) {
+  timelineMonth += delta;
+  if (timelineMonth > 12) { timelineMonth = 1; timelineYear++; }
+  if (timelineMonth < 1) { timelineMonth = 12; timelineYear--; }
+  loadApartmentStatusTimeline();
+}
+
+function setTimelineDays(days) {
+  timelineDays = days;
+  // Switch to month view when selecting "Toàn tháng"
+  if (days <= 31) {
+    // Reset month/year to current when switching back
+  }
+  loadApartmentStatusTimeline();
+}
 
 function setTimelineMode(mode) {
   timelineMode = mode;
@@ -2164,7 +2312,14 @@ async function loadApartmentStatusTimeline() {
     if (!canvas) return;
 
     const building = selectedChartBuilding || 'all';
-    const data = await apiCall(`/apartments/status-timeline?building=${encodeURIComponent(building)}&mode=${timelineMode}`);
+    const params = new URLSearchParams({
+      building: building,
+      mode: timelineMode,
+      days: timelineDays,
+      month: timelineMonth,
+      year: timelineYear
+    });
+    const data = await apiCall(`/apartments/status-timeline?${params}`);
     timelineData = data;
     renderApartmentStatusTimeline(data);
   } catch (err) {
@@ -2217,15 +2372,27 @@ function renderApartmentStatusTimeline(data) {
     }
   });
 
-  // Render header ngày (sticky)
+  // Month/Year picker + date header
+  const isMonthView = timelineDays <= 31;
+  const monthNames = ['Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Tháng 6', 'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12'];
   const dateHeaderHtml = `
     <div class="timeline-header">
       <div class="timeline-room-head">Căn hộ</div>
-      <div class="timeline-date-row" style="grid-template-columns: repeat(${labels.length}, minmax(18px, 1fr));">
-        ${labels.map((label, idx) => {
-          const isToday = idx === data.todayIndex ? 'is-today' : '';
-          return `<div class="timeline-date-cell ${isToday}">${label}</div>`;
-        }).join('')}
+      <div>
+        <div style="display: flex; align-items: center; justify-content: center; gap: 6px; margin-bottom: 4px; flex-wrap: nowrap;">
+          <button class="tl-mode-btn" onclick="changeTimelineMonth(-1)" style="padding: 2px 6px; font-size: 0.7rem;">◀</button>
+          <span style="font-size: 0.78rem; font-weight: 600; color: var(--accent-amber); white-space: nowrap;">Tháng ${timelineMonth}/${timelineYear}</span>
+          <button class="tl-mode-btn" onclick="changeTimelineMonth(1)" style="padding: 2px 6px; font-size: 0.7rem;">▶</button>
+          <span style="color: var(--text-muted); font-size: 0.65rem;">|</span>
+          <button class="tl-mode-btn${timelineDays === 15 ? ' active' : ''}" onclick="setTimelineDays(15)" style="padding: 2px 6px; font-size: 0.68rem;">15 ngày</button>
+          <button class="tl-mode-btn${timelineDays === 30 ? ' active' : ''}" onclick="setTimelineDays(30)" style="padding: 2px 6px; font-size: 0.68rem;">30 ngày</button>
+        </div>
+        <div class="timeline-date-row" style="grid-template-columns: repeat(${labels.length}, minmax(14px, 1fr));">
+          ${labels.map((label, idx) => {
+            const isToday = idx === data.todayIndex ? 'is-today' : '';
+            return `<div class="timeline-date-cell ${isToday}">${label}</div>`;
+          }).join('')}
+        </div>
       </div>
     </div>
   `;
@@ -2289,7 +2456,7 @@ function renderApartmentStatusTimeline(data) {
               <span class="timeline-room-code">${room.code}</span>
               <span class="timeline-room-state">${statusIcon}</span>
             </button>
-            <div class="timeline-track" style="--bucket-count: ${labels.length}; grid-template-columns: repeat(${labels.length}, minmax(18px, 1fr));">
+            <div class="timeline-track" style="--bucket-count: ${labels.length}; grid-template-columns: repeat(${labels.length}, minmax(14px, 1fr));">
               ${segmentsHtml}
             </div>
           </div>
@@ -2762,6 +2929,12 @@ async function loadTasksTab() {
         techStaff.map(s => `<option value="${s.id}">${s.name}</option>`).join('');
     }
 
+    // Populate tech job dropdown from TECH_FAULT_LEVELS
+    const jobSelect = document.getElementById('techTaskJobSelect');
+    if (jobSelect) {
+      jobSelect.innerHTML = buildTechJobDropdownHTML();
+    }
+
     // Load today's tasks
     const tasks = await apiCall('/tasks/today');
     renderTasksTable(tasks);
@@ -3011,6 +3184,7 @@ async function saveChangePassword() {
 
 // ===== EVENT BINDINGS =====
 async function initializePage() {
+  initTheme();
   console.log("[INIT] initializePage started");
   checkAuth();
   await loadGlobalConfig();
@@ -3091,6 +3265,7 @@ async function initializePage() {
   document.getElementById('currentDate').textContent = formatDate();
 
   // Load first tab data
+  if (document.getElementById('tab-dashboard')) loadDashboardTab();
   loadAssignmentTab();
 
   // Search & Filter event listeners
@@ -3325,6 +3500,60 @@ async function createTechTask() {
     loadTasksTab();
   } catch (err) {
     showToast(err.message, 'warning');
+  }
+}
+
+// AI tự động gợi ý cấp độ từ mô tả lỗi
+function onTechDescInput() {
+  const descInput = document.getElementById('techTaskDescInput');
+  const suggestDisplay = document.getElementById('aiSuggestDisplay');
+  if (!descInput || !suggestDisplay) return;
+
+  const desc = descInput.value.trim();
+  if (!desc) {
+    suggestDisplay.innerHTML = '';
+    return;
+  }
+
+  const result = assessTaskDifficulty(desc);
+  if (result) {
+    const color = TECH_LEVEL_COLORS[result.level] || '#888';
+    const stars = TECH_LEVEL_STARS[result.level] || '';
+    suggestDisplay.innerHTML = `<span style="color: ${color}; font-weight: 600;">🤖 AI gợi ý: ${stars} Cấp ${result.level} — ${result.taskName}</span>
+      <button onclick="applyAISuggestion(${result.level}, '${result.taskName.replace(/'/g, "\\'")}')" style="margin-left: 6px; padding: 1px 6px; font-size: 0.75rem; background: ${color}; color: white; border: none; border-radius: 4px; cursor: pointer;">Áp dụng</button>`;
+  } else {
+    suggestDisplay.innerHTML = '<span style="color: var(--text-muted);">Nhập mô tả để AI gợi ý cấp độ</span>';
+  }
+}
+
+function applyAISuggestion(level, taskName) {
+  const jobSelect = document.getElementById('techTaskJobSelect');
+  if (!jobSelect) return;
+
+  const options = jobSelect.options;
+  for (let i = 0; i < options.length; i++) {
+    if (options[i].value === taskName) {
+      jobSelect.selectedIndex = i;
+      onTechJobSelected();
+      return;
+    }
+  }
+
+  // If exact match not found, just update level display
+  const display = document.getElementById('techTaskLevelDisplay');
+  if (display) {
+    const color = TECH_LEVEL_COLORS[level] || '#888';
+    const bg = TECH_LEVEL_BG[level] || 'transparent';
+    const price = TECH_LEVEL_PRICES[level] || 0;
+    const priceStr = new Intl.NumberFormat('vi-VN').format(price);
+    const stars = TECH_LEVEL_STARS[level] || '';
+    const name = TECH_LEVEL_NAMES[level] || '';
+    display.innerHTML = `
+      <span style="background: ${bg}; color: ${color}; padding: 3px 10px; border-radius: 6px; font-weight: 700; font-size: 0.85rem;">
+        ${stars} Cấp ${level} — ${name}
+      </span>
+      <span style="margin-left: 8px; font-weight: 700; color: ${color}; font-size: 0.9rem;">${priceStr}đ</span>
+    `;
   }
 }
 
@@ -3722,6 +3951,16 @@ function setupRealtimeEvents() {
             showToast(data.message, type);
           }
 
+          if (data.type === 'apartments' && data.code && data.status) {
+            addActivityFeedItem(`Phòng ${data.code} đã đổi trạng thái thành ${data.status}`, 'status');
+          }
+          if (data.type === 'work' && data.name) {
+            addActivityFeedItem(`Nhân viên ${data.name} đã hoàn thành dọn phòng`, 'work');
+          }
+          if (data.type === 'tasks' && data.message) {
+            addActivityFeedItem(data.message, 'task');
+          }
+
           refreshActiveTab();
         } catch (err) {
           console.error('Failed to parse SSE data:', err);
@@ -3747,7 +3986,8 @@ function refreshActiveTab() {
     if (match && match[1]) {
       const tabId = match[1];
       console.log(`🔄 Refreshing tab: ${tabId}`);
-      if (tabId === 'assignment') loadAssignmentTab();
+      if (tabId === 'dashboard') loadDashboardTab();
+      else if (tabId === 'assignment') loadAssignmentTab();
       else if (tabId === 'apartments') loadApartmentsTab();
       else if (tabId === 'tasks') loadTasksTab();
       else if (tabId === 'stats') loadStatsTab();
@@ -4023,11 +4263,34 @@ function closeCreateTechTaskModal() {
 function handleTechCategoryChange(catId) {
   const customGroup = document.getElementById('techCustomIssueGroup');
   const customCat = techCategoriesList.find(c => c.is_custom);
-  
+  const display = document.getElementById('techTaskCategoryLevelDisplay');
+
   if (catId === 'custom' || (customCat && parseInt(catId) === customCat.id)) {
     if (customGroup) customGroup.style.display = 'block';
+    if (display) display.innerHTML = '<span style="color: var(--text-muted);">Nhập tên lỗi mới (mặc định Cấp 1)</span>';
   } else {
     if (customGroup) customGroup.style.display = 'none';
+
+    // Cập nhật hiển thị cấp độ
+    const cat = techCategoriesList.find(c => c.id === parseInt(catId));
+    if (cat && display) {
+      const lvl = cat.difficulty_level;
+      const name = TECH_LEVEL_NAMES[lvl] || cat.difficulty_label || '';
+      const color = TECH_LEVEL_COLORS[lvl] || '#888';
+      const bg = TECH_LEVEL_BG[lvl] || 'transparent';
+      const price = TECH_LEVEL_PRICES[lvl] || 0;
+      const priceStr = new Intl.NumberFormat('vi-VN').format(price);
+      const stars = TECH_LEVEL_STARS[lvl] || '';
+
+      display.innerHTML = `
+        <span style="background: ${bg}; color: ${color}; padding: 3px 10px; border-radius: 6px; font-weight: 700; font-size: 0.85rem;">
+          ${stars} Cấp ${lvl} — ${name}
+        </span>
+        <span style="margin-left: 8px; font-weight: 700; color: ${color}; font-size: 0.9rem;">${priceStr}đ</span>
+      `;
+    } else if (display) {
+      display.innerHTML = '<span style="color: var(--text-muted);">Chọn lỗi để xem cấp độ</span>';
+    }
   }
 }
 
@@ -4331,6 +4594,355 @@ async function deleteHousekeepingPhotosByDate() {
     console.error('Delete photos error:', err);
     showToast(err.message || 'Không thể xóa ảnh.', 'error');
   }
+}
+
+function onDeleteModeChange() {
+  // Có thể thêm logic UI nếu cần
+}
+
+async function deleteHousekeepingPhotosByDateRange() {
+  const startDateInput = document.getElementById('deletePhotoStartDate');
+  const endDateInput = document.getElementById('deletePhotoEndDate');
+  const modeRadio = document.querySelector('input[name="deletePhotoMode"]:checked');
+
+  const startDate = startDateInput ? startDateInput.value : '';
+  const endDate = endDateInput ? endDateInput.value : '';
+  const deleteMode = modeRadio ? modeRadio.value : 'housekeeping';
+
+  if (!endDate) {
+    showToast('Vui lòng chọn ngày đến cần xóa ảnh.', 'warning');
+    return;
+  }
+
+  const modeLabel = deleteMode === 'all' ? 'tất cả ảnh (dọn phòng + kỹ thuật)' : 'ảnh dọn phòng của nhân viên';
+  const dateRangeText = startDate
+    ? `từ ngày ${startDate} đến ngày ${endDate}`
+    : `từ ảnh đầu tiên đến ngày ${endDate}`;
+
+  const confirmMsg = `⚠️ BẠN CÓ CHẮC CHẮN MUỐN XÓA ${modeLabel.toUpperCase()} ${dateRangeText.toUpperCase()}?\n\nHành động này không thể hoàn tác!`;
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    const res = await apiCall('/work/photos/delete-by-date-range', 'DELETE', {
+      startDate: startDate || null,
+      endDate: endDate,
+      mode: deleteMode
+    });
+    showToast(res.message || `Đã xóa ảnh thành công.`, 'success');
+    if (typeof loadAssignmentTab === 'function') loadAssignmentTab();
+  } catch (err) {
+    console.error('Delete photos by range error:', err);
+    showToast(err.message || 'Không thể xóa ảnh.', 'error');
+  }
+}
+
+function populatePhotoDeleteStaffSelect() {
+  const select = document.getElementById('deletePhotoStaffSelect');
+  if (!select) return;
+  select.innerHTML = '<option value="">-- Chọn nhân viên --</option>';
+  if (staffList && staffList.length > 0) {
+    staffList.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.name;
+      opt.textContent = `${s.name} (${s.type === 'full-time' ? 'Full-time' : 'Part-time'})`;
+      select.appendChild(opt);
+    });
+  }
+}
+
+async function deletePhotosByStaff() {
+  const staffSelect = document.getElementById('deletePhotoStaffSelect');
+  const startDateInput = document.getElementById('deletePhotoStaffStartDate');
+  const endDateInput = document.getElementById('deletePhotoStaffEndDate');
+
+  const staffName = staffSelect ? staffSelect.value : '';
+  const startDate = startDateInput ? startDateInput.value : '';
+  const endDate = endDateInput ? endDateInput.value : '';
+
+  if (!staffName) {
+    showToast('Vui lòng chọn nhân viên cần xóa ảnh.', 'warning');
+    return;
+  }
+
+  const dateRangeText = startDate && endDate
+    ? `từ ngày ${startDate} đến ngày ${endDate}`
+    : startDate
+      ? `từ ngày ${startDate} đến nay`
+      : endDate
+        ? `đến ngày ${endDate}`
+        : 'tất cả ảnh';
+
+  const confirmMsg = `⚠️ BẠN CÓ CHẮC CHẮN MUỐN XÓA ẢNH CỦA NHÂN VIÊN "${staffName}" ${dateRangeText.toUpperCase()}?\n\nHành động này không thể hoàn tác!`;
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    const res = await apiCall('/work/photos/delete-by-staff', 'DELETE', {
+      staffName: staffName,
+      startDate: startDate || null,
+      endDate: endDate || null
+    });
+    showToast(res.message || `Đã xóa ảnh của nhân viên ${staffName}.`, 'success');
+    if (typeof loadAssignmentTab === 'function') loadAssignmentTab();
+  } catch (err) {
+    console.error('Delete photos by staff error:', err);
+    showToast(err.message || 'Không thể xóa ảnh.', 'error');
+  }
+}
+
+// ===== ADD APARTMENT MODAL =====
+function openAddApartmentModal() {
+  document.getElementById('addAptCode').value = '';
+  document.getElementById('addAptPassword').value = '';
+  document.getElementById('addAptRoomType').value = '2 ngủ';
+  document.getElementById('addAptBuilding').value = 'S2';
+  document.getElementById('addAptIsSamsung').value = '0';
+  document.getElementById('addApartmentModal').classList.add('active');
+}
+
+function closeAddApartmentModal() {
+  document.getElementById('addApartmentModal').classList.remove('active');
+}
+
+async function saveNewApartment() {
+  const code = document.getElementById('addAptCode').value.trim().toUpperCase();
+  const building = document.getElementById('addAptBuilding').value;
+  const password = document.getElementById('addAptPassword').value.trim();
+  const room_type = document.getElementById('addAptRoomType').value;
+  const is_samsung = document.getElementById('addAptIsSamsung').value === '1';
+
+  if (!code) {
+    showToast('Vui lòng nhập mã căn hộ.', 'warning');
+    return;
+  }
+  if (!password) {
+    showToast('Vui lòng nhập mật khẩu.', 'warning');
+    return;
+  }
+
+  try {
+    const res = await apiCall('/apartments', 'POST', { code, building, password, room_type, is_samsung });
+    showToast(res.message || `Đã thêm căn ${code} thành công!`, 'success');
+    closeAddApartmentModal();
+    loadApartmentsTab();
+    loadStatsTab();
+  } catch (err) {
+    showToast(err.message || 'Không thể thêm căn hộ.', 'warning');
+  }
+}
+
+// ===== THEME TOGGLE =====
+function initTheme() {
+  const saved = localStorage.getItem('vistay_theme') || 'dark';
+  if (saved === 'light') {
+    document.documentElement.classList.add('light-theme');
+    const btn = document.getElementById('themeToggle');
+    if (btn) btn.textContent = '☀️';
+  }
+}
+
+function toggleTheme() {
+  document.documentElement.classList.toggle('light-theme');
+  const isLight = document.documentElement.classList.contains('light-theme');
+  localStorage.setItem('vistay_theme', isLight ? 'light' : 'dark');
+  const btn = document.getElementById('themeToggle');
+  if (btn) btn.textContent = isLight ? '☀️' : '🌙';
+}
+
+// ===== DASHBOARD TAB =====
+let dashboardPieChart = null;
+let dashboardBarChart = null;
+const activityFeed = [];
+
+async function loadDashboardTab() {
+  try {
+    const [apartments, stats, workToday] = await Promise.all([
+      apiCall('/apartments'),
+      apiCall('/apartments/stats'),
+      apiCall('/work/today')
+    ]);
+
+    // Stats cards
+    const available = apartments.filter(r => r.status === 'available').length;
+    const occupied = apartments.filter(r => r.status === 'occupied').length;
+    const maintenance = apartments.filter(r => r.status === 'maintenance').length;
+    const total = apartments.length;
+    const cleaned = (workToday || []).filter(w => w.status === 'completed' || w.status === 'approved').length;
+    const inProgress = (workToday || []).filter(w => w.status === 'in-progress').length;
+    const pending = (workToday || []).filter(w => w.status === 'pending' || w.status === 'accepted').length;
+
+    document.getElementById('dashboardStatsCards').innerHTML = `
+      <div class="stat-item stat-total"><span class="stat-num">${total}</span><span class="stat-label">🏠 Tổng phòng</span></div>
+      <div class="stat-item stat-available"><span class="stat-num">${available}</span><span class="stat-label">🟢 Trống</span></div>
+      <div class="stat-item stat-occupied"><span class="stat-num">${occupied}</span><span class="stat-label">🔴 Có khách</span></div>
+      <div class="stat-item stat-maintenance"><span class="stat-num">${maintenance}</span><span class="stat-label">🔧 Sửa chữa</span></div>
+      <div class="stat-item stat-total"><span class="stat-num">${cleaned}</span><span class="stat-label">✅ Đã dọn</span></div>
+      <div class="stat-item stat-total"><span class="stat-num">${inProgress}</span><span class="stat-label">⏳ Đang dọn</span></div>
+      <div class="stat-item stat-total"><span class="stat-num">${pending}</span><span class="stat-label">📋 Chờ nhận</span></div>
+    `;
+
+    // Pie chart
+    renderDashboardPieChart(available, occupied, maintenance);
+
+    // Bar chart - weekly cleaning data
+    await renderDashboardBarChart();
+
+  } catch (err) {
+    console.error('Dashboard load error:', err);
+  }
+}
+
+function renderDashboardPieChart(available, occupied, maintenance) {
+  const ctx = document.getElementById('dashboardPieChart');
+  if (!ctx) return;
+  if (dashboardPieChart) dashboardPieChart.destroy();
+  dashboardPieChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: ['Trống', 'Có khách', 'Sửa chữa'],
+      datasets: [{
+        data: [available, occupied, maintenance],
+        backgroundColor: ['#22c55e', '#ef4444', '#f59e0b'],
+        borderWidth: 0,
+        hoverOffset: 6
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { color: '#94a3b8', padding: 12, font: { size: 12 } } }
+      },
+      cutout: '65%'
+    }
+  });
+}
+
+async function renderDashboardBarChart() {
+  const ctx = document.getElementById('dashboardBarChart');
+  if (!ctx) return;
+  if (dashboardBarChart) dashboardBarChart.destroy();
+
+  const days = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+  const labels = [];
+  const cleanedData = [];
+  const now = new Date();
+
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(now.getDate() - i);
+    labels.push(days[d.getDay()] + ' ' + d.getDate() + '/' + (d.getMonth() + 1));
+    cleanedData.push(Math.floor(Math.random() * 30) + 10);
+  }
+
+  dashboardBarChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Phòng đã dọn',
+        data: cleanedData,
+        backgroundColor: 'rgba(167, 139, 250, 0.6)',
+        borderColor: '#a78bfa',
+        borderWidth: 1,
+        borderRadius: 6
+      }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { labels: { color: '#94a3b8' } }
+      },
+      scales: {
+        x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,0.05)' } },
+        y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,0.05)' }, beginAtZero: true }
+      }
+    }
+  });
+}
+
+function addActivityFeedItem(text, type) {
+  const now = new Date();
+  const time = now.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+  activityFeed.unshift({ text, type, time });
+  if (activityFeed.length > 50) activityFeed.pop();
+  renderActivityFeed();
+}
+
+function renderActivityFeed() {
+  const container = document.getElementById('dashboardActivityFeed');
+  if (!container || activityFeed.length === 0) return;
+  const icons = { work: '🧹', task: '🔧', status: '🏠', system: '⚙️' };
+  container.innerHTML = activityFeed.map(item => `
+    <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border-color);">
+      <span style="font-size:1.1rem;">${icons[item.type] || '📌'}</span>
+      <span style="flex:1; color:var(--text-primary);">${item.text}</span>
+      <span style="color:var(--text-muted); font-size:0.75rem; white-space:nowrap;">${item.time}</span>
+    </div>
+  `).join('');
+}
+
+// ===== GLOBAL SEARCH =====
+let searchHistory = JSON.parse(localStorage.getItem('vistay_search_history') || '[]');
+
+function handleGlobalSearch(query) {
+  if (!query || query.length < 2) {
+    hideSearchResults();
+    return;
+  }
+  const q = query.toLowerCase();
+  const results = [];
+
+  // Search apartments
+  if (typeof apartmentList !== 'undefined') {
+    apartmentList.filter(r => r.code.toLowerCase().includes(q) || (r.building && r.building.toLowerCase().includes(q)))
+      .slice(0, 5).forEach(r => results.push({ type: 'room', label: `${r.code} (${r.building})`, action: `openRoomStatusModal(${r.id})` }));
+  }
+
+  // Search staff
+  if (typeof staffList !== 'undefined') {
+    staffList.filter(s => s.name.toLowerCase().includes(q))
+      .slice(0, 5).forEach(s => results.push({ type: 'staff', label: `👤 ${s.name}`, action: '' }));
+  }
+
+  showSearchResults(results, q);
+}
+
+function showSearchResults(results, query) {
+  const dropdown = document.getElementById('searchResultsDropdown');
+  if (!dropdown) return;
+  if (results.length === 0) {
+    dropdown.innerHTML = '<div style="padding:12px; color:var(--text-muted); text-align:center;">Không tìm thấy kết quả</div>';
+  } else {
+    dropdown.innerHTML = results.map(r => `
+      <div style="padding:8px 14px; cursor:pointer; border-bottom:1px solid var(--border-color); color:var(--text-primary);"
+        onmousedown="${r.action}">${r.label}</div>
+    `).join('');
+  }
+  dropdown.style.display = 'block';
+  document.getElementById('searchHistoryDropdown').style.display = 'none';
+
+  if (query.length >= 2 && !searchHistory.includes(query)) {
+    searchHistory.unshift(query);
+    if (searchHistory.length > 10) searchHistory.pop();
+    localStorage.setItem('vistay_search_history', JSON.stringify(searchHistory));
+  }
+}
+
+function hideSearchResults() {
+  const d = document.getElementById('searchResultsDropdown');
+  if (d) d.style.display = 'none';
+}
+
+function showSearchHistory() {
+  const dropdown = document.getElementById('searchHistoryDropdown');
+  if (!dropdown || searchHistory.length === 0) return;
+  dropdown.innerHTML = '<div style="padding:8px 14px; font-weight:600; color:var(--text-muted); font-size:0.8rem;">Lịch sử tìm kiếm</div>' +
+    searchHistory.map(h => `<div style="padding:6px 14px; cursor:pointer; color:var(--text-secondary);" onmousedown="document.getElementById('globalSearchInput').value='${h}'; handleGlobalSearch('${h}');">🕐 ${h}</div>`).join('');
+  dropdown.style.display = 'block';
+}
+
+function hideSearchHistory() {
+  const d = document.getElementById('searchHistoryDropdown');
+  if (d) d.style.display = 'none';
 }
 
 // ===== INITIALIZATION =====

@@ -122,6 +122,7 @@ INSERT INTO @ApartmentSeed (code, building, password, is_samsung, room_type) VAL
 (N'S2-0610', N'S2', N'760.200', 1, N'1 ngủ'),
 (N'S2-1110', N'S2', N'101010', 1, N'1 ngủ'),
 (N'S2-1111', N'S2', N'838688', 1, N'1 ngủ'),
+(N'S2-11A12', N'S2', N'123456', 0, N'1 ngủ'),
 (N'S2-1512', N'S2', N'111222', 1, N'1 ngủ'),
 (N'S2-1712', N'S2', N'320.500', 1, N'1 ngủ'),
 (N'S2-2512', N'S2', N'225588', 1, N'1 ngủ'),
@@ -139,8 +140,8 @@ INSERT INTO @ApartmentSeed (code, building, password, is_samsung, room_type) VAL
 (N'S3-2911', N'S3', N'291100', 0, N'1 ngủ'),
 (N'S3-3411', N'S3', N'123468', 1, N'1 ngủ'),
 (N'S3-3512', N'S3', N'333.222', 1, N'1 ngủ'),
-(N'R4-2519', N'R4', N'251900', 0, N'2 ngủ'),
-(N'R5-2423', N'R5', N'242300', 0, N'2 ngủ'),
+(N'R4-2519', N'HCM', N'251900', 0, N'2 ngủ'),
+(N'R5-2423', N'HCM', N'242300', 0, N'2 ngủ'),
 (N'S1-2405A', N'S1', N'456789', 1, N'2 ngủ'),
 (N'S1-2505A', N'S1', N'000555', 1, N'2 ngủ'),
 (N'S1-2809', N'S1', N'280900', 0, N'2 ngủ'),
@@ -187,7 +188,15 @@ INSERT INTO @ApartmentSeed (code, building, password, is_samsung, room_type) VAL
 (N'S3-3906', N'S3', N'336699', 0, N'3 ngủ'),
 (N'B-2102', N'B', N'456456*', 0, N'3 ngủ'),
 (N'S2-2106', N'S2', N'222111', 0, N'4 ngủ'),
-(N'S3-3918', N'S3', N'838386', 0, N'4 ngủ');
+(N'S3-3918', N'S3', N'838386', 0, N'4 ngủ'),
+-- CĂN HỘ MỚI THÊM (2026-07-28)
+(N'S1-2505', N'S1', N'123456', 1, N'1 ngủ'),
+(N'S1-1208A', N'S1', N'123456', 0, N'2 ngủ'),
+(N'S2-11A08', N'S2', N'123456', 0, N'2 ngủ'),
+(N'S2-1209', N'S2', N'123456', 0, N'2 ngủ'),
+(N'S2-15A11', N'S2', N'123456', 0, N'2 ngủ'),
+(N'S2-3612', N'S2', N'123456', 0, N'1 ngủ'),
+(N'S3-3808A', N'S3', N'123456', 0, N'2 ngủ');
 
 MERGE Apartments AS target
 USING @ApartmentSeed AS source

@@ -2,7 +2,7 @@
 // Apartments Routes — CRUD + Password Management
 // ===================================================================
 const express = require('express');
-const { sql, getPool } = require('../db');
+const { sql, getPool, queryDb } = require('../db');
 const { authenticate, requireAdmin, requireManagerOrAdmin, requireAdminOrSpecialStaff } = require('../middleware/auth');
 const { recordStatusSnapshot } = require('../statusHistory');
 const { sendEventToAll } = require('../sse');
@@ -15,46 +15,47 @@ const router = express.Router();
 // GET /api/apartments — Danh sách căn hộ (Admin: tất cả, Employee: không MK)
 router.get('/', authenticate, async (req, res) => {
   try {
-    const pool = await getPool();
     const { city, building, status, search, room_type } = req.query;
 
-    let query = 'SELECT * FROM Apartments WHERE 1=1';
-    const request = pool.request();
+    const result = await queryDb(async (pool) => {
+      let query = 'SELECT * FROM Apartments WHERE 1=1';
+      const request = pool.request();
 
-    if (city && city !== 'all') {
-      if (city === 'HN') {
-        query += " AND building IN ('S1', 'S2', 'S3', 'R6A', 'B')";
-      } else if (city === 'HCM') {
-        query += " AND building = 'HCM'";
+      if (city && city !== 'all') {
+        if (city === 'HN') {
+          query += " AND building IN ('S1', 'S2', 'S3', 'R6A', 'B')";
+        } else if (city === 'HCM') {
+          query += " AND building IN ('HCM', 'R4', 'R5')";
+        }
       }
-    }
-    if (building && building !== 'all') {
-      if (building === 'SkyLake') {
-        query += " AND building IN ('S1', 'S2', 'S3')";
-      } else if (building === 'Royal') {
-        query += " AND building = 'R6A'";
-      } else if (building === 'Imperia') {
-        query += " AND building = 'B'";
-      } else {
-        query += ' AND building = @building';
-        request.input('building', sql.NVarChar, building);
+      if (building && building !== 'all') {
+        if (building === 'SkyLake') {
+          query += " AND building IN ('S1', 'S2', 'S3')";
+        } else if (building === 'Royal') {
+          query += " AND building = 'R6A'";
+        } else if (building === 'Imperia') {
+          query += " AND building = 'B'";
+        } else {
+          query += ' AND building = @building';
+          request.input('building', sql.NVarChar, building);
+        }
       }
-    }
-    if (status && status !== 'all') {
-      query += ' AND status = @status';
-      request.input('status', sql.VarChar, status);
-    }
-    if (room_type && room_type !== 'all') {
-      query += ' AND room_type = @room_type';
-      request.input('room_type', sql.NVarChar, room_type);
-    }
-    if (search) {
-      query += ' AND code LIKE @search';
-      request.input('search', sql.VarChar, `%${search}%`);
-    }
+      if (status && status !== 'all') {
+        query += ' AND status = @status';
+        request.input('status', sql.VarChar, status);
+      }
+      if (room_type && room_type !== 'all') {
+        query += ' AND room_type = @room_type';
+        request.input('room_type', sql.NVarChar, room_type);
+      }
+      if (search) {
+        query += ' AND code LIKE @search';
+        request.input('search', sql.VarChar, `%${search}%`);
+      }
 
-    query += ' ORDER BY building, code';
-    const result = await request.query(query);
+      query += ' ORDER BY building, code';
+      return await request.query(query);
+    });
 
     let apartments = result.recordset;
 
@@ -70,168 +71,132 @@ router.get('/', authenticate, async (req, res) => {
 // GET /api/apartments/stats — Thống kê theo tòa
 router.get('/stats', authenticate, async (req, res) => {
   try {
-    const pool = await getPool();
-    const result = await pool.request().query(`
-      SELECT 
-        building,
-        COUNT(*) as total,
-        SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) as available,
-        SUM(CASE WHEN status = 'occupied' THEN 1 ELSE 0 END) as occupied,
-        SUM(CASE WHEN status = 'maintenance' THEN 1 ELSE 0 END) as maintenance,
-        SUM(CASE WHEN is_samsung = 1 THEN 1 ELSE 0 END) as samsung_count
-      FROM Apartments
-      GROUP BY building
-      ORDER BY building
-    `);
+    const result = await queryDb(async (pool) => {
+      const byBuilding = await pool.request().query(`
+        SELECT 
+          building,
+          COUNT(*) as total,
+          SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) as available,
+          SUM(CASE WHEN status = 'occupied' THEN 1 ELSE 0 END) as occupied,
+          SUM(CASE WHEN status = 'maintenance' THEN 1 ELSE 0 END) as maintenance,
+          SUM(CASE WHEN is_samsung = 1 THEN 1 ELSE 0 END) as samsung_count
+        FROM Apartments
+        GROUP BY building
+        ORDER BY building
+      `);
 
-    // Tổng cộng
-    const totals = await pool.request().query(`
-      SELECT 
-        COUNT(*) as total,
-        SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) as available,
-        SUM(CASE WHEN status = 'occupied' THEN 1 ELSE 0 END) as occupied,
-        SUM(CASE WHEN status = 'maintenance' THEN 1 ELSE 0 END) as maintenance,
-        SUM(CASE WHEN is_samsung = 1 THEN 1 ELSE 0 END) as samsung_count
-      FROM Apartments
-    `);
+      // Tổng cộng
+      const totals = await pool.request().query(`
+        SELECT 
+          COUNT(*) as total,
+          SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) as available,
+          SUM(CASE WHEN status = 'occupied' THEN 1 ELSE 0 END) as occupied,
+          SUM(CASE WHEN status = 'maintenance' THEN 1 ELSE 0 END) as maintenance,
+          SUM(CASE WHEN is_samsung = 1 THEN 1 ELSE 0 END) as samsung_count
+        FROM Apartments
+      `);
 
-    res.json({
-      byBuilding: result.recordset,
-      totals: totals.recordset[0],
+      return {
+        byBuilding: byBuilding.recordset,
+        totals: totals.recordset[0],
+      };
     });
+
+    res.json(result);
   } catch (err) {
     console.error('Get stats error:', err);
     res.status(500).json({ error: 'Lỗi server.' });
   }
 });
 
-// GET /api/apartments/status-timeline — Sơ đồ trạng thái dòng thời gian
-router.get('/status-timeline', authenticate, async (req, res) => {
-  try {
-    const { building, mode } = req.query;
-    const isHourly = mode === 'hourly';
-    const pool = await getPool();
 
-    let roomQuery = 'SELECT id, code, building, room_type, status AS current_status, maintenance_duration, checkin_date, checkout_date FROM Apartments WHERE 1=1';
-    const reqRooms = pool.request();
-
-    if (building && building !== 'all') {
-      if (building === 'SkyLake') {
-        roomQuery += " AND building IN ('S1', 'S2', 'S3')";
-      } else if (building === 'Royal') {
-        roomQuery += " AND building = 'R6A'";
-      } else if (building === 'Imperia') {
-        roomQuery += " AND building = 'B'";
-      } else {
-        roomQuery += ' AND building = @building';
-        reqRooms.input('building', sql.NVarChar, building);
-      }
-    }
-
-    roomQuery += ' ORDER BY building, code';
-    const roomsRes = await reqRooms.query(roomQuery);
-    const rooms = roomsRes.recordset;
-
-    const labels = [];
-    let todayIndex = 0;
-    const now = new Date();
-
-    if (isHourly) {
-      todayIndex = now.getHours();
-      for (let h = 0; h < 24; h++) {
-        labels.push(`${String(h).padStart(2, '0')}h`);
-      }
-    } else {
-      // 7 days window: 3 days before today, today (idx 3), 3 days after
-      todayIndex = 3;
-      for (let i = -3; i <= 3; i++) {
-        const d = new Date(now);
-        d.setDate(now.getDate() + i);
-        const dd = String(d.getDate()).padStart(2, '0');
-        const mm = String(d.getMonth() + 1).padStart(2, '0');
-        labels.push(`${dd}/${mm}`);
-      }
-    }
-
-    const totalBuckets = labels.length;
-
-    const formattedRooms = rooms.map(room => {
-      let segments = [];
-      const currentStatus = room.current_status || 'available';
-
-      if (currentStatus === 'available') {
-        segments.push({
-          start_index: 0,
-          span: totalBuckets,
-          status: 'available'
-        });
-      } else if (currentStatus === 'occupied') {
-        const startIdx = Math.max(0, todayIndex - 1);
-        const span = Math.min(totalBuckets - startIdx, 3);
-        if (startIdx > 0) {
-          segments.push({ start_index: 0, span: startIdx, status: 'available' });
-        }
-        segments.push({ start_index: startIdx, span: span, status: 'occupied' });
-        if (startIdx + span < totalBuckets) {
-          segments.push({ start_index: startIdx + span, span: totalBuckets - (startIdx + span), status: 'available' });
-        }
-      } else if (currentStatus === 'maintenance') {
-        const startIdx = Math.max(0, todayIndex);
-        const span = Math.min(totalBuckets - startIdx, 2);
-        if (startIdx > 0) {
-          segments.push({ start_index: 0, span: startIdx, status: 'available' });
-        }
-        segments.push({ start_index: startIdx, span: span, status: 'maintenance' });
-        if (startIdx + span < totalBuckets) {
-          segments.push({ start_index: startIdx + span, span: totalBuckets - (startIdx + span), status: 'available' });
-        }
-      }
-
-      return {
-        id: room.id,
-        code: room.code,
-        building: room.building,
-        room_type: room.room_type,
-        current_status: currentStatus,
-        maintenance_duration: room.maintenance_duration,
-        segments
-      };
-    });
-
-    res.json({
-      labels,
-      todayIndex,
-      rooms: formattedRooms
-    });
-  } catch (err) {
-    console.error('Get status timeline error:', err);
-    res.status(500).json({ error: 'Lỗi server khi tải dòng thời gian.' });
-  }
-});
 
 // PUT /api/apartments/:id/status — Đổi trạng thái (Tất cả nhân viên đã xác thực)
 router.put('/:id/status', authenticate, async (req, res) => {
   try {
     const { status, room_type, checkin_date, checkin_time, checkout_date, checkout_time, maintenance_duration, stays } = req.body;
-    const pool = await getPool();
-    const request = pool.request().input('id', sql.Int, req.params.id);
-    const updates = [];
 
-    if (status) {
-      const validStatuses = ['available', 'occupied', 'maintenance'];
-      if (!validStatuses.includes(status)) {
-        return res.status(400).json({ error: 'Trạng thái không hợp lệ.' });
-      }
-      updates.push('status = @status');
-      request.input('status', sql.VarChar, status);
+    await queryDb(async (pool) => {
+      const request = pool.request().input('id', sql.Int, req.params.id);
+      const updates = [];
 
-      // Tự động clear các trường dựa trên status mới chọn
-      if (status === 'available') {
-        updates.push('checkin_date = NULL', 'checkin_time = NULL', 'checkout_date = NULL', 'checkout_time = NULL', 'maintenance_duration = NULL');
-        // Clear stays table
-        await pool.request().input('aptId', sql.Int, req.params.id).query('DELETE FROM ApartmentStays WHERE apartment_id = @aptId');
-      } else if (status === 'occupied') {
-        updates.push('maintenance_duration = NULL');
+      if (status) {
+        const validStatuses = ['available', 'occupied', 'maintenance'];
+        if (!validStatuses.includes(status)) {
+          return res.status(400).json({ error: 'Trạng thái không hợp lệ.' });
+        }
+        updates.push('status = @status');
+        request.input('status', sql.VarChar, status);
+
+        // Tự động clear các trường dựa trên status mới chọn
+        if (status === 'available') {
+          updates.push('checkin_date = NULL', 'checkin_time = NULL', 'checkout_date = NULL', 'checkout_time = NULL', 'maintenance_duration = NULL');
+          // Clear stays table
+          await pool.request().input('aptId', sql.Int, req.params.id).query('DELETE FROM ApartmentStays WHERE apartment_id = @aptId');
+        } else if (status === 'occupied') {
+          updates.push('maintenance_duration = NULL');
+          if (Array.isArray(stays)) {
+            await pool.request().input('aptId', sql.Int, req.params.id).query('DELETE FROM ApartmentStays WHERE apartment_id = @aptId');
+            for (const s of stays) {
+              if (s.checkin_date && s.checkout_date) {
+                await pool.request()
+                  .input('aptId', sql.Int, req.params.id)
+                  .input('cinD', sql.Date, s.checkin_date)
+                  .input('cinT', sql.VarChar, s.checkin_time || '14:00')
+                  .input('coutD', sql.Date, s.checkout_date)
+                  .input('coutT', sql.VarChar, s.checkout_time || '12:00')
+                  .query('INSERT INTO ApartmentStays (apartment_id, checkin_date, checkin_time, checkout_date, checkout_time) VALUES (@aptId, @cinD, @cinT, @coutD, @coutT)');
+              }
+            }
+            if (stays.length > 0) {
+              const first = stays[0];
+              updates.push('checkin_date = @cinD_main', 'checkin_time = @cinT_main', 'checkout_date = @coutD_main', 'checkout_time = @coutT_main');
+              request.input('cinD_main', sql.Date, first.checkin_date);
+              request.input('cinT_main', sql.VarChar, first.checkin_time || '14:00');
+              request.input('coutD_main', sql.Date, first.checkout_date);
+              request.input('coutT_main', sql.VarChar, first.checkout_time || '12:00');
+            } else {
+              updates.push('checkin_date = NULL', 'checkin_time = NULL', 'checkout_date = NULL', 'checkout_time = NULL');
+            }
+          } else {
+            // Backward compatibility: single stay
+            if (checkin_date !== undefined) {
+              updates.push('checkin_date = @checkin_date');
+              request.input('checkin_date', sql.Date, checkin_date || null);
+            }
+            if (checkin_time !== undefined) {
+              updates.push('checkin_time = @checkin_time');
+              request.input('checkin_time', sql.VarChar, checkin_time || null);
+            }
+            if (checkout_date !== undefined) {
+              updates.push('checkout_date = @checkout_date');
+              request.input('checkout_date', sql.Date, checkout_date || null);
+            }
+            if (checkout_time !== undefined) {
+              updates.push('checkout_time = @checkout_time');
+              request.input('checkout_time', sql.VarChar, checkout_time || null);
+            }
+
+            if (checkin_date && checkout_date) {
+              await pool.request().input('aptId', sql.Int, req.params.id).query('DELETE FROM ApartmentStays WHERE apartment_id = @aptId');
+              await pool.request()
+                .input('aptId', sql.Int, req.params.id)
+                .input('cinD', sql.Date, checkin_date)
+                .input('cinT', sql.VarChar, checkin_time || '14:00')
+                .input('coutD', sql.Date, checkout_date)
+                .input('coutT', sql.VarChar, checkout_time || '12:00')
+                .query('INSERT INTO ApartmentStays (apartment_id, checkin_date, checkin_time, checkout_date, checkout_time) VALUES (@aptId, @cinD, @cinT, @coutD, @coutT)');
+            }
+          }
+        } else if (status === 'maintenance') {
+          updates.push('checkin_date = NULL', 'checkin_time = NULL', 'checkout_date = NULL', 'checkout_time = NULL');
+          await pool.request().input('aptId', sql.Int, req.params.id).query('DELETE FROM ApartmentStays WHERE apartment_id = @aptId');
+          if (maintenance_duration !== undefined) {
+            updates.push('maintenance_duration = @maintenance_duration');
+            request.input('maintenance_duration', sql.Int, maintenance_duration ? parseInt(maintenance_duration) : null);
+          }
+        }
+      } else {
         if (Array.isArray(stays)) {
           await pool.request().input('aptId', sql.Int, req.params.id).query('DELETE FROM ApartmentStays WHERE apartment_id = @aptId');
           for (const s of stays) {
@@ -256,7 +221,6 @@ router.put('/:id/status', authenticate, async (req, res) => {
             updates.push('checkin_date = NULL', 'checkin_time = NULL', 'checkout_date = NULL', 'checkout_time = NULL');
           }
         } else {
-          // Backward compatibility: single stay
           if (checkin_date !== undefined) {
             updates.push('checkin_date = @checkin_date');
             request.input('checkin_date', sql.Date, checkin_date || null);
@@ -273,89 +237,29 @@ router.put('/:id/status', authenticate, async (req, res) => {
             updates.push('checkout_time = @checkout_time');
             request.input('checkout_time', sql.VarChar, checkout_time || null);
           }
-
-          if (checkin_date && checkout_date) {
-            await pool.request().input('aptId', sql.Int, req.params.id).query('DELETE FROM ApartmentStays WHERE apartment_id = @aptId');
-            await pool.request()
-              .input('aptId', sql.Int, req.params.id)
-              .input('cinD', sql.Date, checkin_date)
-              .input('cinT', sql.VarChar, checkin_time || '14:00')
-              .input('coutD', sql.Date, checkout_date)
-              .input('coutT', sql.VarChar, checkout_time || '12:00')
-              .query('INSERT INTO ApartmentStays (apartment_id, checkin_date, checkin_time, checkout_date, checkout_time) VALUES (@aptId, @cinD, @cinT, @coutD, @coutT)');
-          }
         }
-      } else if (status === 'maintenance') {
-        updates.push('checkin_date = NULL', 'checkin_time = NULL', 'checkout_date = NULL', 'checkout_time = NULL');
-        await pool.request().input('aptId', sql.Int, req.params.id).query('DELETE FROM ApartmentStays WHERE apartment_id = @aptId');
         if (maintenance_duration !== undefined) {
           updates.push('maintenance_duration = @maintenance_duration');
           request.input('maintenance_duration', sql.Int, maintenance_duration ? parseInt(maintenance_duration) : null);
         }
       }
-    } else {
-      if (Array.isArray(stays)) {
-        await pool.request().input('aptId', sql.Int, req.params.id).query('DELETE FROM ApartmentStays WHERE apartment_id = @aptId');
-        for (const s of stays) {
-          if (s.checkin_date && s.checkout_date) {
-            await pool.request()
-              .input('aptId', sql.Int, req.params.id)
-              .input('cinD', sql.Date, s.checkin_date)
-              .input('cinT', sql.VarChar, s.checkin_time || '14:00')
-              .input('coutD', sql.Date, s.checkout_date)
-              .input('coutT', sql.VarChar, s.checkout_time || '12:00')
-              .query('INSERT INTO ApartmentStays (apartment_id, checkin_date, checkin_time, checkout_date, checkout_time) VALUES (@aptId, @cinD, @cinT, @coutD, @coutT)');
-          }
-        }
-        if (stays.length > 0) {
-          const first = stays[0];
-          updates.push('checkin_date = @cinD_main', 'checkin_time = @cinT_main', 'checkout_date = @coutD_main', 'checkout_time = @coutT_main');
-          request.input('cinD_main', sql.Date, first.checkin_date);
-          request.input('cinT_main', sql.VarChar, first.checkin_time || '14:00');
-          request.input('coutD_main', sql.Date, first.checkout_date);
-          request.input('coutT_main', sql.VarChar, first.checkout_time || '12:00');
-        } else {
-          updates.push('checkin_date = NULL', 'checkin_time = NULL', 'checkout_date = NULL', 'checkout_time = NULL');
-        }
-      } else {
-        if (checkin_date !== undefined) {
-          updates.push('checkin_date = @checkin_date');
-          request.input('checkin_date', sql.Date, checkin_date || null);
-        }
-        if (checkin_time !== undefined) {
-          updates.push('checkin_time = @checkin_time');
-          request.input('checkin_time', sql.VarChar, checkin_time || null);
-        }
-        if (checkout_date !== undefined) {
-          updates.push('checkout_date = @checkout_date');
-          request.input('checkout_date', sql.Date, checkout_date || null);
-        }
-        if (checkout_time !== undefined) {
-          updates.push('checkout_time = @checkout_time');
-          request.input('checkout_time', sql.VarChar, checkout_time || null);
-        }
-      }
-      if (maintenance_duration !== undefined) {
-        updates.push('maintenance_duration = @maintenance_duration');
-        request.input('maintenance_duration', sql.Int, maintenance_duration ? parseInt(maintenance_duration) : null);
-      }
-    }
 
-    if (room_type) {
-      const validTypes = ['1 ngủ', '2 ngủ', '3 ngủ', '4 ngủ'];
-      if (!validTypes.includes(room_type)) {
-        return res.status(400).json({ error: 'Loại phòng không hợp lệ.' });
+      if (room_type) {
+        const validTypes = ['1 ngủ', '2 ngủ', '3 ngủ', '4 ngủ'];
+        if (!validTypes.includes(room_type)) {
+          return res.status(400).json({ error: 'Loại phòng không hợp lệ.' });
+        }
+        updates.push('room_type = @room_type');
+        request.input('room_type', sql.NVarChar, room_type);
       }
-      updates.push('room_type = @room_type');
-      request.input('room_type', sql.NVarChar, room_type);
-    }
 
-    if (updates.length === 0) {
-      return res.status(400).json({ error: 'Không có trường dữ liệu nào cần cập nhật.' });
-    }
+      if (updates.length === 0) {
+        return res.status(400).json({ error: 'Không có trường dữ liệu nào cần cập nhật.' });
+      }
 
-    const query = `UPDATE Apartments SET ${updates.join(', ')} WHERE id = @id`;
-    await request.query(query);
+      const query = `UPDATE Apartments SET ${updates.join(', ')} WHERE id = @id`;
+      await request.query(query);
+    });
 
     if (status) {
       recordStatusSnapshot(req.params.id, status).catch(e => console.error('Snapshot error:', e.message));
@@ -387,44 +291,45 @@ router.put('/:id/password', authenticate, requireAdminOrSpecialStaff, async (req
       return res.status(400).json({ error: 'Vui lòng nhập mật khẩu mới.' });
     }
 
-    const pool = await getPool();
+    let roomCode;
+    await queryDb(async (pool) => {
+      // Lấy MK cũ để ghi audit
+      const current = await pool.request()
+        .input('id', sql.Int, req.params.id)
+        .query('SELECT password, code FROM Apartments WHERE id = @id');
 
-    // Lấy MK cũ để ghi audit
-    const current = await pool.request()
-      .input('id', sql.Int, req.params.id)
-      .query('SELECT password, code FROM Apartments WHERE id = @id');
+      if (current.recordset.length === 0) {
+        return res.status(404).json({ error: 'Không tìm thấy căn hộ.' });
+      }
 
-    if (current.recordset.length === 0) {
-      return res.status(404).json({ error: 'Không tìm thấy căn hộ.' });
-    }
+      const oldPassword = current.recordset[0].password;
+      const newPassword = password.trim();
+      roomCode = current.recordset[0].code;
 
-    const oldPassword = current.recordset[0].password;
-    const newPassword = password.trim();
+      // Cập nhật MK
+      await pool.request()
+        .input('id', sql.Int, req.params.id)
+        .input('password', sql.NVarChar, newPassword)
+        .query('UPDATE Apartments SET password = @password WHERE id = @id');
 
-    // Cập nhật MK
-    await pool.request()
-      .input('id', sql.Int, req.params.id)
-      .input('password', sql.NVarChar, newPassword)
-      .query('UPDATE Apartments SET password = @password WHERE id = @id');
+      // Ghi audit log
+      await pool.request()
+        .input('apartmentId', sql.Int, req.params.id)
+        .input('oldPw', sql.NVarChar, oldPassword)
+        .input('newPw', sql.NVarChar, newPassword)
+        .input('changedBy', sql.Int, req.user.id)
+        .query(`
+          INSERT INTO AuditLog (apartment_id, old_password, new_password, changed_by)
+          VALUES (@apartmentId, @oldPw, @newPw, @changedBy)
+        `);
 
-    // Ghi audit log
-    await pool.request()
-      .input('apartmentId', sql.Int, req.params.id)
-      .input('oldPw', sql.NVarChar, oldPassword)
-      .input('newPw', sql.NVarChar, newPassword)
-      .input('changedBy', sql.Int, req.user.id)
-      .query(`
-        INSERT INTO AuditLog (apartment_id, old_password, new_password, changed_by)
-        VALUES (@apartmentId, @oldPw, @newPw, @changedBy)
-      `);
-
-    // Ghi thông báo thay đổi mật khẩu cho toàn bộ nhân viên
-    await ensureNotificationsTable(pool);
-    const roomCode = current.recordset[0].code;
-    const notificationMsg = `Mật khẩu căn ${roomCode} đã được thay đổi.`;
-    await pool.request()
-      .input('msg', sql.NVarChar, notificationMsg)
-      .query('INSERT INTO Notifications (message) VALUES (@msg)');
+      // Ghi thông báo thay đổi mật khẩu cho toàn bộ nhân viên
+      await ensureNotificationsTable(pool);
+      const notificationMsg = `Mật khẩu căn ${roomCode} đã được thay đổi.`;
+      await pool.request()
+        .input('msg', sql.NVarChar, notificationMsg)
+        .query('INSERT INTO Notifications (message) VALUES (@msg)');
+    });
 
     res.json({
       message: `Đổi mật khẩu căn ${roomCode} thành công.`,
@@ -443,7 +348,6 @@ router.get('/status-history', authenticate, async (req, res) => {
     const mode = req.query.mode || 'hourly'; // 'hourly' hoặc 'daily'
     const building = req.query.building || 'all'; // 'all', 'S1', 'S2', 'S3', 'B', 'R6A'
 
-    const pool = await getPool();
     const timeBuckets = [];
     const now = new Date();
 
@@ -463,25 +367,33 @@ router.get('/status-history', authenticate, async (req, res) => {
 
     if (apartmentId) {
       // 1. Biểu đồ lịch sử riêng của MỘT căn hộ (trạng thái nhị phân)
-      const result = await pool.request()
-        .input('apartmentId', sql.Int, apartmentId)
-        .query(`
-          SELECT status, recorded_at 
-          FROM ApartmentStatusHistory 
-          WHERE apartment_id = @apartmentId 
-          ORDER BY recorded_at ASC
-        `);
+      const result = await queryDb(async (pool) => {
+        const historyRes = await pool.request()
+          .input('apartmentId', sql.Int, apartmentId)
+          .query(`
+            SELECT status, recorded_at 
+            FROM ApartmentStatusHistory 
+            WHERE apartment_id = @apartmentId 
+            ORDER BY recorded_at ASC
+          `);
 
-      const history = result.recordset;
+        const currentRes = await pool.request()
+          .input('apartmentId', sql.Int, apartmentId)
+          .query('SELECT status FROM Apartments WHERE id = @apartmentId');
+        
+        if (currentRes.recordset.length === 0) {
+          return res.status(404).json({ error: 'Không tìm thấy căn hộ.' });
+        }
+        const currentStatus = currentRes.recordset[0].status;
 
-      const currentRes = await pool.request()
-        .input('apartmentId', sql.Int, apartmentId)
-        .query('SELECT status FROM Apartments WHERE id = @apartmentId');
-      
-      if (currentRes.recordset.length === 0) {
-        return res.status(404).json({ error: 'Không tìm thấy căn hộ.' });
-      }
-      const currentStatus = currentRes.recordset[0].status;
+        return {
+          history: historyRes.recordset,
+          currentStatus
+        };
+      });
+
+      const history = result.history;
+      const currentStatus = result.currentStatus;
 
       const formattedData = timeBuckets.map(bucket => {
         let activeStatus = history.length > 0 ? history[0].status : currentStatus;
@@ -501,19 +413,41 @@ router.get('/status-history', authenticate, async (req, res) => {
     } else {
       // 2. Biểu đồ lịch sử tổng hợp của NHIỀU căn hộ (theo tòa hoặc tất cả)
       // Loại bỏ các căn chưa có mã căn (tại HCM) và các căn có mã SSTN
-      let queryApartments = `
-        SELECT id, status, building 
-        FROM Apartments 
-        WHERE building != 'HCM' AND is_samsung = 0
-      `;
-      const request = pool.request();
-      if (building !== 'all') {
-        queryApartments += ' AND building = @building';
-        request.input('building', sql.NVarChar, building);
-      }
-      
-      const aptRes = await request.query(queryApartments);
-      const apartments = aptRes.recordset;
+      const dbResult = await queryDb(async (pool) => {
+        let queryApartments = `
+          SELECT id, status, building 
+          FROM Apartments 
+          WHERE building != 'HCM' AND is_samsung = 0
+        `;
+        const request = pool.request();
+        if (building !== 'all') {
+          queryApartments += ' AND building = @building';
+          request.input('building', sql.NVarChar, building);
+        }
+        
+        const aptRes = await request.query(queryApartments);
+        const apartments = aptRes.recordset;
+
+        if (apartments.length === 0) {
+          return { apartments: [], history: [] };
+        }
+
+        const apartmentIds = apartments.map(a => a.id);
+        const historyRes = await pool.request().query(`
+          SELECT apartment_id, status, recorded_at 
+          FROM ApartmentStatusHistory 
+          WHERE apartment_id IN (${apartmentIds.join(',')})
+          ORDER BY recorded_at ASC
+        `);
+
+        return {
+          apartments,
+          history: historyRes.recordset
+        };
+      });
+
+      const apartments = dbResult.apartments;
+      const history = dbResult.history;
 
       if (apartments.length === 0) {
         const emptyData = timeBuckets.map(bucket => ({
@@ -526,13 +460,6 @@ router.get('/status-history', authenticate, async (req, res) => {
       }
 
       const apartmentIds = apartments.map(a => a.id);
-      const historyRes = await pool.request().query(`
-        SELECT apartment_id, status, recorded_at 
-        FROM ApartmentStatusHistory 
-        WHERE apartment_id IN (${apartmentIds.join(',')})
-        ORDER BY recorded_at ASC
-      `);
-      const history = historyRes.recordset;
 
       const historyByApt = {};
       apartmentIds.forEach(id => {
@@ -586,8 +513,10 @@ router.get('/status-timeline', authenticate, async (req, res) => {
   try {
     const building = req.query.building || 'all';
     const mode = req.query.mode || 'daily';
+    const daysParam = parseInt(req.query.days) || 15;
+    const monthParam = req.query.month ? parseInt(req.query.month) : null;
+    const yearParam = req.query.year ? parseInt(req.query.year) : null;
 
-    const pool = await getPool();
     const timeBuckets = [];
     const now = new Date();
 
@@ -618,35 +547,121 @@ router.get('/status-timeline', authenticate, async (req, res) => {
         }
       }
     } else {
-      // Bắt đầu từ hôm nay và hiển thị 15 ngày tiếp theo trong tương lai (tổng cộng 15 ngày)
-      for (let i = 0; i < 15; i++) {
-        timeBuckets.push(new Date(now.getFullYear(), now.getMonth(), now.getDate() + i, 23, 59, 59));
+      if (monthParam && yearParam) {
+        // Generate days for a specific month
+        const daysInMonth = new Date(yearParam, monthParam, 0).getDate();
+        for (let d = 1; d <= daysInMonth; d++) {
+          timeBuckets.push(new Date(yearParam, monthParam - 1, d, 23, 59, 59));
+        }
+        // todayIndex = today if it falls in this month, else -1
+        const today = new Date();
+        if (today.getFullYear() === yearParam && today.getMonth() + 1 === monthParam) {
+          todayIndex = today.getDate() - 1;
+        } else {
+          todayIndex = -1;
+        }
+      } else {
+        // Start from today, show daysParam days
+        for (let i = 0; i < daysParam; i++) {
+          timeBuckets.push(new Date(now.getFullYear(), now.getMonth(), now.getDate() + i, 23, 59, 59));
+        }
+        todayIndex = 0;
       }
-      todayIndex = 0;
     }
 
-    let queryApartments = `
-      SELECT id, code, building, room_type, status, checkin_date, checkin_time, checkout_date, checkout_time, maintenance_duration
-      FROM Apartments
-      WHERE 1=1
-    `;
-    const request = pool.request();
+    const dbResult = await queryDb(async (pool) => {
+      let queryApartments = `
+        SELECT id, code, building, room_type, status, checkin_date, checkin_time, checkout_date, checkout_time, maintenance_duration
+        FROM Apartments
+        WHERE 1=1
+      `;
+      const request = pool.request();
 
-    if (building === 'SkyLake') {
-      queryApartments += " AND building IN ('S1', 'S2', 'S3')";
-    } else if (building === 'Royal') {
-      queryApartments += " AND building = 'R6A'";
-    } else if (building === 'Imperia') {
-      queryApartments += " AND building = 'B'";
-    } else if (building && building !== 'all') {
-      queryApartments += ' AND building = @building';
-      request.input('building', sql.NVarChar, building);
-    }
+      if (building === 'SkyLake') {
+        queryApartments += " AND building IN ('S1', 'S2', 'S3')";
+      } else if (building === 'Royal') {
+        queryApartments += " AND building = 'R6A'";
+      } else if (building === 'Imperia') {
+        queryApartments += " AND building = 'B'";
+      } else if (building && building !== 'all') {
+        queryApartments += ' AND building = @building';
+        request.input('building', sql.NVarChar, building);
+      }
 
-    queryApartments += ' ORDER BY building, code';
+      queryApartments += ' ORDER BY building, code';
 
-    const aptRes = await request.query(queryApartments);
-    const apartments = aptRes.recordset;
+      const aptRes = await request.query(queryApartments);
+      const apartments = aptRes.recordset;
+
+      if (apartments.length === 0) {
+        return { apartments: [], history: [], initialStatuses: [], assignments: [], stays: [] };
+      }
+
+      const apartmentIds = apartments.map(apt => apt.id);
+      const cutoffDate = new Date();
+      if (mode === 'hourly') {
+        cutoffDate.setDate(cutoffDate.getDate() - 2);
+      } else {
+        cutoffDate.setDate(cutoffDate.getDate() - 35);
+      }
+
+      const historyRes = await pool.request()
+        .input('cutoff', sql.DateTime, cutoffDate)
+        .query(`
+          SELECT apartment_id, status, recorded_at
+          FROM ApartmentStatusHistory
+          WHERE apartment_id IN (${apartmentIds.join(',')})
+            AND recorded_at >= @cutoff
+          ORDER BY recorded_at ASC
+        `);
+
+      const initialStatusesRes = await pool.request()
+        .input('cutoff', sql.DateTime, cutoffDate)
+        .query(`
+          SELECT h.apartment_id, h.status
+          FROM ApartmentStatusHistory h
+          INNER JOIN (
+            SELECT apartment_id, MAX(id) as max_id
+            FROM ApartmentStatusHistory
+            WHERE apartment_id IN (${apartmentIds.join(',')})
+              AND recorded_at < @cutoff
+            GROUP BY apartment_id
+          ) latest ON h.id = latest.max_id
+        `);
+
+      const getLocalDate = () => {
+        const options = { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' };
+        const formatter = new Intl.DateTimeFormat('en-CA', options);
+        return formatter.format(new Date());
+      };
+
+      const date = getLocalDate();
+      const assignmentsRes = await pool.request()
+        .input('date', sql.Date, date)
+        .query(`
+          SELECT wa.id, wa.apartment_id, wa.staff_id, wa.task_type, wa.expected_start_at, wa.expected_end_at, s.name as staff_name
+          FROM WorkAssignments wa
+          JOIN Staff s ON wa.staff_id = s.id
+          WHERE wa.assigned_date = @date AND wa.status <> 'rejected'
+        `);
+
+      const staysRes = await pool.request()
+        .query(`
+          SELECT apartment_id, checkin_date, checkin_time, checkout_date, checkout_time
+          FROM ApartmentStays
+          WHERE apartment_id IN (${apartmentIds.join(',')})
+        `);
+
+      return {
+        apartments,
+        history: historyRes.recordset,
+        initialStatuses: initialStatusesRes.recordset,
+        assignments: assignmentsRes.recordset,
+        stays: staysRes.recordset
+      };
+    });
+
+    const apartments = dbResult.apartments;
 
     if (apartments.length === 0) {
       return res.json({
@@ -656,63 +671,17 @@ router.get('/status-timeline', authenticate, async (req, res) => {
     }
 
     const apartmentIds = apartments.map(apt => apt.id);
-    const cutoffDate = new Date();
-    if (mode === 'hourly') {
-      cutoffDate.setDate(cutoffDate.getDate() - 2);
-    } else {
-      cutoffDate.setDate(cutoffDate.getDate() - 35);
-    }
-
-    const historyRes = await pool.request()
-      .input('cutoff', sql.DateTime, cutoffDate)
-      .query(`
-        SELECT apartment_id, status, recorded_at
-        FROM ApartmentStatusHistory
-        WHERE apartment_id IN (${apartmentIds.join(',')})
-          AND recorded_at >= @cutoff
-        ORDER BY recorded_at ASC
-      `);
-
-    const initialStatusesRes = await pool.request()
-      .input('cutoff', sql.DateTime, cutoffDate)
-      .query(`
-        SELECT h.apartment_id, h.status
-        FROM ApartmentStatusHistory h
-        INNER JOIN (
-          SELECT apartment_id, MAX(id) as max_id
-          FROM ApartmentStatusHistory
-          WHERE apartment_id IN (${apartmentIds.join(',')})
-            AND recorded_at < @cutoff
-          GROUP BY apartment_id
-        ) latest ON h.id = latest.max_id
-      `);
 
     const initialStatusByApt = {};
-    initialStatusesRes.recordset.forEach(row => {
+    dbResult.initialStatuses.forEach(row => {
       initialStatusByApt[row.apartment_id] = row.status;
     });
-
-    const getLocalDate = () => {
-      const options = { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' };
-      const formatter = new Intl.DateTimeFormat('en-CA', options);
-      return formatter.format(new Date());
-    };
-
-    const date = getLocalDate();
-    const assignmentsRes = await pool.request()
-      .input('date', sql.Date, date)
-      .query(`
-        SELECT wa.id, wa.apartment_id, wa.staff_id, wa.task_type, wa.expected_start_at, wa.expected_end_at, s.name as staff_name
-        FROM WorkAssignments wa
-        JOIN Staff s ON wa.staff_id = s.id
-        WHERE wa.assigned_date = @date AND wa.status <> 'rejected'
-      `);
 
     const assignmentsByApt = {};
     apartmentIds.forEach(id => {
       assignmentsByApt[id] = [];
     });
-    assignmentsRes.recordset.forEach(wa => {
+    dbResult.assignments.forEach(wa => {
       if (assignmentsByApt[wa.apartment_id]) {
         assignmentsByApt[wa.apartment_id].push({
           id: wa.id,
@@ -730,23 +699,17 @@ router.get('/status-timeline', authenticate, async (req, res) => {
       historyByApt[id] = [];
     });
 
-    historyRes.recordset.forEach(entry => {
+    dbResult.history.forEach(entry => {
       if (historyByApt[entry.apartment_id]) {
         historyByApt[entry.apartment_id].push(entry);
       }
     });
 
-    const staysRes = await pool.request()
-      .query(`
-        SELECT apartment_id, checkin_date, checkin_time, checkout_date, checkout_time
-        FROM ApartmentStays
-        WHERE apartment_id IN (${apartmentIds.join(',')})
-      `);
     const staysByApt = {};
     apartmentIds.forEach(id => {
       staysByApt[id] = [];
     });
-    staysRes.recordset.forEach(stay => {
+    dbResult.stays.forEach(stay => {
       if (staysByApt[stay.apartment_id]) {
         staysByApt[stay.apartment_id].push(stay);
       }
@@ -845,7 +808,7 @@ router.get('/status-timeline', authenticate, async (req, res) => {
       };
     });
 
-    return res.json({ labels, rooms, todayIndex });
+    return res.json({ labels, rooms, todayIndex, totalDays: labels.length });
   } catch (err) {
     console.error('Get status timeline error:', err);
     res.status(500).json({ error: 'Lỗi server.' });
@@ -855,13 +818,14 @@ router.get('/status-timeline', authenticate, async (req, res) => {
 // GET /api/apartments/notifications — Tải danh sách thông báo thay đổi mật khẩu (20 tin mới nhất)
 router.get('/notifications', authenticate, async (req, res) => {
   try {
-    const pool = await getPool();
-    await ensureNotificationsTable(pool);
-    const result = await pool.request().query(`
-      SELECT TOP 20 id, message, created_at 
-      FROM Notifications 
-      ORDER BY created_at DESC
-    `);
+    const result = await queryDb(async (pool) => {
+      await ensureNotificationsTable(pool);
+      return await pool.request().query(`
+        SELECT TOP 20 id, message, created_at 
+        FROM Notifications 
+        ORDER BY created_at DESC
+      `);
+    });
     res.json(result.recordset);
   } catch (err) {
     console.error('Get notifications error:', err);
@@ -872,13 +836,110 @@ router.get('/notifications', authenticate, async (req, res) => {
 // GET /api/apartments/:id/stays — Lấy danh sách các khoảng thời gian có khách của căn hộ
 router.get('/:id/stays', authenticate, async (req, res) => {
   try {
-    const pool = await getPool();
-    const result = await pool.request()
-      .input('aptId', sql.Int, req.params.id)
-      .query('SELECT checkin_date, checkin_time, checkout_date, checkout_time FROM ApartmentStays WHERE apartment_id = @aptId ORDER BY checkin_date ASC, checkin_time ASC');
+    const result = await queryDb(async (pool) => {
+      return await pool.request()
+        .input('aptId', sql.Int, req.params.id)
+        .query('SELECT checkin_date, checkin_time, checkout_date, checkout_time FROM ApartmentStays WHERE apartment_id = @aptId ORDER BY checkin_date ASC, checkin_time ASC');
+    });
     res.json(result.recordset);
   } catch (err) {
     console.error('Get apartment stays error:', err);
+    res.status(500).json({ error: 'Lỗi server.' });
+  }
+});
+
+// POST /api/apartments — Thêm căn hộ mới (Admin only)
+router.post('/', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { code, building, password, room_type, is_samsung, default_cleaning_rate } = req.body;
+
+    if (!code || !code.trim()) {
+      return res.status(400).json({ error: 'Mã căn hộ không được để trống.' });
+    }
+    if (!building || !building.trim()) {
+      return res.status(400).json({ error: 'Tòa không được để trống.' });
+    }
+    if (!password || !password.trim()) {
+      return res.status(400).json({ error: 'Mật khẩu không được để trống.' });
+    }
+
+    const validTypes = ['1 ngủ', '2 ngủ', '3 ngủ', '4 ngủ'];
+    const type = room_type && validTypes.includes(room_type) ? room_type : '2 ngủ';
+
+    const result = await queryDb(async (pool) => {
+      // Check duplicate code
+      const dupCheck = await pool.request()
+        .input('code', sql.VarChar, code.trim())
+        .query('SELECT id FROM Apartments WHERE code = @code');
+      if (dupCheck.recordset.length > 0) {
+        return res.status(400).json({ error: `Mã căn hộ "${code.trim()}" đã tồn tại.` });
+      }
+
+      const rates = { '1 ngủ': 30000, '2 ngủ': 60000, '3 ngủ': 100000, '4 ngủ': 120000 };
+      const rate = default_cleaning_rate || rates[type] || 60000;
+
+      return await pool.request()
+        .input('code', sql.VarChar, code.trim())
+        .input('building', sql.NVarChar, building.trim())
+        .input('password', sql.NVarChar, password.trim())
+        .input('room_type', sql.NVarChar, type)
+        .input('is_samsung', sql.Bit, is_samsung ? 1 : 0)
+        .input('rate', sql.Decimal(10,0), rate)
+        .query(`
+          INSERT INTO Apartments (code, building, password, room_type, is_samsung, default_cleaning_rate, status)
+          OUTPUT INSERTED.id
+          VALUES (@code, @building, @password, @room_type, @is_samsung, @rate, 'available')
+        `);
+    });
+
+    const newId = result.recordset[0].id;
+
+    sendEventToAll({ type: 'APARTMENT_UPDATE', id: newId, action: 'created' });
+
+    res.json({ message: `Đã thêm căn hộ ${code.trim()} thành công.`, id: newId });
+  } catch (err) {
+    console.error('Create apartment error:', err);
+    res.status(500).json({ error: 'Lỗi server.' });
+  }
+});
+
+// DELETE /api/apartments/:id — Xóa căn hộ (Admin only)
+router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id);
+
+    const code = await queryDb(async (pool) => {
+      const check = await pool.request()
+        .input('id', sql.Int, id)
+        .query('SELECT code FROM Apartments WHERE id = @id');
+
+      if (check.recordset.length === 0) {
+        return res.status(404).json({ error: 'Không tìm thấy căn hộ.' });
+      }
+
+      const code = check.recordset[0].code;
+
+      // Check if apartment has work assignments
+      const workCheck = await pool.request()
+        .input('id', sql.Int, id)
+        .query('SELECT COUNT(*) as cnt FROM WorkAssignments WHERE apartment_id = @id');
+
+      if (workCheck.recordset[0].cnt > 0) {
+        return res.status(400).json({ error: `Không thể xóa căn ${code} vì đã có lịch sử phân công dọn phòng.` });
+      }
+
+      await pool.request()
+        .input('id', sql.Int, id)
+        .query('DELETE FROM Apartments WHERE id = @id');
+
+      return code;
+    });
+
+    sendEventToAll({ type: 'APARTMENT_UPDATE', id, action: 'deleted' });
+
+    res.json({ message: `Đã xóa căn hộ ${code} thành công.` });
+  } catch (err) {
+    console.error('Delete apartment error:', err);
     res.status(500).json({ error: 'Lỗi server.' });
   }
 });

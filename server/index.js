@@ -123,8 +123,10 @@ const server = app.listen(PORT, () => {
   console.log(`📸 Uploads: ${uploadDir}`);
   console.log('====================================================');
 
-  // Khởi tạo bảng lịch sử trạng thái phòng và seed dữ liệu nếu cần
-  initStatusHistory().catch(err => console.error('Init status history failed:', err.message));
+  // Khởi tạo bảng lịch sử trạng thái phòng và seed dữ liệu nếu cần (delayed to avoid startup race)
+  setTimeout(() => {
+    initStatusHistory().catch(err => console.error('Init status history failed:', err.message));
+  }, 2000);
 
   // Tự động kiểm tra & dọn dẹp ảnh dọn phòng của nhân viên buồng phòng quá 30 ngày
   autoCleanHousekeepingPhotosOlderThan30Days().catch(err => console.error('Auto photo cleanup failed:', err.message));

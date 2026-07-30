@@ -3,7 +3,7 @@
 // Cấu trúc 3 tầng: App Layer (Business Logic)
 // ===================================================================
 const express = require('express');
-const { sql, getPool } = require('../db');
+const { sql, getPool, queryDb } = require('../db');
 const { authenticate, requireAdmin, requireSelfOrAdmin } = require('../middleware/auth');
 
 const router = express.Router();
@@ -29,19 +29,20 @@ function getBaseSalaryForStaff(staffName, dbBaseSalary) {
 
 // Helper to calculate room shares dynamically
 async function calculateDynamicRooms(month, year) {
-  const pool = await getPool();
-  const res = await pool.request()
-    .input('month', sql.Int, month)
-    .input('year', sql.Int, year)
-    .query(`
-      SELECT wa.id, wa.staff_id, wa.apartment_id, wa.assigned_date, wa.assigned_role, wa.task_type, wa.partner_worked,
-             a.room_type
-      FROM WorkAssignments wa
-      JOIN Apartments a ON wa.apartment_id = a.id
-      WHERE wa.status = 'approved'
-        AND MONTH(wa.assigned_date) = @month
-        AND YEAR(wa.assigned_date) = @year
-    `);
+  const res = await queryDb(async (pool) => {
+    return await pool.request()
+      .input('month', sql.Int, month)
+      .input('year', sql.Int, year)
+      .query(`
+        SELECT wa.id, wa.staff_id, wa.apartment_id, wa.assigned_date, wa.assigned_role, wa.task_type, wa.partner_worked,
+               a.room_type
+        FROM WorkAssignments wa
+        JOIN Apartments a ON wa.apartment_id = a.id
+        WHERE wa.status = 'approved'
+          AND MONTH(wa.assigned_date) = @month
+          AND YEAR(wa.assigned_date) = @year
+      `);
+  });
 
   const assignments = res.recordset;
   // Group by date and apartment
@@ -121,49 +122,51 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
 
     const staffRooms = await calculateDynamicRooms(currentMonth, currentYear);
 
-    const pool = await getPool();
-    
-    // Fetch tech task salary for all staff members
-    const techSalaryRes = await pool.request()
-      .input('month', sql.Int, currentMonth)
-      .input('year', sql.Int, currentYear)
-      .query(`
-        SELECT staff_id, SUM(ISNULL(tech_price, 0)) as tech_salary
-        FROM Tasks
-        WHERE status = 'approved'
-          AND MONTH(assigned_date) = @month
-          AND YEAR(assigned_date) = @year
-        GROUP BY staff_id
-      `);
-    const techSalaries = {};
-    techSalaryRes.recordset.forEach(r => {
-      techSalaries[r.staff_id] = parseFloat(r.tech_salary) || 0;
+    const salaryResult = await queryDb(async (pool) => {
+      // Fetch tech task salary for all staff members
+      const techSalaryRes = await pool.request()
+        .input('month', sql.Int, currentMonth)
+        .input('year', sql.Int, currentYear)
+        .query(`
+          SELECT staff_id, SUM(ISNULL(tech_price, 0)) as tech_salary
+          FROM Tasks
+          WHERE status = 'approved'
+            AND MONTH(assigned_date) = @month
+            AND YEAR(assigned_date) = @year
+          GROUP BY staff_id
+        `);
+      const techSalaries = {};
+      techSalaryRes.recordset.forEach(r => {
+        techSalaries[r.staff_id] = parseFloat(r.tech_salary) || 0;
+      });
+
+      const result = await pool.request()
+        .input('month', sql.Int, currentMonth)
+        .input('year', sql.Int, currentYear)
+        .query(`
+          SELECT 
+            s.id as staff_id,
+            s.name,
+            s.type,
+            s.base_salary as staff_base_salary,
+            s.per_room_rate as staff_per_room_rate,
+            sr.base_salary as sr_base_salary,
+            sr.per_room_rate as sr_per_room_rate,
+            sr.total_rooms as saved_total_rooms,
+            ISNULL(sr.bonus, 0) as bonus,
+            ISNULL(sr.deductions, 0) as deductions,
+            sr.id as record_id,
+            sr.notes
+          FROM Staff s
+          LEFT JOIN SalaryRecords sr ON s.id = sr.staff_id AND sr.month = @month AND sr.year = @year
+          ORDER BY s.id
+        `);
+
+      return { result, techSalaries };
     });
 
-    const result = await pool.request()
-      .input('month', sql.Int, currentMonth)
-      .input('year', sql.Int, currentYear)
-      .query(`
-        SELECT 
-          s.id as staff_id,
-          s.name,
-          s.type,
-          s.base_salary as staff_base_salary,
-          s.per_room_rate as staff_per_room_rate,
-          sr.base_salary as sr_base_salary,
-          sr.per_room_rate as sr_per_room_rate,
-          sr.total_rooms as saved_total_rooms,
-          ISNULL(sr.bonus, 0) as bonus,
-          ISNULL(sr.deductions, 0) as deductions,
-          sr.id as record_id,
-          sr.notes
-        FROM Staff s
-        LEFT JOIN SalaryRecords sr ON s.id = sr.staff_id AND sr.month = @month AND sr.year = @year
-        ORDER BY s.id
-      `);
-
     // Tính toán lương động nếu chưa được lưu chính thức
-    const salaryTable = result.recordset.map(row => {
+    const salaryTable = salaryResult.result.recordset.map(row => {
       // Ưu tiên: SalaryRecords > Staff table > Cấu hình cố định
       const baseSalary = row.sr_base_salary != null 
         ? row.sr_base_salary 
@@ -185,7 +188,7 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
         roomBonus = calculatedData.bonus;
       }
       
-      const techTaskSalary = techSalaries[row.staff_id] || 0;
+      const techTaskSalary = salaryResult.techSalaries[row.staff_id] || 0;
       const totalSalary = baseSalary + roomBonus + techTaskSalary + row.bonus - row.deductions;
 
       return {
@@ -222,51 +225,53 @@ router.get('/:staffId', authenticate, requireSelfOrAdmin, async (req, res) => {
 
     const staffRooms = await calculateDynamicRooms(currentMonth, currentYear);
 
-    const pool = await getPool();
-    
-    // Fetch tech task salary for this staff member
-    const techSalaryRes = await pool.request()
-      .input('staffId', sql.Int, staffId)
-      .input('month', sql.Int, currentMonth)
-      .input('year', sql.Int, currentYear)
-      .query(`
-        SELECT SUM(ISNULL(tech_price, 0)) as tech_salary
-        FROM Tasks
-        WHERE staff_id = @staffId
-          AND status = 'approved'
-          AND MONTH(assigned_date) = @month
-          AND YEAR(assigned_date) = @year
-      `);
-    const techTaskSalary = parseFloat(techSalaryRes.recordset[0].tech_salary) || 0;
+    const salaryResult = await queryDb(async (pool) => {
+      // Fetch tech task salary for this staff member
+      const techSalaryRes = await pool.request()
+        .input('staffId', sql.Int, staffId)
+        .input('month', sql.Int, currentMonth)
+        .input('year', sql.Int, currentYear)
+        .query(`
+          SELECT SUM(ISNULL(tech_price, 0)) as tech_salary
+          FROM Tasks
+          WHERE staff_id = @staffId
+            AND status = 'approved'
+            AND MONTH(assigned_date) = @month
+            AND YEAR(assigned_date) = @year
+        `);
+      const techTaskSalary = parseFloat(techSalaryRes.recordset[0].tech_salary) || 0;
 
-    const result = await pool.request()
-      .input('staffId', sql.Int, staffId)
-      .input('month', sql.Int, currentMonth)
-      .input('year', sql.Int, currentYear)
-      .query(`
-        SELECT 
-          s.id as staff_id,
-          s.name,
-          s.type,
-          s.base_salary as staff_base_salary,
-          s.per_room_rate as staff_per_room_rate,
-          sr.base_salary as sr_base_salary,
-          sr.per_room_rate as sr_per_room_rate,
-          sr.total_rooms as saved_total_rooms,
-          ISNULL(sr.bonus, 0) as bonus,
-          ISNULL(sr.deductions, 0) as deductions,
-          sr.id as record_id,
-          sr.notes
-        FROM Staff s
-        LEFT JOIN SalaryRecords sr ON s.id = sr.staff_id AND sr.month = @month AND sr.year = @year
-        WHERE s.id = @staffId
-      `);
+      const result = await pool.request()
+        .input('staffId', sql.Int, staffId)
+        .input('month', sql.Int, currentMonth)
+        .input('year', sql.Int, currentYear)
+        .query(`
+          SELECT 
+            s.id as staff_id,
+            s.name,
+            s.type,
+            s.base_salary as staff_base_salary,
+            s.per_room_rate as staff_per_room_rate,
+            sr.base_salary as sr_base_salary,
+            sr.per_room_rate as sr_per_room_rate,
+            sr.total_rooms as saved_total_rooms,
+            ISNULL(sr.bonus, 0) as bonus,
+            ISNULL(sr.deductions, 0) as deductions,
+            sr.id as record_id,
+            sr.notes
+          FROM Staff s
+          LEFT JOIN SalaryRecords sr ON s.id = sr.staff_id AND sr.month = @month AND sr.year = @year
+          WHERE s.id = @staffId
+        `);
 
-    if (result.recordset.length === 0) {
+      return { result, techTaskSalary };
+    });
+
+    if (salaryResult.result.recordset.length === 0) {
       return res.status(404).json({ error: 'Không tìm thấy nhân viên.' });
     }
 
-    const row = result.recordset[0];
+    const row = salaryResult.result.recordset[0];
     const baseSalary = row.sr_base_salary != null 
       ? row.sr_base_salary 
       : getBaseSalaryForStaff(row.name, row.staff_base_salary);
@@ -285,7 +290,7 @@ router.get('/:staffId', authenticate, requireSelfOrAdmin, async (req, res) => {
     } else {
       roomBonus = calculatedData.bonus;
     }
-    const totalSalary = baseSalary + roomBonus + techTaskSalary + row.bonus - row.deductions;
+    const totalSalary = baseSalary + roomBonus + salaryResult.techTaskSalary + row.bonus - row.deductions;
 
     res.json({
       staff_id: row.staff_id,
@@ -295,7 +300,7 @@ router.get('/:staffId', authenticate, requireSelfOrAdmin, async (req, res) => {
       per_room_rate: rate,
       total_rooms: roundedRooms,
       room_bonus: roomBonus,
-      tech_task_salary: techTaskSalary,
+      tech_task_salary: salaryResult.techTaskSalary,
       bonus: row.bonus,
       deductions: row.deductions,
       total_salary: totalSalary,
@@ -322,68 +327,68 @@ router.post('/save', authenticate, requireAdmin, async (req, res) => {
     const bon = bonus || 0;
     const ded = deductions || 0;
 
-    const pool = await getPool();
-
-    // Fetch tech task salary for this staff member
-    const techSalaryRes = await pool.request()
-      .input('staffId', sql.Int, staff_id)
-      .input('month', sql.Int, month)
-      .input('year', sql.Int, year)
-      .query(`
-        SELECT SUM(ISNULL(tech_price, 0)) as tech_salary
-        FROM Tasks
-        WHERE staff_id = @staffId
-          AND status = 'approved'
-          AND MONTH(assigned_date) = @month
-          AND YEAR(assigned_date) = @year
-      `);
-    const techTaskSalary = parseFloat(techSalaryRes.recordset[0].tech_salary) || 0;
-    const total = base + (rooms * rate) + techTaskSalary + bon - ded;
-    
-    // Kiểm tra bản ghi đã tồn tại chưa
-    const check = await pool.request()
-      .input('staffId', sql.Int, staff_id)
-      .input('month', sql.Int, month)
-      .input('year', sql.Int, year)
-      .query('SELECT id FROM SalaryRecords WHERE staff_id = @staffId AND month = @month AND year = @year');
-
-    if (check.recordset.length > 0) {
-      // Update
-      await pool.request()
+    await queryDb(async (pool) => {
+      // Fetch tech task salary for this staff member
+      const techSalaryRes = await pool.request()
         .input('staffId', sql.Int, staff_id)
         .input('month', sql.Int, month)
         .input('year', sql.Int, year)
-        .input('base', sql.Decimal(12,0), base)
-        .input('rate', sql.Decimal(10,0), rate)
-        .input('rooms', sql.Decimal(6,2), rooms)
-        .input('bonus', sql.Decimal(12,0), bon)
-        .input('deductions', sql.Decimal(12,0), ded)
-        .input('total', sql.Decimal(12,0), total)
-        .input('notes', sql.NVarChar, notes || '')
         .query(`
-          UPDATE SalaryRecords 
-          SET base_salary = @base, per_room_rate = @rate, total_rooms = @rooms, 
-              bonus = @bonus, deductions = @deductions, total_salary = @total, notes = @notes
-          WHERE staff_id = @staffId AND month = @month AND year = @year
+          SELECT SUM(ISNULL(tech_price, 0)) as tech_salary
+          FROM Tasks
+          WHERE staff_id = @staffId
+            AND status = 'approved'
+            AND MONTH(assigned_date) = @month
+            AND YEAR(assigned_date) = @year
         `);
-    } else {
-      // Insert
-      await pool.request()
+      const techTaskSalary = parseFloat(techSalaryRes.recordset[0].tech_salary) || 0;
+      const total = base + (rooms * rate) + techTaskSalary + bon - ded;
+      
+      // Kiểm tra bản ghi đã tồn tại chưa
+      const check = await pool.request()
         .input('staffId', sql.Int, staff_id)
         .input('month', sql.Int, month)
         .input('year', sql.Int, year)
-        .input('base', sql.Decimal(12,0), base)
-        .input('rate', sql.Decimal(10,0), rate)
-        .input('rooms', sql.Decimal(6,2), rooms)
-        .input('bonus', sql.Decimal(12,0), bon)
-        .input('deductions', sql.Decimal(12,0), ded)
-        .input('total', sql.Decimal(12,0), total)
-        .input('notes', sql.NVarChar, notes || '')
-        .query(`
-          INSERT INTO SalaryRecords (staff_id, month, year, base_salary, per_room_rate, total_rooms, bonus, deductions, total_salary, notes)
-          VALUES (@staffId, @month, @year, @base, @rate, @rooms, @bonus, @deductions, @total, @notes)
-        `);
-    }
+        .query('SELECT id FROM SalaryRecords WHERE staff_id = @staffId AND month = @month AND year = @year');
+
+      if (check.recordset.length > 0) {
+        // Update
+        await pool.request()
+          .input('staffId', sql.Int, staff_id)
+          .input('month', sql.Int, month)
+          .input('year', sql.Int, year)
+          .input('base', sql.Decimal(12,0), base)
+          .input('rate', sql.Decimal(10,0), rate)
+          .input('rooms', sql.Decimal(6,2), rooms)
+          .input('bonus', sql.Decimal(12,0), bon)
+          .input('deductions', sql.Decimal(12,0), ded)
+          .input('total', sql.Decimal(12,0), total)
+          .input('notes', sql.NVarChar, notes || '')
+          .query(`
+            UPDATE SalaryRecords 
+            SET base_salary = @base, per_room_rate = @rate, total_rooms = @rooms, 
+                bonus = @bonus, deductions = @deductions, total_salary = @total, notes = @notes
+            WHERE staff_id = @staffId AND month = @month AND year = @year
+          `);
+      } else {
+        // Insert
+        await pool.request()
+          .input('staffId', sql.Int, staff_id)
+          .input('month', sql.Int, month)
+          .input('year', sql.Int, year)
+          .input('base', sql.Decimal(12,0), base)
+          .input('rate', sql.Decimal(10,0), rate)
+          .input('rooms', sql.Decimal(6,2), rooms)
+          .input('bonus', sql.Decimal(12,0), bon)
+          .input('deductions', sql.Decimal(12,0), ded)
+          .input('total', sql.Decimal(12,0), total)
+          .input('notes', sql.NVarChar, notes || '')
+          .query(`
+            INSERT INTO SalaryRecords (staff_id, month, year, base_salary, per_room_rate, total_rooms, bonus, deductions, total_salary, notes)
+            VALUES (@staffId, @month, @year, @base, @rate, @rooms, @bonus, @deductions, @total, @notes)
+          `);
+      }
+    });
 
     res.json({ message: 'Lưu bảng lương thành công.' });
   } catch (err) {

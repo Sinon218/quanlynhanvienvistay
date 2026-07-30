@@ -2281,3 +2281,207 @@ body::before {
   justify-content: flex-end;
   gap: 8px;
 }
+
+/* ===== LIGHT THEME ===== */
+.light-theme {
+  --bg-primary: #f8fafc;
+  --bg-secondary: #e2e8f0;
+  --bg-card: rgba(255, 255, 255, 0.85);
+  --bg-card-hover: rgba(241, 245, 249, 0.9);
+  --bg-glass: rgba(0, 0, 0, 0.02);
+  --bg-modal-overlay: rgba(0, 0, 0, 0.4);
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --border-color: rgba(15, 23, 42, 0.08);
+  --border-hover: rgba(15, 23, 42, 0.15);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.1);
+  --shadow-glow-green: 0 0 20px rgba(34, 197, 94, 0.08);
+  --shadow-glow-blue: 0 0 20px rgba(59, 130, 246, 0.08);
+}
+
+.light-theme body::before {
+  background:
+    radial-gradient(ellipse at 20% 20%, rgba(139, 92, 246, 0.05) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(59, 130, 246, 0.04) 0%, transparent 50%),
+    radial-gradient(ellipse at 50% 50%, rgba(34, 197, 94, 0.03) 0%, transparent 50%);
+}
+
+body, .app-container, .app-header, .task-form-card, .room-card, .stat-item,
+.modal-content, .admin-tabs, .tab-btn, .tab-content, table, th, td, input, select, textarea, button {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* ===== THEME TOGGLE ===== */
+.theme-toggle-btn {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 20px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 1rem;
+  color: var(--text-primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.3s ease;
+}
+.theme-toggle-btn:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--border-hover);
+}
+
+/* ===== LIGHT THEME COMPONENT OVERRIDES ===== */
+.light-theme .app-header {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.light-theme .task-form-card {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.light-theme .room-card {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04);
+}
+
+.light-theme .room-card:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.light-theme .stat-item {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04);
+}
+
+.light-theme .stat-item:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+
+.light-theme .data-table th {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text-secondary);
+}
+
+.light-theme .data-table tbody tr:hover {
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.light-theme .modal-content {
+  background: #ffffff;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.12);
+}
+
+.light-theme .admin-tabs {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04);
+}
+
+.light-theme .tab-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.light-theme .tab-btn.active {
+  background: rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.light-theme input,
+.light-theme select,
+.light-theme textarea {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(15, 23, 42, 0.12);
+  color: #0f172a;
+}
+
+.light-theme input:focus,
+.light-theme select:focus,
+.light-theme textarea:focus {
+  border-color: var(--accent-purple);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.08);
+}
+
+.light-theme .input-wrapper input {
+  background: rgba(0, 0, 0, 0.04);
+  color: #0f172a;
+}
+
+.light-theme .input-wrapper input:focus {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.light-theme .timeline-shell {
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.light-theme .chart-container {
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.light-theme .timeline-room-label {
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(15, 23, 42, 0.1);
+}
+
+.light-theme .timeline-building-group {
+  border-color: rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.light-theme .timeline-building-header {
+  background: rgba(0, 0, 0, 0.03);
+  border-bottom-color: rgba(15, 23, 42, 0.06);
+}
+
+.light-theme .salary-estimate-card {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.light-theme .stats-table-wrapper {
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+}
+
+.light-theme .toast {
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.light-theme .btn-edit-name {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.light-theme .timeline-popover {
+  background: #ffffff;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+}
+
+.light-theme .summary-bld-btn {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.light-theme .summary-bld-btn:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.light-theme .room-filter-select option {
+  background: #ffffff;
+  color: #0f172a;
+}
+
+/* ===== LOGIN PAGE LIGHT THEME ===== */
+.light-theme .login-container {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.light-theme .login-card {
+  background: rgba(255, 255, 255, 0.95);
+  color: #0f172a;
+}

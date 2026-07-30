@@ -6,6 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Employee Portal - ViStay Portal</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#a78bfa">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="icon"
     href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏨</text></svg>">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -30,6 +34,7 @@
       </div>
       <div class="header-user-actions">
         <div class="user-greeting">Xin chào, <strong id="employeeName">—</strong></div>
+        <button class="theme-toggle-btn" id="themeToggle" onclick="toggleTheme()" title="Chế độ sáng/tối">🌙</button>
         <button id="btnSwitchToAdmin" class="btn" onclick="window.location.href='admin.html'"
           style="display: none; padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #3b82f6, #1d4ed8); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">⚙️
           Giao diện QL</button>
@@ -64,6 +69,12 @@
         <button class="btn btn-logout" onclick="handleLogout()">🚪 Đăng xuất</button>
       </div>
     </header>
+
+    <!-- ===== OFFLINE MODE BANNER ===== -->
+    <div id="offlineAlertBanner" style="display: none; background: linear-gradient(135deg, #dc2626, #b91c1c); color: white; padding: 10px 16px; text-align: center; font-weight: 700; font-size: 0.85rem; position: relative; z-index: 100;">
+      ⚠️ CHẾ ĐỘ OFFLINE — Dữ liệu đang dùng là mock (150套房), KHÔNG phải database thật (95套房). Vui lòng kiểm tra kết nối server!
+      <button onclick="localStorage.removeItem('vistay_mode'); location.reload();" style="margin-left: 12px; background: rgba(255,255,255,0.2); border: 1px solid white; color: white; padding: 2px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem;">Thử kết nối lại</button>
+    </div>
 
     <!-- ===== STATS CARDS ===== -->
     <div class="room-stats" style="margin-bottom: 24px;">
@@ -170,7 +181,7 @@
     </section>
 
     <!-- ===== SƠ ĐỒ TRẠNG THÁI TỪNG CĂN ===== -->
-    <section class="section" style="margin-bottom: 24px;">
+    <section id="empTimelineSection" class="section" style="margin-bottom: 24px;">
       <div class="section-header" style="flex-wrap: wrap; gap: 10px; align-items: center;">
         <div style="display: flex; align-items: center; gap: 8px;">
           <span class="section-icon">🧱</span>
@@ -206,7 +217,7 @@
     </section>
 
     <!-- ===== APARTMENT STATUS SUMMARY ===== -->
-    <section class="section" style="margin-top: 24px;">
+    <section id="empSummarySection" class="section" style="margin-top: 24px;">
       <div class="section-header">
         <span class="section-icon">📋</span>
         <h2 class="section-title" style="color: var(--accent-purple);">Bảng Tổng Hợp Trạng Thái Căn Hộ</h2>
@@ -230,7 +241,7 @@
     </section>
 
     <!-- ===== APARTMENT GRID ===== -->
-    <section class="section" style="margin-top: 24px;">
+    <section id="empApartmentGridSection" class="section" style="margin-top: 24px;">
       <div class="section-header">
         <span class="section-icon">🛏️</span>
         <h2 class="section-title">Danh Sách Căn Hộ & Mật Khẩu</h2>
@@ -280,48 +291,6 @@
           <select id="selfAssignTitle" class="room-filter-select"
             style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 0.9rem;"
             onchange="onSelfAssignJobSelected()">
-            <option value="">-- Chọn công việc kỹ thuật --</option>
-            <optgroup label="⭐ Cấp 1 — Dễ (50,000đ)">
-              <option value="Sơn tường" data-level="1">Sơn tường</option>
-              <option value="Vệ sinh điều hoà" data-level="1">Vệ sinh điều hoà</option>
-              <option value="Dán decal" data-level="1">Dán decal</option>
-              <option value="Giặt rèm trắng" data-level="1">Giặt rèm trắng</option>
-              <option value="Lắp khoá trong" data-level="1">Lắp khoá trong</option>
-              <option value="Siết ốc" data-level="1">Siết ốc</option>
-              <option value="Thay vòi sen" data-level="1">Thay vòi sen</option>
-              <option value="Thay bóng đèn" data-level="1">Thay bóng đèn</option>
-              <option value="Dán chặn cửa" data-level="1">Dán chặn cửa</option>
-              <option value="Đặt thuốc gián" data-level="1">Đặt thuốc gián</option>
-              <option value="Lắp bộ lọc nước" data-level="1">Lắp bộ lọc nước</option>
-              <option value="Vệ sinh quạt" data-level="1">Vệ sinh quạt</option>
-            </optgroup>
-            <optgroup label="⭐⭐ Cấp 2 — Trung bình (100,000đ)">
-              <option value="VS máy giặt cửa đứng" data-level="2">VS máy giặt cửa đứng</option>
-              <option value="Silicon" data-level="2">Silicon</option>
-              <option value="Sơn trần" data-level="2">Sơn trần</option>
-              <option value="Sơn bả" data-level="2">Sơn bả</option>
-              <option value="Xử lý bản lề cửa" data-level="2">Xử lý bản lề cửa</option>
-              <option value="VS sofa và đệm" data-level="2">VS sofa và đệm</option>
-              <option value="Vệ sinh rèm dày" data-level="2">Vệ sinh rèm dày</option>
-              <option value="Sơn chân bàn ghế" data-level="2">Sơn chân bàn ghế</option>
-              <option value="Treo đèn thả/đèn ốp" data-level="2">Treo đèn thả/đèn ốp</option>
-              <option value="Vệ sinh cây nước" data-level="2">Vệ sinh cây nước</option>
-            </optgroup>
-            <optgroup label="⭐⭐⭐ Cấp 3 — Khó (150,000đ)">
-              <option value="VS máy giặt cửa ngang" data-level="3">VS máy giặt cửa ngang</option>
-              <option value="Thay miệng cửa ban công" data-level="3">Thay miệng cửa ban công</option>
-              <option value="Thay vòng bi" data-level="3">Thay vòng bi</option>
-              <option value="VS lưới ĐH âm trần" data-level="3">VS lưới ĐH âm trần</option>
-              <option value="XL bồn cầu/cống thoát" data-level="3">XL bồn cầu/cống thoát</option>
-              <option value="Sửa giàn phơi" data-level="3">Sửa giàn phơi</option>
-            </optgroup>
-            <optgroup label="⭐⭐⭐⭐ Cấp 4 — Cực khó (250,000đ)">
-              <option value="Sửa tivi" data-level="4">Sửa tivi</option>
-              <option value="Sửa tủ lạnh" data-level="4">Sửa tủ lạnh</option>
-              <option value="Sửa lò vi sóng" data-level="4">Sửa lò vi sóng</option>
-              <option value="Sửa điều hoà" data-level="4">Sửa điều hoà</option>
-              <option value="Rèm chống côn trùng" data-level="4">Rèm chống côn trùng</option>
-            </optgroup>
           </select>
         </div>
         <div id="selfAssignLevelDisplay"
@@ -330,8 +299,9 @@
         </div>
         <div class="rename-input-group">
           <label for="selfAssignDesc">Mô tả chi tiết (tuỳ chọn)</label>
-          <textarea id="selfAssignDesc" rows="3" placeholder="Mô tả thêm về lỗi cần sửa..."
+          <textarea id="selfAssignDesc" rows="3" placeholder="Mô tả thêm về lỗi cần sửa..." oninput="onSelfAssignDescInput()"
             style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 0.9rem; resize: vertical;"></textarea>
+          <div id="selfAssignAiSuggest" style="margin-top: 4px; font-size: 0.8rem; color: var(--text-muted); min-height: 18px;"></div>
         </div>
       </div>
       <div class="modal-footer">

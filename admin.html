@@ -6,6 +6,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Admin Dashboard - ViStay Portal</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#a78bfa">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="icon"
     href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏨</text></svg>">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -33,6 +37,7 @@
       </div>
       <div class="header-user-actions">
         <div class="user-greeting">Xin chào, <strong id="adminName">Admin</strong></div>
+        <button class="theme-toggle-btn" id="themeToggle" onclick="toggleTheme()" title="Chế độ sáng/tối">🌙</button>
         <button id="btnSyncOffline" class="btn" onclick="syncOfflineData()"
           style="display: none; padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">🔄
           Đồng bộ lên Server</button>
@@ -71,9 +76,16 @@
       </div>
     </header>
 
+    <!-- ===== OFFLINE MODE BANNER ===== -->
+    <div id="offlineAlertBanner" style="display: none; background: linear-gradient(135deg, #dc2626, #b91c1c); color: white; padding: 10px 16px; text-align: center; font-weight: 700; font-size: 0.85rem; position: relative; z-index: 100;">
+      ⚠️ CHẾ ĐỘ OFFLINE — Dữ liệu đang dùng là mock (150套房), KHÔNG phải database thật (95套房). Vui lòng kiểm tra kết nối server!
+      <button onclick="localStorage.removeItem('vistay_mode'); location.reload();" style="margin-left: 12px; background: rgba(255,255,255,0.2); border: 1px solid white; color: white; padding: 2px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem;">Thử kết nối lại</button>
+    </div>
+
     <!-- ===== NAVIGATION TABS ===== -->
     <nav class="admin-tabs">
-      <button class="tab-btn active" onclick="switchTab(event, 'assignment')">📋 Phân công ngày</button>
+      <button class="tab-btn active" onclick="switchTab(event, 'dashboard')">📊 Tổng quan</button>
+      <button class="tab-btn" onclick="switchTab(event, 'assignment')">📋 Phân công ngày</button>
       <button class="tab-btn" onclick="switchTab(event, 'apartments')">🏠 Quản lý buồng phòng & đổi MK căn hộ</button>
       <button class="tab-btn" onclick="switchTab(event, 'tasks')">📝 Giao việc</button>
       <button class="tab-btn" id="tabBtnStats" onclick="switchTab(event, 'stats')">📊 Thống kê</button>
@@ -81,7 +93,34 @@
       <button class="tab-btn" id="tabBtnTech" onclick="switchTab(event, 'tech')">🛠️ Công việc kỹ thuật</button>
     </nav>
 
-    <!-- ==================== TAB 1: ASSIGNMENT ==================== -->
+    <!-- ===== GLOBAL SEARCH BAR ===== -->
+    <div id="globalSearchContainer" style="margin-bottom: 16px; position: relative;">
+      <input type="text" id="globalSearchInput" placeholder="🔍 Tìm kiếm phòng, nhân viên, công việc..."
+        oninput="handleGlobalSearch(this.value)" onfocus="showSearchHistory()" onblur="setTimeout(()=>hideSearchHistory(),200)"
+        style="width: 100%; padding: 10px 16px 10px 40px; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-primary); font-size: 0.9rem; backdrop-filter: blur(10px);">
+      <span style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); font-size: 1rem; pointer-events: none;">🔍</span>
+      <div id="searchHistoryDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; background:var(--bg-card); border:1px solid var(--border-color); border-radius:var(--radius-md); margin-top:4px; max-height:200px; overflow-y:auto; z-index:50; backdrop-filter:blur(20px);"></div>
+      <div id="searchResultsDropdown" style="display:none; position:absolute; top:100%; left:0; right:0; background:var(--bg-card); border:1px solid var(--border-color); border-radius:var(--radius-md); margin-top:4px; max-height:300px; overflow-y:auto; z-index:50; backdrop-filter:blur(20px);"></div>
+    </div>
+
+    <!-- ==================== TAB 0: DASHBOARD ==================== -->
+    <div id="tab-dashboard" class="tab-content">
+      <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:24px;" id="dashboardStatsCards"></div>
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:20px; margin-bottom:24px;">
+        <div class="task-form-card">
+          <h3 style="margin-bottom:12px; font-size:0.95rem; color:var(--text-primary);">📊 Tỷ lệ trạng thái phòng</h3>
+          <div style="position:relative; height:260px;"><canvas id="dashboardPieChart"></canvas></div>
+        </div>
+        <div class="task-form-card">
+          <h3 style="margin-bottom:12px; font-size:0.95rem; color:var(--text-primary);">📈 Lượng dọn phòng tuần này</h3>
+          <div style="position:relative; height:260px;"><canvas id="dashboardBarChart"></canvas></div>
+        </div>
+      </div>
+      <div class="task-form-card">
+        <h3 style="margin-bottom:12px; font-size:0.95rem; color:var(--text-primary);">⚡ Hoạt động thời gian thực</h3>
+        <div id="dashboardActivityFeed" style="max-height:300px; overflow-y:auto; font-size:0.85rem;"></div>
+      </div>
+    </div>
     <div id="tab-assignment" class="tab-content active">
       <!-- Rejected assignments alert -->
       <div id="rejectedAssignmentsContainer" style="margin-bottom: 16px;"></div>
@@ -214,16 +253,63 @@
           <span class="section-badge" style="background: rgba(245, 158, 11, 0.2); color: #f59e0b;">Tự động xóa sau 30 ngày</span>
         </div>
         <p style="font-size: 0.82rem; color: var(--text-secondary); margin-bottom: 14px; line-height: 1.4;">
-          Ảnh dọn phòng được lưu theo thư mục tên nhân viên và từng ngày (<code>ảnh dọn phòng của nhân viên/[Tên Nhân Viên]/[Ngày]/</code>). Hệ thống sẽ tự động dọn dẹp các ảnh quá 30 ngày. Bạn cũng có thể chủ động xóa tất cả ảnh dọn phòng của một ngày bằng công cụ bên dưới.
+          Ảnh dọn phòng được lưu theo thư mục tên nhân viên và từng ngày (<code>ảnh dọn phòng của nhân viên/[Tên Nhân Viên]/[Ngày]/</code>). Hệ thống sẽ tự động dọn dẹp các ảnh quá 30 ngày. Bạn cũng có thể chủ động xóa ảnh bằng công cụ bên dưới.
         </p>
-        <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <label for="deletePhotoDateInput" style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary);">📅 Chọn ngày cần xóa ảnh:</label>
-            <input type="date" id="deletePhotoDateInput" class="room-filter-select" style="padding: 6px 10px; font-size: 0.85rem;">
+
+        <!-- Chọn chế độ xóa -->
+        <div style="margin-bottom: 14px;">
+          <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 8px;">🗑️ Chế độ xóa:</label>
+          <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--text-primary); cursor: pointer;">
+              <input type="radio" name="deletePhotoMode" value="all" checked onchange="onDeleteModeChange()">
+              Xóa tất cả ảnh (cả ảnh dọn phòng + kỹ thuật)
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--text-primary); cursor: pointer;">
+              <input type="radio" name="deletePhotoMode" value="housekeeping" onchange="onDeleteModeChange()">
+              Xóa tất cả ảnh dọn phòng của nhân viên
+            </label>
           </div>
-          <button class="btn" onclick="deleteHousekeepingPhotosByDate()" style="background: #ef4444; color: white; border: none; padding: 7px 16px; font-size: 0.85rem; font-weight: 600; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px;">
-            🗑️ Xóa toàn bộ ảnh ngày này
+        </div>
+
+        <!-- Chọn khoảng ngày -->
+        <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; margin-bottom: 14px;">
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label for="deletePhotoStartDate" style="font-size: 0.82rem; font-weight: 600; color: var(--text-secondary);">📅 Từ ngày (không bắt buộc):</label>
+            <input type="date" id="deletePhotoStartDate" class="room-filter-select" style="padding: 6px 10px; font-size: 0.85rem;">
+            <span style="font-size: 0.72rem; color: var(--text-muted);">Để trống = xóa từ ảnh đầu tiên</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 4px;">
+            <label for="deletePhotoEndDate" style="font-size: 0.82rem; font-weight: 600; color: var(--text-secondary);">📅 Đến ngày <span style="color: #ef4444;">*</span>:</label>
+            <input type="date" id="deletePhotoEndDate" class="room-filter-select" style="padding: 6px 10px; font-size: 0.85rem;">
+          </div>
+          <button class="btn" onclick="deleteHousekeepingPhotosByDateRange()" style="background: #ef4444; color: white; border: none; padding: 8px 16px; font-size: 0.85rem; font-weight: 600; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px; height: fit-content;">
+            🗑️ Xóa ảnh
           </button>
+        </div>
+
+        <!-- Xóa ảnh theo nhân viên -->
+        <div style="border-top: 1px solid var(--border-color); padding-top: 14px; margin-top: 8px;">
+          <label style="font-size: 0.85rem; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 8px;">👤 Hoặc xóa ảnh theo nhân viên:</label>
+          <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end;">
+            <div style="display: flex; flex-direction: column; gap: 4px; min-width: 200px;">
+              <label for="deletePhotoStaffSelect" style="font-size: 0.82rem; font-weight: 600; color: var(--text-secondary);">Chọn nhân viên:</label>
+              <select id="deletePhotoStaffSelect" class="room-filter-select" style="padding: 6px 10px; font-size: 0.85rem;">
+                <option value="">-- Chọn nhân viên --</option>
+              </select>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label for="deletePhotoStaffStartDate" style="font-size: 0.82rem; font-weight: 600; color: var(--text-secondary);">📅 Từ ngày (không bắt buộc):</label>
+              <input type="date" id="deletePhotoStaffStartDate" class="room-filter-select" style="padding: 6px 10px; font-size: 0.85rem;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 4px;">
+              <label for="deletePhotoStaffEndDate" style="font-size: 0.82rem; font-weight: 600; color: var(--text-secondary);">📅 Đến ngày:</label>
+              <input type="date" id="deletePhotoStaffEndDate" class="room-filter-select" style="padding: 6px 10px; font-size: 0.85rem;">
+              <span style="font-size: 0.72rem; color: var(--text-muted);">Để trống = xóa tất cả ảnh</span>
+            </div>
+            <button class="btn" onclick="deletePhotosByStaff()" style="background: #dc2626; color: white; border: none; padding: 8px 16px; font-size: 0.85rem; font-weight: 600; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 6px; height: fit-content;">
+              🗑️ Xóa ảnh NV
+            </button>
+          </div>
         </div>
       </section>
     </div>
@@ -284,48 +370,6 @@
               <label for="techTaskJobSelect">🔧 Chọn công việc</label>
               <select id="techTaskJobSelect" class="room-filter-select" style="width: 100%;"
                 onchange="onTechJobSelected()">
-                <option value="">-- Chọn công việc kỹ thuật --</option>
-                <optgroup label="⭐ Cấp 1 — Dễ (50,000đ)">
-                  <option value="Sơn tường" data-level="1">Sơn tường</option>
-                  <option value="Vệ sinh điều hoà" data-level="1">Vệ sinh điều hoà</option>
-                  <option value="Dán decal" data-level="1">Dán decal</option>
-                  <option value="Giặt rèm trắng" data-level="1">Giặt rèm trắng</option>
-                  <option value="Lắp khoá trong" data-level="1">Lắp khoá trong</option>
-                  <option value="Siết ốc" data-level="1">Siết ốc</option>
-                  <option value="Thay vòi sen" data-level="1">Thay vòi sen</option>
-                  <option value="Thay bóng đèn" data-level="1">Thay bóng đèn</option>
-                  <option value="Dán chặn cửa" data-level="1">Dán chặn cửa</option>
-                  <option value="Đặt thuốc gián" data-level="1">Đặt thuốc gián</option>
-                  <option value="Lắp bộ lọc nước" data-level="1">Lắp bộ lọc nước</option>
-                  <option value="Vệ sinh quạt" data-level="1">Vệ sinh quạt</option>
-                </optgroup>
-                <optgroup label="⭐⭐ Cấp 2 — Trung bình (100,000đ)">
-                  <option value="VS máy giặt cửa đứng" data-level="2">VS máy giặt cửa đứng</option>
-                  <option value="Silicon" data-level="2">Silicon</option>
-                  <option value="Sơn trần" data-level="2">Sơn trần</option>
-                  <option value="Sơn bả" data-level="2">Sơn bả</option>
-                  <option value="Xử lý bản lề cửa" data-level="2">Xử lý bản lề cửa</option>
-                  <option value="VS sofa và đệm" data-level="2">VS sofa và đệm</option>
-                  <option value="Vệ sinh rèm dày" data-level="2">Vệ sinh rèm dày</option>
-                  <option value="Sơn chân bàn ghế" data-level="2">Sơn chân bàn ghế</option>
-                  <option value="Treo đèn thả/đèn ốp" data-level="2">Treo đèn thả/đèn ốp</option>
-                  <option value="Vệ sinh cây nước" data-level="2">Vệ sinh cây nước</option>
-                </optgroup>
-                <optgroup label="⭐⭐⭐ Cấp 3 — Khó (150,000đ)">
-                  <option value="VS máy giặt cửa ngang" data-level="3">VS máy giặt cửa ngang</option>
-                  <option value="Thay miệng cửa ban công" data-level="3">Thay miệng cửa ban công</option>
-                  <option value="Thay vòng bi" data-level="3">Thay vòng bi</option>
-                  <option value="VS lưới ĐH âm trần" data-level="3">VS lưới ĐH âm trần</option>
-                  <option value="XL bồn cầu/cống thoát" data-level="3">XL bồn cầu/cống thoát</option>
-                  <option value="Sửa giàn phơi" data-level="3">Sửa giàn phơi</option>
-                </optgroup>
-                <optgroup label="⭐⭐⭐⭐ Cấp 4 — Cực khó (250,000đ)">
-                  <option value="Sửa tivi" data-level="4">Sửa tivi</option>
-                  <option value="Sửa tủ lạnh" data-level="4">Sửa tủ lạnh</option>
-                  <option value="Sửa lò vi sóng" data-level="4">Sửa lò vi sóng</option>
-                  <option value="Sửa điều hoà" data-level="4">Sửa điều hoà</option>
-                  <option value="Rèm chống côn trùng" data-level="4">Rèm chống côn trùng</option>
-                </optgroup>
               </select>
             </div>
             <div class="rename-input-group">
@@ -337,7 +381,8 @@
             </div>
             <div class="rename-input-group">
               <label for="techTaskDescInput">📝 Ghi chú chi tiết</label>
-              <input type="text" id="techTaskDescInput" placeholder="Vị trí, chi tiết thêm...">
+              <input type="text" id="techTaskDescInput" placeholder="Vị trí, chi tiết thêm..." oninput="onTechDescInput()">
+              <div id="aiSuggestDisplay" style="margin-top: 4px; font-size: 0.8rem; color: var(--text-muted); min-height: 18px;"></div>
             </div>
             <div class="rename-input-group" style="display: flex; align-items: flex-end;">
               <button class="btn btn-save" onclick="createTechTask()"
@@ -376,10 +421,13 @@
     <!-- ==================== TAB 2: APARTMENTS ==================== -->
     <div id="tab-apartments" class="tab-content">
       <section class="section rooms-list">
-        <div class="section-header">
+        <div class="section-header" style="flex-wrap: wrap; gap: 8px;">
           <span class="section-icon">🏠</span>
           <h2 class="section-title">Quản Lý Mật Khẩu & Trạng Thái</h2>
           <span class="section-badge rooms-badge" id="totalApartmentBadge">— Căn Hộ</span>
+          <button class="btn btn-save" onclick="openAddApartmentModal()" style="margin-left: auto; padding: 6px 14px; font-size: 0.82rem; font-weight: 600; background: linear-gradient(135deg, #10b981, #059669); display: flex; align-items: center; gap: 4px;">
+            ➕ Thêm căn hộ
+          </button>
         </div>
 
         <!-- Stats Bar -->
@@ -748,6 +796,15 @@
           <select id="techTaskCategorySelect" onchange="handleTechCategoryChange(this.value)" class="room-filter-select" style="width: 100%; padding: 8px;">
             <option value="">-- Chọn loại lỗi kỹ thuật --</option>
           </select>
+        </div>
+
+        <!-- Level Display for DB-driven categories -->
+        <div>
+          <label style="font-weight: 600; font-size: 0.85rem; display: block; margin-bottom: 4px;">📊 Cấp độ & Giá</label>
+          <div id="techTaskCategoryLevelDisplay"
+            style="padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-muted); font-size: 0.9rem; min-height: 38px; display: flex; align-items: center;">
+            Chọn lỗi để xem cấp độ
+          </div>
         </div>
 
         <!-- Custom Issue Name Input (Hidden by default, shown when "Khác..." selected) -->
@@ -1248,6 +1305,61 @@
     </div>
     <div class="timeline-popover-footer" id="popoverFooter">
       <!-- Dynamic edit buttons -->
+    </div>
+  </div>
+
+  <!-- ===== MODAL: THÊM CĂN HỘ MỚI ===== -->
+  <div class="modal-overlay" id="addApartmentModal">
+    <div class="modal" style="max-width: 500px;">
+      <div class="modal-header">
+        <h2>➕ Thêm Căn Hộ Mới</h2>
+        <button class="modal-close" onclick="closeAddApartmentModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="rename-input-group" style="margin-bottom: 12px;">
+          <label for="addAptCode">🏢 Mã căn hộ <span style="color: #ef4444;">*</span></label>
+          <input type="text" id="addAptCode" placeholder="VD: S2-1234, B-3301..." style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 0.9rem; text-transform: uppercase;">
+        </div>
+        <div class="rename-input-group" style="margin-bottom: 12px;">
+          <label for="addAptBuilding">🏢 Tòa <span style="color: #ef4444;">*</span></label>
+          <select id="addAptBuilding" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 0.9rem;">
+            <option value="S1">S1</option>
+            <option value="S2">S2</option>
+            <option value="S3">S3</option>
+            <option value="B">B (Imperia)</option>
+            <option value="R6A">R6A (Royal)</option>
+            <option value="R4">R4</option>
+            <option value="R5">R5</option>
+            <option value="HCM">HCM</option>
+          </select>
+        </div>
+        <div class="rename-input-group" style="margin-bottom: 12px;">
+          <label for="addAptPassword">🔑 Mật khẩu <span style="color: #ef4444;">*</span></label>
+          <input type="text" id="addAptPassword" placeholder="Nhập mật khẩu..." style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 0.9rem;">
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+          <div class="rename-input-group" style="margin-bottom: 12px;">
+            <label for="addAptRoomType">🛌 Loại phòng</label>
+            <select id="addAptRoomType" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 0.9rem;">
+              <option value="1 ngủ">1 ngủ</option>
+              <option value="2 ngủ" selected>2 ngủ</option>
+              <option value="3 ngủ">3 ngủ</option>
+              <option value="4 ngủ">4 ngủ</option>
+            </select>
+          </div>
+          <div class="rename-input-group" style="margin-bottom: 12px;">
+            <label for="addAptIsSamsung">🔐 Khóa thông minh</label>
+            <select id="addAptIsSamsung" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 0.9rem;">
+              <option value="0">Không</option>
+              <option value="1">Có (SSTN)</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-cancel" onclick="closeAddApartmentModal()">Đóng</button>
+        <button class="btn btn-save" onclick="saveNewApartment()" style="background: linear-gradient(135deg, #10b981, #059669);">➕ Thêm căn hộ</button>
+      </div>
     </div>
   </div>
 

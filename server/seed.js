@@ -55,7 +55,12 @@ const roomTypeByCode = {
   'S2-3420': '3 ngủ', 'S3-3702': '3 ngủ', 'S3-3906': '3 ngủ',
 
   // 4 ngủ (2 căn)
-  'S2-2106': '4 ngủ', 'S3-3918': '4 ngủ'
+  'S2-2106': '4 ngủ', 'S3-3918': '4 ngủ',
+
+  // Căn hộ mới (2026-07-28)
+  'S1-2505': '1 ngủ', 'S1-1208A': '2 ngủ',
+  'S2-11A08': '2 ngủ', 'S2-1209': '2 ngủ', 'S2-15A11': '2 ngủ', 'S2-3612': '1 ngủ',
+  'S2-11A12': '1 ngủ', 'S3-3808A': '2 ngủ'
 };
 
 // Real apartments provided by user
@@ -148,12 +153,22 @@ const providedRooms = [
   { code: 'S3-3906', building: 'S3', password: '336699', is_samsung: 0 },
   { code: 'S3-3918', building: 'S3', password: '838386', is_samsung: 0 },
 
-  // B, R4, R5, R6A
+  // B, HCM (R4, R5), R6A
   { code: 'B-2102', building: 'B', password: '456456*', is_samsung: 0 },
-  { code: 'R4-2519', building: 'R4', password: '251900', is_samsung: 0 },
-  { code: 'R5-2423', building: 'R5', password: '242300', is_samsung: 0 },
+  { code: 'R4-2519', building: 'HCM', password: '251900', is_samsung: 0 },
+  { code: 'R5-2423', building: 'HCM', password: '242300', is_samsung: 0 },
   { code: 'R6A-0505', building: 'R6A', password: '111.000.222.33', is_samsung: 0 },
-  { code: 'R6A-2806', building: 'R6A', password: '2222.333.333', is_samsung: 0 }
+  { code: 'R6A-2806', building: 'R6A', password: '2222.333.333', is_samsung: 0 },
+  // Căn hộ mới thêm (2026-07-28)
+  { code: 'S1-2505', building: 'S1', password: '123456', is_samsung: 1 },
+  { code: 'S1-1208A', building: 'S1', password: '123456', is_samsung: 0 },
+  { code: 'S2-11A08', building: 'S2', password: '123456', is_samsung: 0 },
+  { code: 'S2-1209', building: 'S2', password: '123456', is_samsung: 0 },
+  { code: 'S2-15A11', building: 'S2', password: '123456', is_samsung: 0 },
+  { code: 'S2-3612', building: 'S2', password: '123456', is_samsung: 0 },
+  // Phòng có trong seed.sql nhưng thiếu trong seed.js cũ
+  { code: 'S2-11A12', building: 'S2', password: '123456', is_samsung: 0 },
+  { code: 'S3-3808A', building: 'S3', password: '123456', is_samsung: 0 }
 ];
 
 const allRooms = providedRooms.map((room) => ({
@@ -170,7 +185,10 @@ const staffData = [
   { name: 'Hoàn',   default_name: 'Hoàn',   type: 'full-time', room_role: 1, tech_role: 0 },
   { name: 'Lộc',    default_name: 'Lộc',    type: 'full-time', room_role: 1, tech_role: 0 },
   { name: 'Nhân viên Part-time 1', default_name: 'Nhân viên Part-time 1', type: 'part-time', room_role: 2, tech_role: 0 },
-  { name: 'Nhân viên Part-time 2', default_name: 'Nhân viên Part-time 2', type: 'part-time', room_role: 2, tech_role: 0 }
+  { name: 'Nhân viên Part-time 2', default_name: 'Nhân viên Part-time 2', type: 'part-time', room_role: 2, tech_role: 0 },
+  { name: 'Nhân viên Part-time 3', default_name: 'Nhân viên Part-time 3', type: 'part-time', room_role: 2, tech_role: 0 },
+  { name: 'Nhân viên Part-time 4', default_name: 'Nhân viên Part-time 4', type: 'part-time', room_role: 2, tech_role: 0 },
+  { name: 'Nhân viên Part-time 5', default_name: 'Nhân viên Part-time 5', type: 'part-time', room_role: 2, tech_role: 0 }
 ];
 
 async function seed() {
@@ -244,6 +262,12 @@ async function seed() {
         username = 'parttime1';
       } else if (s.name.includes('Part-time 2')) {
         username = 'parttime2';
+      } else if (s.name.includes('Part-time 3')) {
+        username = 'parttime3';
+      } else if (s.name.includes('Part-time 4')) {
+        username = 'parttime4';
+      } else if (s.name.includes('Part-time 5')) {
+        username = 'parttime5';
       } else {
         username = removeAccents(s.name);
       }
@@ -320,12 +344,12 @@ async function seed() {
     `);
 
     const techCategories = [
-      // CẤP ĐỘ 1: DỄ
+      // CẤP ĐỘ 1: DỄ (Level 1 - Easy)
       { name: 'Sơn tường', level: 1, label: 'Dễ' },
-      { name: 'Vệ sinh điều hoà', level: 1, label: 'Dễ' },
+      { name: 'Vệ sinh điều hòa', level: 1, label: 'Dễ' },
       { name: 'Dán decal', level: 1, label: 'Dễ' },
       { name: 'Giặt rèm trắng', level: 1, label: 'Dễ' },
-      { name: 'Lắp khoá trong', level: 1, label: 'Dễ' },
+      { name: 'Lắp khóa trong', level: 1, label: 'Dễ' },
       { name: 'Siết ốc', level: 1, label: 'Dễ' },
       { name: 'Thay vòi sen', level: 1, label: 'Dễ' },
       { name: 'Thay bóng đèn', level: 1, label: 'Dễ' },
@@ -334,7 +358,7 @@ async function seed() {
       { name: 'Lắp bộ lọc nước', level: 1, label: 'Dễ' },
       { name: 'Vệ sinh quạt', level: 1, label: 'Dễ' },
 
-      // CẤP ĐỘ 2: TRUNG BÌNH
+      // CẤP ĐỘ 2: TRUNG BÌNH (Level 2 - Medium)
       { name: 'Vệ sinh máy giặt cửa đứng', level: 2, label: 'Trung bình' },
       { name: 'Silicon', level: 2, label: 'Trung bình' },
       { name: 'Sơn trần', level: 2, label: 'Trung bình' },
@@ -346,22 +370,22 @@ async function seed() {
       { name: 'Treo đèn thả bàn ăn và đèn ốp', level: 2, label: 'Trung bình' },
       { name: 'Vệ sinh cây nước', level: 2, label: 'Trung bình' },
 
-      // CẤP ĐỘ 3: KHÓ
+      // CẤP ĐỘ 3: KHÓ (Level 3 - Hard)
       { name: 'Vệ sinh máy giặt cửa ngang', level: 3, label: 'Khó' },
       { name: 'Thay miệng cửa ban công', level: 3, label: 'Khó' },
       { name: 'Thay vòng bi', level: 3, label: 'Khó' },
-      { name: 'Vệ sinh lưới điều hoà âm trần', level: 3, label: 'Khó' },
+      { name: 'Vệ sinh lưới điều hòa âm trần', level: 3, label: 'Khó' },
       { name: 'Xử lý bồn cầu và cống thoát nước', level: 3, label: 'Khó' },
       { name: 'Sửa giàn phơi', level: 3, label: 'Khó' },
 
-      // CẤP ĐỘ 4: CẦN CHUYÊN MÔN
+      // CẤP ĐỘ 4: CẦN CHUYÊN MÔN (Level 4 - Expert)
       { name: 'Sửa tivi', level: 4, label: 'Cần chuyên môn' },
       { name: 'Sửa tủ lạnh', level: 4, label: 'Cần chuyên môn' },
       { name: 'Sửa lò vi sóng', level: 4, label: 'Cần chuyên môn' },
-      { name: 'Sửa điều hoà', level: 4, label: 'Cần chuyên môn' },
+      { name: 'Sửa điều hòa', level: 4, label: 'Cần chuyên môn' },
       { name: 'Sửa rèm chống côn trùng', level: 4, label: 'Cần chuyên môn' },
 
-      // KHÁC
+      // KHÁC (Custom)
       { name: 'Khác...', level: 1, label: 'Dễ', is_custom: 1 }
     ];
 
@@ -388,7 +412,7 @@ async function seed() {
     console.log('🔐 Tài khoản đăng nhập hệ thống:');
     console.log('1. Admin: vistay / 12345678');
     console.log('2. Manager: loc / 12345678, dieu / 12345678');
-    console.log('3. NV: lien, thien, chien, van, hoan, parttime1, parttime2 / 12345678');
+    console.log('3. NV: lien, thien, chien, van, hoan, parttime1-5 / 12345678');
     console.log('====================================================');
   } catch (err) {
     console.error('❌ SEED ERROR:', err);

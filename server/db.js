@@ -1,6 +1,5 @@
 // ===================================================================
-// SQL Server Connection Pool - Database Layer
-// Cấu trúc 3 tầng: Database Connection
+// SQL Server Connection Pool - Database Layer (bulletproof v2)
 // ===================================================================
 const sql = require('mssql');
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
@@ -15,102 +14,87 @@ const config = {
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
+  port: process.env.DB_PORT ? parseInt(process.env.DB_PORT, 10) : undefined,
   options: {
     encrypt: false,
     trustServerCertificate: true,
     enableArithAbort: true,
+    useUTC: true,
   },
   pool: {
-    max: 20,
-    min: 2,
-    idleTimeoutMillis: 300000,
+    max: 5,
+    min: 0,
+    idleTimeoutMillis: 15000,
   },
+  connectionTimeout: 15000,
+  requestTimeout: 20000,
 };
 
-if (process.env.DB_PORT) {
-  config.port = parseInt(process.env.DB_PORT, 10);
-} else if (instanceName) {
+if (!config.port && instanceName) {
   config.options.instanceName = instanceName;
 }
 
 let pool = null;
-let connectionPromise = null;
 
 async function getPool() {
   if (pool && pool.connected) {
     return pool;
   }
 
-  if (connectionPromise) {
-    try {
-      const p = await connectionPromise;
-      if (p && p.connected) return p;
-    } catch (e) {
-      connectionPromise = null;
-    }
+  // Force close broken pool
+  if (pool) {
+    try { await pool.close(); } catch (e) {}
+    pool = null;
   }
 
-  connectionPromise = (async () => {
-    let lastError = null;
-    for (let attempt = 1; attempt <= 5; attempt++) {
-      try {
-        if (pool) {
-          try { await pool.close(); } catch (e) { }
-          pool = null;
-        }
-        if (attempt > 1) {
-          await new Promise(r => setTimeout(r, 200 * attempt));
-        }
-
-        const newPool = new sql.ConnectionPool(config);
-        newPool.on('error', err => {
-          console.warn('📡 SQL Pool connection warning:', err.message);
-          pool = null;
-          connectionPromise = null;
-        });
-
-        await newPool.connect();
-        console.log('✅ Connected to SQL Server:', process.env.DB_NAME);
-        pool = newPool;
-        return newPool;
-      } catch (err) {
-        lastError = err;
+  // Create fresh pool with retry
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    try {
+      const newPool = new sql.ConnectionPool(config);
+      newPool.on('error', err => {
+        console.warn('📡 SQL Pool error:', err.message);
         pool = null;
-        console.warn(`⚠️ SQL connect attempt ${attempt}/5 failed (${err.message}). Retrying...`);
-      }
+      });
+      await newPool.connect();
+      console.log('✅ Connected to SQL Server:', process.env.DB_NAME);
+      pool = newPool;
+      return pool;
+    } catch (err) {
+      console.warn(`⚠️ SQL connect attempt ${attempt}/5 failed: ${err.message}`);
+      if (attempt < 5) await new Promise(r => setTimeout(r, 2000 * attempt));
     }
-    connectionPromise = null;
-    throw lastError;
-  })();
-
-  return connectionPromise;
+  }
+  throw new Error('Cannot connect to SQL Server after 5 attempts');
 }
 
-// Bulletproof DB query wrapper with auto-reconnect retry
+// Auto-reconnect wrapper: if connection drops, create fresh pool and retry once
 async function queryDb(queryFn) {
-  try {
-    const poolInstance = await getPool();
-    return await queryFn(poolInstance);
-  } catch (err) {
-    if (err.message && (err.message.includes('ECONNRESET') || err.message.includes('Connection lost') || err.code === 'ESOCKET')) {
-      console.warn('📡 DB query encountered socket reset, reconnecting and retrying query...', err.message);
-      pool = null;
-      connectionPromise = null;
-      const freshPool = await getPool();
-      return await queryFn(freshPool);
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const p = await getPool();
+      return await queryFn(p);
+    } catch (err) {
+      const isConnErr = err.message && (
+        err.message.includes('ECONNRESET') ||
+        err.message.includes('Connection lost') ||
+        err.message.includes('socket') ||
+        err.code === 'ESOCKET' ||
+        err.code === 'ECONNRESET'
+      );
+      if (isConnErr && attempt === 1) {
+        console.warn('📡 Connection lost, reconnecting...');
+        pool = null;
+        continue;
+      }
+      throw err;
     }
-    throw err;
   }
 }
 
 async function closePool() {
   if (pool) {
-    try {
-      await pool.close();
-      console.log('📴 SQL connection pool closed.');
-    } catch (e) { }
+    try { await pool.close(); } catch (e) {}
     pool = null;
-    connectionPromise = null;
   }
 }
 
