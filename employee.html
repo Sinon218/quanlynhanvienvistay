@@ -12,7 +12,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="icon"
     href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏨</text></svg>">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
 </head>
 
 <body>
@@ -72,7 +72,7 @@
 
     <!-- ===== OFFLINE MODE BANNER ===== -->
     <div id="offlineAlertBanner" style="display: none; background: linear-gradient(135deg, #dc2626, #b91c1c); color: white; padding: 10px 16px; text-align: center; font-weight: 700; font-size: 0.85rem; position: relative; z-index: 100;">
-      ⚠️ CHẾ ĐỘ OFFLINE — Dữ liệu đang dùng là mock (150套房), KHÔNG phải database thật (95套房). Vui lòng kiểm tra kết nối server!
+      ⚠️ CHẾ ĐỘ OFFLINE — Dữ liệu đang dùng là mock, KHÔNG phải database thật. Vui lòng kiểm tra kết nối server!
       <button onclick="localStorage.removeItem('vistay_mode'); location.reload();" style="margin-left: 12px; background: rgba(255,255,255,0.2); border: 1px solid white; color: white; padding: 2px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem;">Thử kết nối lại</button>
     </div>
 

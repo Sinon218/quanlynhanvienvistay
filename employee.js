@@ -158,6 +158,7 @@ function checkAuth() {
   // Tự động khôi phục chế độ backend khi tải trang nếu không phải token offline
   if (token !== 'local_fallback_token') {
     localStorage.setItem('vistay_mode', 'backend');
+    localStorage.removeItem('vistay_offline_warning');
   }
 
   try {
@@ -179,15 +180,7 @@ function checkAuth() {
       if (switchBtn) switchBtn.style.display = 'inline-block';
     }
 
-    // Ẩn sơ đồ, bảng tổng hợp, danh sách căn hộ nếu là employee thường
-    if (currentUser.role === 'employee') {
-      const timelineSection = document.getElementById('empTimelineSection');
-      const summarySection = document.getElementById('empSummarySection');
-      const gridSection = document.getElementById('empApartmentGridSection');
-      if (timelineSection) timelineSection.style.display = 'none';
-      if (summarySection) summarySection.style.display = 'none';
-      if (gridSection) gridSection.style.display = 'none';
-    }
+    // All employees can see timeline, summary, and apartment grid
 
     // Show "Tạo việc kỹ thuật" button and load dedicated tech section for tech staff (techRole >= 1)
     if (currentUser.techRole && currentUser.techRole >= 1) {
@@ -206,6 +199,11 @@ function handleLogout() {
 }
 
 // ===== API REQUEST HELPER WITH OFFLINE FALLBACK =====
+// In-flight request deduplication & short cache for GET requests
+const _pendingRequests = new Map();
+const _getCache = new Map();
+const _CACHE_TTL = 3000; // 3s cache for identical GET requests
+
 async function apiCall(endpoint, method = 'GET', body = null) {
   let mode = localStorage.getItem('vistay_mode') || 'backend';
 
@@ -213,22 +211,37 @@ async function apiCall(endpoint, method = 'GET', body = null) {
     return handleLocalMockCall(endpoint, method, body);
   }
 
-  try {
-    const headers = {
-      'Authorization': `Bearer ${token}`
-    };
-    if (body && !(body instanceof FormData)) {
-      headers['Content-Type'] = 'application/json';
+  // Deduplicate in-flight identical GET requests
+  const dedupeKey = (method === 'GET' && !body) ? `GET:${endpoint}` : null;
+  if (dedupeKey) {
+    // Return cached result if fresh
+    const cached = _getCache.get(dedupeKey);
+    if (cached && Date.now() - cached.ts < _CACHE_TTL) {
+      return cached.data;
     }
+    // Return existing in-flight request if any
+    if (_pendingRequests.has(dedupeKey)) {
+      return _pendingRequests.get(dedupeKey);
+    }
+  }
 
-    const options = {
-      method,
-      headers,
-      body: body instanceof FormData ? body : (body ? JSON.stringify(body) : null),
-      cache: 'no-store'
-    };
+  const requestPromise = (async () => {
+    try {
+      const headers = {
+        'Authorization': `Bearer ${token}`
+      };
+      if (body && !(body instanceof FormData)) {
+        headers['Content-Type'] = 'application/json';
+      }
 
-    const response = await fetch(`${API_URL}${endpoint}`, options);
+      const options = {
+        method,
+        headers,
+        body: body instanceof FormData ? body : (body ? JSON.stringify(body) : null),
+        cache: 'no-store'
+      };
+
+      const response = await fetch(`${API_URL}${endpoint}`, options);
 
     if (!response.ok) {
       if (response.status === 401) {
@@ -241,21 +254,190 @@ async function apiCall(endpoint, method = 'GET', body = null) {
       throw apiErr;
     }
 
-    return await response.json();
+    const data = await response.json();
+
+    // Cache GET results for dedup
+    if (dedupeKey) {
+      _getCache.set(dedupeKey, { data, ts: Date.now() });
+      // Evict stale cache entries
+      if (_getCache.size > 50) {
+        const now = Date.now();
+        for (const [k, v] of _getCache) {
+          if (now - v.ts > _CACHE_TTL * 2) _getCache.delete(k);
+        }
+      }
+    }
+
+    return data;
   } catch (err) {
     if (err.isApiError) {
       throw err;
     }
-    console.warn(`[API CALL] network error for ${endpoint}: ${err.message}. Switching to offline mode.`);
-    localStorage.setItem('vistay_mode', 'local');
-    localStorage.setItem('vistay_offline_warning', '1');
-    const offlineBanner = document.getElementById('offlineAlertBanner');
-    if (offlineBanner) offlineBanner.style.display = 'block';
+    // Only switch to offline mode for real network failures (server unreachable)
+    // Do NOT switch for API errors or timeouts on a reachable server
+    const isRealNetworkError = err.message && (
+      err.message.includes('Failed to fetch') ||
+      err.message.includes('NetworkError') ||
+      err.message.includes('ERR_NETWORK') ||
+      err.name === 'TypeError'
+    );
+    if (isRealNetworkError) {
+      console.warn(`[API CALL] network error for ${endpoint}: ${err.message}. Switching to offline mode.`);
+      localStorage.setItem('vistay_mode', 'local');
+      localStorage.setItem('vistay_offline_warning', '1');
+      const offlineBanner = document.getElementById('offlineAlertBanner');
+      if (offlineBanner) offlineBanner.style.display = 'block';
+    }
     return handleLocalMockCall(endpoint, method, body);
+  } finally {
+    if (dedupeKey) _pendingRequests.delete(dedupeKey);
   }
+  })();
+
+  if (dedupeKey) _pendingRequests.set(dedupeKey, requestPromise);
+  return requestPromise;
 }
 
 // ===== LOCAL SIMULATION DATABASE (OFFLINE MODE) =====
+const MOCK_STAFF = [
+  { id: 1, name: 'Liên', default_name: 'Liên', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 5000000, per_room_rate: 50000 },
+  { id: 2, name: 'Thiên', default_name: 'Thiên', type: 'full-time', room_role: 2, tech_role: 1, base_salary: 5000000, per_room_rate: 50000 },
+  { id: 3, name: 'Chiến', default_name: 'Chiến', type: 'full-time', room_role: 2, tech_role: 1, base_salary: 5000000, per_room_rate: 50000 },
+  { id: 4, name: 'Vân', default_name: 'Vân', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 5000000, per_room_rate: 50000 },
+  { id: 5, name: 'Diệu', default_name: 'Diệu', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 7000000, per_room_rate: 50000 },
+  { id: 6, name: 'Hoàn', default_name: 'Hoàn', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 5000000, per_room_rate: 50000 },
+  { id: 7, name: 'Lộc', default_name: 'Lộc', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 7000000, per_room_rate: 50000 },
+  { id: 8, name: 'Nhân viên Part-time 1', default_name: 'Nhân viên Part-time 1', type: 'part-time', room_role: 2, tech_role: 0, base_salary: 5000000, per_room_rate: 50000 },
+  { id: 9, name: 'Nhân viên Part-time 2', default_name: 'Nhân viên Part-time 2', type: 'part-time', room_role: 2, tech_role: 0, base_salary: 5000000, per_room_rate: 50000 },
+  { id: 10, name: 'Nhân viên Part-time 3', default_name: 'Nhân viên Part-time 3', type: 'part-time', room_role: 2, tech_role: 0, base_salary: 5000000, per_room_rate: 50000 },
+  { id: 11, name: 'Nhân viên Part-time 4', default_name: 'Nhân viên Part-time 4', type: 'part-time', room_role: 2, tech_role: 0, base_salary: 5000000, per_room_rate: 50000 },
+  { id: 12, name: 'Nhân viên Part-time 5', default_name: 'Nhân viên Part-time 5', type: 'part-time', room_role: 2, tech_role: 0, base_salary: 5000000, per_room_rate: 50000 }
+];
+
+const roomTypeByCodeMap = {
+  'S1-0405': '1 ngủ', 'S1-0505': '1 ngủ', 'S1-0905': '1 ngủ', 'S1-1105': '1 ngủ', 'S1-1605': '1 ngủ',
+  'S1-1705': '1 ngủ', 'S1-1905': '1 ngủ', 'S1-2105': '1 ngủ', 'S1-2305': '1 ngủ', 'S1-2405': '1 ngủ',
+  'S1-2505': '1 ngủ', 'S1-2705': '1 ngủ', 'S1-3105': '1 ngủ',
+  'S1-2405A': '2 ngủ', 'S1-2505A': '2 ngủ', 'S1-2809': '2 ngủ', 'S1-1208A': '2 ngủ',
+  'S1-0508': '3 ngủ',
+  'S2-0401': '2 ngủ', 'S2-0501': '2 ngủ', 'S2-0610': '1 ngủ', 'S2-0715': '2 ngủ', 'S2-0908': '2 ngủ',
+  'S2-1110': '1 ngủ', 'S2-1111': '1 ngủ', 'S2-11A11': '2 ngủ', 'S2-11A12': '1 ngủ', 'S2-11A08': '2 ngủ',
+  'S2-1209': '2 ngủ', 'S2-1220': '3 ngủ', 'S2-1511A': '2 ngủ', 'S2-1512': '1 ngủ', 'S2-15A11': '2 ngủ',
+  'S2-1712': '1 ngủ', 'S2-1808': '2 ngủ', 'S2-1901': '2 ngủ', 'S2-2106': '4 ngủ', 'S2-2117': '2 ngủ',
+  'S2-2211A': '2 ngủ', 'S2-2411': '2 ngủ', 'S2-2512': '1 ngủ', 'S2-2810': '1 ngủ', 'S2-2811A': '2 ngủ',
+  'S2-2916': '2 ngủ', 'S2-3210': '1 ngủ', 'S2-3301': '2 ngủ', 'S2-3316': '2 ngủ', 'S2-3411A': '2 ngủ',
+  'S2-3420': '3 ngủ', 'S2-3501': '2 ngủ', 'S2-3517': '2 ngủ', 'S2-3608': '2 ngủ', 'S2-3612': '1 ngủ',
+  'S2-3708': '2 ngủ', 'S2-3810': '1 ngủ', 'S2-3811A': '2 ngủ', 'S2-3812': '1 ngủ', 'S2-3816': '2 ngủ',
+  'S2-3908': '2 ngủ',
+  'S3-0511': '1 ngủ', 'S3-0715': '2 ngủ', 'S3-0810': '2 ngủ', 'S3-0908': '2 ngủ', 'S3-1001': '2 ngủ',
+  'S3-1012': '1 ngủ', 'S3-15A08A': '2 ngủ', 'S3-15A12': '1 ngủ', 'S3-1616': '2 ngủ', 'S3-1701': '2 ngủ',
+  'S3-1811': '1 ngủ', 'S3-1901': '2 ngủ', 'S3-2012': '1 ngủ', 'S3-2301': '2 ngủ', 'S3-2406': '3 ngủ',
+  'S3-2412': '1 ngủ', 'S3-2712': '1 ngủ', 'S3-2909': '3 ngủ', 'S3-2911': '1 ngủ', 'S3-3001': '2 ngủ',
+  'S3-3015': '2 ngủ', 'S3-3316': '2 ngủ', 'S3-3409': '1 ngủ', 'S3-3411': '1 ngủ', 'S3-3511': '1 ngủ',
+  'S3-3512': '1 ngủ', 'S3-3612': '1 ngủ', 'S3-3702': '3 ngủ', 'S3-3808A': '2 ngủ', 'S3-3906': '3 ngủ',
+  'S3-3918': '4 ngủ',
+  'B-2102': '3 ngủ',
+  'R4-2519': '2 ngủ', 'R5-2423': '2 ngủ', 'R6A-0505': '1 ngủ', 'R6A-2806': '1 ngủ'
+};
+
+const PROVIDED_ROOMS = [
+  { id: 1, code: 'S1-0405', building: 'S1', password: '040505', is_samsung: false, status: 'available' },
+  { id: 2, code: 'S1-0505', building: 'S1', password: '000555', is_samsung: true, status: 'available' },
+  { id: 3, code: 'S1-0508', building: 'S1', password: '585868', is_samsung: true, status: 'available' },
+  { id: 4, code: 'S1-0905', building: 'S1', password: '730399', is_samsung: true, status: 'available' },
+  { id: 5, code: 'S1-1105', building: 'S1', password: '220704', is_samsung: false, status: 'available' },
+  { id: 6, code: 'S1-1605', building: 'S1', password: '166.666', is_samsung: false, status: 'available' },
+  { id: 7, code: 'S1-1705', building: 'S1', password: '356835', is_samsung: false, status: 'available' },
+  { id: 8, code: 'S1-1905', building: 'S1', password: '199.999', is_samsung: true, status: 'available' },
+  { id: 9, code: 'S1-2105', building: 'S1', password: '222111', is_samsung: false, status: 'available' },
+  { id: 10, code: 'S1-2305', building: 'S1', password: '160.524', is_samsung: false, status: 'available' },
+  { id: 11, code: 'S1-2405', building: 'S1', password: '122.537', is_samsung: true, status: 'available' },
+  { id: 12, code: 'S1-2405A', building: 'S1', password: '456789', is_samsung: true, status: 'available' },
+  { id: 13, code: 'S1-2505', building: 'S1', password: '123456', is_samsung: true, status: 'available' },
+  { id: 14, code: 'S1-2505A', building: 'S1', password: '000555', is_samsung: true, status: 'available' },
+  { id: 15, code: 'S1-2705', building: 'S1', password: '222777', is_samsung: true, status: 'available' },
+  { id: 16, code: 'S1-2809', building: 'S1', password: '280900', is_samsung: false, status: 'available' },
+  { id: 17, code: 'S1-3105', building: 'S1', password: '333555', is_samsung: true, status: 'available' },
+  { id: 18, code: 'S1-1208A', building: 'S1', password: '123456', is_samsung: false, status: 'available' },
+  { id: 19, code: 'S2-0401', building: 'S2', password: '040100', is_samsung: false, status: 'available' },
+  { id: 20, code: 'S2-0501', building: 'S2', password: '050100', is_samsung: false, status: 'available' },
+  { id: 21, code: 'S2-0610', building: 'S2', password: '760.200', is_samsung: true, status: 'available' },
+  { id: 22, code: 'S2-0715', building: 'S2', password: '686868', is_samsung: false, status: 'available' },
+  { id: 23, code: 'S2-0908', building: 'S2', password: '090800', is_samsung: false, status: 'available' },
+  { id: 24, code: 'S2-1110', building: 'S2', password: '101010', is_samsung: true, status: 'available' },
+  { id: 25, code: 'S2-1111', building: 'S2', password: '838688', is_samsung: true, status: 'available' },
+  { id: 26, code: 'S2-11A08', building: 'S2', password: '123456', is_samsung: false, status: 'available' },
+  { id: 27, code: 'S2-11A11', building: 'S2', password: '111168', is_samsung: false, status: 'available' },
+  { id: 28, code: 'S2-11A12', building: 'S2', password: '123456', is_samsung: false, status: 'available' },
+  { id: 29, code: 'S2-1209', building: 'S2', password: '123456', is_samsung: false, status: 'available' },
+  { id: 30, code: 'S2-1220', building: 'S2', password: '111222', is_samsung: false, status: 'available' },
+  { id: 31, code: 'S2-1511A', building: 'S2', password: '688688', is_samsung: true, status: 'available' },
+  { id: 32, code: 'S2-1512', building: 'S2', password: '111222', is_samsung: true, status: 'available' },
+  { id: 33, code: 'S2-15A11', building: 'S2', password: '123456', is_samsung: false, status: 'available' },
+  { id: 34, code: 'S2-1712', building: 'S2', password: '320.500', is_samsung: true, status: 'available' },
+  { id: 35, code: 'S2-1808', building: 'S2', password: '180800', is_samsung: false, status: 'available' },
+  { id: 36, code: 'S2-1901', building: 'S2', password: '009966', is_samsung: false, status: 'available' },
+  { id: 37, code: 'S2-2106', building: 'S2', password: '222111', is_samsung: false, status: 'available' },
+  { id: 38, code: 'S2-2117', building: 'S2', password: '211700', is_samsung: false, status: 'available' },
+  { id: 39, code: 'S2-2211A', building: 'S2', password: '668868', is_samsung: true, status: 'available' },
+  { id: 40, code: 'S2-2411', building: 'S2', password: '135246#', is_samsung: true, status: 'available' },
+  { id: 41, code: 'S2-2512', building: 'S2', password: '225588', is_samsung: true, status: 'available' },
+  { id: 42, code: 'S2-2810', building: 'S2', password: '281000', is_samsung: false, status: 'available' },
+  { id: 43, code: 'S2-2811A', building: 'S2', password: '281100', is_samsung: false, status: 'available' },
+  { id: 44, code: 'S2-2916', building: 'S2', password: '929268', is_samsung: true, status: 'available' },
+  { id: 45, code: 'S2-3210', building: 'S2', password: '333222', is_samsung: true, status: 'available' },
+  { id: 46, code: 'S2-3301', building: 'S2', password: '333111', is_samsung: false, status: 'available' },
+  { id: 47, code: 'S2-3316', building: 'S2', password: '333366', is_samsung: true, status: 'available' },
+  { id: 48, code: 'S2-3411A', building: 'S2', password: '201099', is_samsung: false, status: 'available' },
+  { id: 49, code: 'S2-3420', building: 'S2', password: '202002', is_samsung: false, status: 'available' },
+  { id: 50, code: 'S2-3501', building: 'S2', password: '350100', is_samsung: false, status: 'available' },
+  { id: 51, code: 'S2-3517', building: 'S2', password: '353568', is_samsung: true, status: 'available' },
+  { id: 52, code: 'S2-3608', building: 'S2', password: '363636', is_samsung: false, status: 'available' },
+  { id: 53, code: 'S2-3612', building: 'S2', password: '123456', is_samsung: false, status: 'available' },
+  { id: 54, code: 'S2-3708', building: 'S2', password: '370800', is_samsung: false, status: 'available' },
+  { id: 55, code: 'S2-3810', building: 'S2', password: '383838', is_samsung: true, status: 'available' },
+  { id: 56, code: 'S2-3811A', building: 'S2', password: '381100', is_samsung: false, status: 'available' },
+  { id: 57, code: 'S2-3812', building: 'S2', password: '101615', is_samsung: true, status: 'available' },
+  { id: 58, code: 'S2-3816', building: 'S2', password: '383883', is_samsung: true, status: 'available' },
+  { id: 59, code: 'S2-3908', building: 'S2', password: '999888', is_samsung: false, status: 'available' },
+  { id: 60, code: 'S3-0511', building: 'S3', password: '051100', is_samsung: false, status: 'available' },
+  { id: 61, code: 'S3-0715', building: 'S3', password: '071500', is_samsung: false, status: 'available' },
+  { id: 62, code: 'S3-0810', building: 'S3', password: '081000', is_samsung: false, status: 'available' },
+  { id: 63, code: 'S3-0908', building: 'S3', password: '999888', is_samsung: false, status: 'available' },
+  { id: 64, code: 'S3-1001', building: 'S3', password: '100100', is_samsung: false, status: 'available' },
+  { id: 65, code: 'S3-1012', building: 'S3', password: '101200', is_samsung: false, status: 'available' },
+  { id: 66, code: 'S3-15A08A', building: 'S3', password: '150808', is_samsung: false, status: 'available' },
+  { id: 67, code: 'S3-15A12', building: 'S3', password: '111555', is_samsung: true, status: 'available' },
+  { id: 68, code: 'S3-1616', building: 'S3', password: '382838', is_samsung: false, status: 'available' },
+  { id: 69, code: 'S3-1701', building: 'S3', password: '240302', is_samsung: false, status: 'available' },
+  { id: 70, code: 'S3-1811', building: 'S3', password: '333666', is_samsung: true, status: 'available' },
+  { id: 71, code: 'S3-1901', building: 'S3', password: '111119', is_samsung: false, status: 'available' },
+  { id: 72, code: 'S3-2012', building: 'S3', password: '111222', is_samsung: true, status: 'available' },
+  { id: 73, code: 'S3-2301', building: 'S3', password: '230100', is_samsung: false, status: 'available' },
+  { id: 74, code: 'S3-2406', building: 'S3', password: '240600', is_samsung: false, status: 'available' },
+  { id: 75, code: 'S3-2412', building: 'S3', password: '333666', is_samsung: true, status: 'available' },
+  { id: 76, code: 'S3-2712', building: 'S3', password: '271200', is_samsung: false, status: 'available' },
+  { id: 77, code: 'S3-2909', building: 'S3', password: '000999', is_samsung: false, status: 'available' },
+  { id: 78, code: 'S3-2911', building: 'S3', password: '291100', is_samsung: false, status: 'available' },
+  { id: 79, code: 'S3-3001', building: 'S3', password: '300100', is_samsung: false, status: 'available' },
+  { id: 80, code: 'S3-3015', building: 'S3', password: '305305', is_samsung: true, status: 'available' },
+  { id: 81, code: 'S3-3316', building: 'S3', password: '331600', is_samsung: false, status: 'available' },
+  { id: 82, code: 'S3-3409', building: 'S3', password: '399999', is_samsung: false, status: 'available' },
+  { id: 83, code: 'S3-3411', building: 'S3', password: '123468', is_samsung: true, status: 'available' },
+  { id: 84, code: 'S3-3511', building: 'S3', password: '351168', is_samsung: true, status: 'available' },
+  { id: 85, code: 'S3-3512', building: 'S3', password: '333.222', is_samsung: true, status: 'available' },
+  { id: 86, code: 'S3-3612', building: 'S3', password: '363663', is_samsung: true, status: 'available' },
+  { id: 87, code: 'S3-3702', building: 'S3', password: '370200', is_samsung: false, status: 'available' },
+  { id: 88, code: 'S3-3808A', building: 'S3', password: '123456', is_samsung: false, status: 'available' },
+  { id: 89, code: 'S3-3906', building: 'S3', password: '336699', is_samsung: false, status: 'available' },
+  { id: 90, code: 'S3-3918', building: 'S3', password: '838386', is_samsung: false, status: 'available' },
+  { id: 91, code: 'B-2102', building: 'B', password: '456456*', is_samsung: false, status: 'available' },
+  { id: 92, code: 'R4-2519', building: 'HCM', password: '251900', is_samsung: false, status: 'available' },
+  { id: 93, code: 'R5-2423', building: 'HCM', password: '242300', is_samsung: false, status: 'available' },
+  { id: 94, code: 'R6A-0505', building: 'R6A', password: '111.000.222.33', is_samsung: false, status: 'available' },
+  { id: 95, code: 'R6A-2806', building: 'R6A', password: '2222.333.333', is_samsung: false, status: 'available' }
+].map(r => ({ ...r, room_type: roomTypeByCodeMap[r.code] || '2 ngủ' }));
+
 function getLocalData(key, defaultVal) {
   const val = localStorage.getItem(key);
   if (!val) {
@@ -271,8 +453,18 @@ function saveLocalData(key, data) {
 
 // API Simulation layer for employee
 function handleLocalMockCall(endpoint, method, body) {
-  let localStaff = getLocalData('vistay_mock_staff', []);
-  let localRooms = getLocalData('vistay_mock_apartments', []);
+  // Initialize mock data if not already set
+  const existingStaff = localStorage.getItem('vistay_mock_staff');
+  if (!existingStaff || JSON.parse(existingStaff).length === 0) {
+    localStorage.setItem('vistay_mock_staff', JSON.stringify(MOCK_STAFF));
+  }
+  let existingRooms = localStorage.getItem('vistay_mock_apartments');
+  if (!existingRooms || JSON.parse(existingRooms).length === 0 || JSON.parse(existingRooms).length !== PROVIDED_ROOMS.length) {
+    localStorage.setItem('vistay_mock_apartments', JSON.stringify(PROVIDED_ROOMS));
+  }
+
+  let localStaff = getLocalData('vistay_mock_staff', MOCK_STAFF);
+  let localRooms = getLocalData('vistay_mock_apartments', PROVIDED_ROOMS);
   let localWork = getLocalData('vistay_mock_work', []);
   let localSalary = getLocalData('vistay_mock_salary', []);
 
@@ -569,7 +761,7 @@ function handleLocalMockCall(endpoint, method, body) {
     if (endpoint.startsWith('/apartments/status-history')) {
       const params = new URLSearchParams(endpoint.split('?')[1] || '');
       const mode = params.get('mode') || 'hourly';
-      const total = localRooms.length || 150;
+      const total = localRooms.length || 95;
       const mockData = [];
       if (mode === 'hourly') {
         for (let h = 24; h >= 0; h--) {
@@ -610,17 +802,7 @@ function handleLocalMockCall(endpoint, method, body) {
     if (status && status !== 'all') filtered = filtered.filter(r => r.status === status);
     if (search) filtered = filtered.filter(r => r.code.toLowerCase().includes(search.toLowerCase()));
 
-    // Hide password for normal employees (mock check matching backend)
-    const allowedUsernames = ['vistay', 'loc', 'dieu'];
-    const allowedNames = ['Lộc', 'Diệu'];
-    const isPrivileged = currentUser && (
-      currentUser.role === 'admin' ||
-      allowedUsernames.includes(currentUser.username) ||
-      allowedNames.includes(currentUser.staffName)
-    );
-    if (!isPrivileged) {
-      filtered = filtered.map(a => ({ ...a, password: '******' }));
-    }
+    // Passwords are visible to all authenticated users (matching backend behavior)
 
     return Promise.resolve(filtered);
   }
@@ -665,45 +847,62 @@ function showToast(message, type = 'success') {
 
 // ===== LOAD DASHBOARD DATA =====
 async function loadDashboard() {
-  try {
-    const isTechStaff = currentUser.techRole && currentUser.techRole >= 1;
+  const isTechStaff = currentUser.techRole && currentUser.techRole >= 1;
 
-    // Update labels if Tech Staff
-    if (isTechStaff) {
-      document.getElementById('lblTodayTotal').textContent = "Nhiệm vụ KT được giao (Hôm nay)";
-      document.getElementById('lblTodayCompleted').textContent = "🟢 Đã xong (Hôm nay)";
-      document.getElementById('lblMonthCompleted').textContent = "🛠️ Đã sửa (Tháng này)";
-    } else {
-      document.getElementById('lblTodayTotal').textContent = "Căn được giao (Hôm nay)";
-      document.getElementById('lblTodayCompleted').textContent = "🟢 Đã xong (Hôm nay)";
-      document.getElementById('lblMonthCompleted').textContent = "🧹 Đã dọn (Tháng này)";
-    }
+  // Update labels if Tech Staff
+  if (isTechStaff) {
+    document.getElementById('lblTodayTotal').textContent = "Nhiệm vụ KT được giao (Hôm nay)";
+    document.getElementById('lblTodayCompleted').textContent = "🟢 Đã xong (Hôm nay)";
+    document.getElementById('lblMonthCompleted').textContent = "🛠️ Đã sửa (Tháng này)";
+  } else {
+    document.getElementById('lblTodayTotal').textContent = "Căn được giao (Hôm nay)";
+    document.getElementById('lblTodayCompleted').textContent = "🟢 Đã xong (Hôm nay)";
+    document.getElementById('lblMonthCompleted').textContent = "🧹 Đã dọn (Tháng này)";
+  }
 
-    // 1. Fetch Today's Tasks (room assignments)
-    const tasks = await apiCall('/work/today');
-    renderTaskList(tasks);
+  // Run ALL independent API calls in parallel for maximum speed
+  const statsEndpoint = isTechStaff ? `/tasks/stats/${currentUser.staffId}` : `/work/stats/${currentUser.staffId}`;
+  const apartmentQuery = new URLSearchParams(apartmentFilters).toString();
 
-    // 2. Fetch Personal Work Stats
-    const statsEndpoint = isTechStaff ? `/tasks/stats/${currentUser.staffId}` : `/work/stats/${currentUser.staffId}`;
-    const stats = await apiCall(statsEndpoint);
-    document.getElementById('statTodayTotal').textContent = stats.today_total;
-    document.getElementById('statTodayCompleted').textContent = stats.today_completed;
-    document.getElementById('statMonthCompleted').textContent = stats.month_completed;
+  const [tasks, stats, salary, customTasks, apartments, apartmentStats, timelineResult] = await Promise.allSettled([
+    apiCall('/work/today'),
+    apiCall(statsEndpoint),
+    apiCall(`/salary/${currentUser.staffId}`),
+    apiCall('/tasks/today'),
+    apiCall(`/apartments?${apartmentQuery}`),
+    apiCall('/apartments/stats'),
+    apiCall(`/apartments/status-timeline?building=all&mode=${empTimelineMode}&days=${empTimelineDays}&month=${empTimelineMonth}&year=${empTimelineYear}`),
+  ]);
 
-    // 3. Fetch Salary Estimation
-    const salary = await apiCall(`/salary/${currentUser.staffId}`);
-    renderSalaryEstimate(salary);
+  // Render results that succeeded; skip failures silently
+  if (tasks.status === 'fulfilled') renderTaskList(tasks.value);
 
-    // 4. Fetch Custom Tasks
-    const customTasks = await apiCall('/tasks/today');
-    renderCustomTaskList(customTasks);
+  if (stats.status === 'fulfilled') {
+    document.getElementById('statTodayTotal').textContent = stats.value.today_total;
+    document.getElementById('statTodayCompleted').textContent = stats.value.today_completed;
+    document.getElementById('statMonthCompleted').textContent = stats.value.month_completed;
+  }
 
-    // 5. Fetch and Render Employee Apartments
-    loadEmployeeApartments();
-    loadEmpApartmentStatusTimeline();
+  if (salary.status === 'fulfilled') renderSalaryEstimate(salary.value);
+  if (customTasks.status === 'fulfilled') renderCustomTaskList(customTasks.value);
 
-  } catch (err) {
-    showToast(err.message, 'warning');
+  // Render apartment data
+  if (apartments.status === 'fulfilled') {
+    apartmentList = apartments.value;
+  } else {
+    apartmentList = [];
+  }
+  if (apartmentStats.status === 'fulfilled') {
+    apartmentStatsData = apartmentStats.value.byBuilding || [];
+    renderEmployeeApartmentStats(apartmentStats.value.totals);
+  }
+  renderEmployeeApartmentSummaryTable();
+  renderEmployeeApartmentGrid();
+
+  // Render timeline
+  if (timelineResult.status === 'fulfilled') {
+    timelineData = timelineResult.value;
+    renderEmpApartmentStatusTimeline(timelineResult.value);
   }
 }
 
@@ -1373,13 +1572,26 @@ async function initializePage() {
         if (token === 'local_fallback_token') {
           localStorage.removeItem('vistay_token');
           localStorage.removeItem('vistay_user');
+          localStorage.removeItem('vistay_mode');
           window.location.href = 'index.html';
         } else {
-          // Khởi chạy lại để lấy dữ liệu backend trực tiếp mà không cần reload trang
           initializePage();
         }
       } else {
-        console.log("Server returned error. Staying in local mode.");
+        // Server responded (even with error) — it's reachable
+        console.log("Server is reachable (status " + res.status + "). Switching back to backend mode.");
+        localStorage.setItem('vistay_mode', 'backend');
+        const offlineBanner = document.getElementById('offlineAlertBanner');
+        if (offlineBanner) offlineBanner.style.display = 'none';
+        
+        if (token === 'local_fallback_token') {
+          localStorage.removeItem('vistay_token');
+          localStorage.removeItem('vistay_user');
+          localStorage.removeItem('vistay_mode');
+          window.location.href = 'index.html';
+        } else {
+          initializePage();
+        }
       }
     }).catch(err => {
       console.log("Server is offline. Staying in local mode.");
@@ -1394,8 +1606,12 @@ async function initializePage() {
 
   document.getElementById('currentDate').textContent = formatDate();
   loadDashboard();
-  // Tự động làm mới công việc mỗi 15 giây để nhân viên nhận việc real-time từ thiết bị khác
-  setInterval(loadDashboard, 15000);
+  // Auto-refresh every 30s (debounced to prevent rapid re-renders)
+  let _dashTimer = null;
+  setInterval(() => {
+    if (_dashTimer) clearTimeout(_dashTimer);
+    _dashTimer = setTimeout(loadDashboard, 300);
+  }, 30000);
 
   // Bind employee room filters
   const searchInput = document.getElementById('empRoomSearchInput');
@@ -1437,12 +1653,24 @@ if (document.readyState === 'loading') {
 async function loadEmployeeApartments() {
   try {
     const query = new URLSearchParams(apartmentFilters).toString();
-    apartmentList = await apiCall(`/apartments?${query}`);
 
-    // Load stats
-    const stats = await apiCall('/apartments/stats');
-    apartmentStatsData = stats.byBuilding || [];
-    renderEmployeeApartmentStats(stats.totals);
+    // Fetch apartments + stats in parallel
+    const [apartments, stats] = await Promise.allSettled([
+      apiCall(`/apartments?${query}`),
+      apiCall('/apartments/stats'),
+    ]);
+
+    if (apartments.status === 'fulfilled') {
+      apartmentList = apartments.value;
+    } else {
+      apartmentList = [];
+    }
+
+    if (stats.status === 'fulfilled') {
+      apartmentStatsData = stats.value.byBuilding || [];
+      renderEmployeeApartmentStats(stats.value.totals);
+    }
+
     renderEmployeeApartmentSummaryTable();
     renderEmployeeApartmentGrid();
   } catch (err) {
@@ -2473,8 +2701,7 @@ function setupRealtimeEvents() {
     window.addEventListener('storage', (e) => {
       if (localStorage.getItem('vistay_mode') === 'local') {
         if (e.key === 'vistay_mock_work' || e.key === 'vistay_mock_tasks_list' || e.key === 'vistay_mock_apartments') {
-          console.log('🔄 Offline mode: Local mock data updated. Reloading dashboard...');
-          if (typeof loadDashboard === 'function') {
+           if (typeof loadDashboard === 'function') {
             loadDashboard();
           }
         }
@@ -2486,10 +2713,10 @@ function setupRealtimeEvents() {
       if (eventSource) eventSource.close();
       eventSource = new EventSource(`${API_URL}/events`);
 
+      let _sseDebounce = null;
       eventSource.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data);
-          console.log('📢 Received real-time event:', data);
 
           // Hiển thị Toast thông báo cho nhân viên nếu có tin nhắn chi tiết
           if (data.message) {
@@ -2497,9 +2724,10 @@ function setupRealtimeEvents() {
             showToast(data.message, type);
           }
 
+          // Debounce: batch rapid SSE events into single reload (500ms)
           if (typeof loadDashboard === 'function') {
-            console.log('🔄 Reloading dashboard...');
-            loadDashboard();
+            if (_sseDebounce) clearTimeout(_sseDebounce);
+            _sseDebounce = setTimeout(loadDashboard, 500);
           }
         } catch (err) {
           console.error('Failed to parse SSE data:', err);

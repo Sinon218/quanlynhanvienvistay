@@ -107,6 +107,7 @@
         localStorage.setItem('vistay_token', data.token);
         localStorage.setItem('vistay_user', JSON.stringify(data.user));
         localStorage.setItem('vistay_mode', 'backend');
+        localStorage.removeItem('vistay_offline_warning');
 
         showToast('Đăng nhập thành công! Đang chuyển hướng...', 'success');
 
@@ -131,9 +132,12 @@
           'van': { role: 'employee', name: 'Vân', staffId: 4 },
           'dieu': { role: 'manager', name: 'Diệu', staffId: 5 },
           'hoan': { role: 'employee', name: 'Hoàn', staffId: 6 },
-          'parttime1': { role: 'employee', name: 'Nhân viên Part-time 1', staffId: 7 },
-          'parttime2': { role: 'employee', name: 'Nhân viên Part-time 2', staffId: 8 },
-          'loc': { role: 'manager', name: 'Lộc', staffId: 9 }
+          'loc': { role: 'manager', name: 'Lộc', staffId: 7 },
+          'parttime1': { role: 'employee', name: 'Nhân viên Part-time 1', staffId: 8 },
+          'parttime2': { role: 'employee', name: 'Nhân viên Part-time 2', staffId: 9 },
+          'parttime3': { role: 'employee', name: 'Nhân viên Part-time 3', staffId: 10 },
+          'parttime4': { role: 'employee', name: 'Nhân viên Part-time 4', staffId: 11 },
+          'parttime5': { role: 'employee', name: 'Nhân viên Part-time 5', staffId: 12 }
         };
 
         if (validUsers[username] && password === '12345678') {
@@ -149,7 +153,7 @@
           }));
           localStorage.setItem('vistay_mode', 'local');
 
-          showToast('⚠️ Chế độ offline: Dữ liệu mock (150套房), không phải database thật (95套房)!', 'warning');
+          showToast('⚠️ Chế độ offline: Dữ liệu mock, không phải database thật!', 'warning');
 
           setTimeout(() => {
             if (user.role === 'admin' || user.role === 'manager') {

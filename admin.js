@@ -314,6 +314,7 @@ function checkAuth() {
   // Tự động khôi phục chế độ backend khi tải trang nếu không phải token offline
   if (token !== 'local_fallback_token') {
     localStorage.setItem('vistay_mode', 'backend');
+    localStorage.removeItem('vistay_offline_warning');
   }
 
   try {
@@ -344,33 +345,46 @@ function handleLogout() {
 }
 
 // ===== API REQUEST HELPER WITH OFFLINE FALLBACK =====
+const _pendingRequests = new Map();
+const _getCache = new Map();
+const _CACHE_TTL = 3000;
+
 async function apiCall(endpoint, method = 'GET', body = null) {
   let mode = localStorage.getItem('vistay_mode') || 'backend';
-  console.log(`[API CALL] calling ${endpoint} using mode: ${mode}, token length: ${token ? token.length : 0}`);
 
   if (mode === 'local') {
-    console.log(`[API CALL] falling back to mock for ${endpoint}`);
     return handleLocalMockCall(endpoint, method, body);
   }
 
-  try {
-    const headers = {
-      'Authorization': `Bearer ${token}`
-    };
-    if (body) {
-      headers['Content-Type'] = 'application/json';
+  // Deduplicate in-flight identical GET requests
+  const dedupeKey = (method === 'GET' && !body) ? `GET:${endpoint}` : null;
+  if (dedupeKey) {
+    const cached = _getCache.get(dedupeKey);
+    if (cached && Date.now() - cached.ts < _CACHE_TTL) {
+      return cached.data;
     }
+    if (_pendingRequests.has(dedupeKey)) {
+      return _pendingRequests.get(dedupeKey);
+    }
+  }
 
-    const options = {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : null,
-      cache: 'no-store'
-    };
+  const requestPromise = (async () => {
+    try {
+      const headers = {
+        'Authorization': `Bearer ${token}`
+      };
+      if (body && !(body instanceof FormData)) {
+        headers['Content-Type'] = 'application/json';
+      }
 
-    console.log(`[API CALL] fetching ${API_URL}${endpoint}`);
-    const response = await fetch(`${API_URL}${endpoint}`, options);
-    console.log(`[API CALL] response status for ${endpoint}: ${response.status}`);
+      const options = {
+        method,
+        headers,
+        body: body instanceof FormData ? body : (body ? JSON.stringify(body) : null),
+        cache: 'no-store'
+      };
+
+      const response = await fetch(`${API_URL}${endpoint}`, options);
 
     if (!response.ok) {
       if (response.status === 401) {
@@ -383,21 +397,45 @@ async function apiCall(endpoint, method = 'GET', body = null) {
       throw apiErr;
     }
 
-    return await response.json();
+    const data = await response.json();
+
+    if (dedupeKey) {
+      _getCache.set(dedupeKey, { data, ts: Date.now() });
+      if (_getCache.size > 50) {
+        const now = Date.now();
+        for (const [k, v] of _getCache) {
+          if (now - v.ts > _CACHE_TTL * 2) _getCache.delete(k);
+        }
+      }
+    }
+
+    return data;
   } catch (err) {
     if (err.isApiError) {
-      console.error(`[API CALL] api error for ${endpoint}:`, err);
       throw err;
     }
-    console.warn(`[API CALL] network error for ${endpoint}: ${err.message}. Switching to offline mode.`);
-    if (!token || token === 'local_fallback_token') {
+    // Only switch to offline mode for real network failures (server unreachable)
+    const isRealNetworkError = err.message && (
+      err.message.includes('Failed to fetch') ||
+      err.message.includes('NetworkError') ||
+      err.message.includes('ERR_NETWORK') ||
+      err.name === 'TypeError'
+    );
+    if (isRealNetworkError) {
+      console.warn(`[API CALL] network error for ${endpoint}: ${err.message}. Switching to offline mode.`);
       localStorage.setItem('vistay_mode', 'local');
       localStorage.setItem('vistay_offline_warning', '1');
+      const offlineBanner = document.getElementById('offlineAlertBanner');
+      if (offlineBanner) offlineBanner.style.display = 'block';
     }
-    const offlineBanner = document.getElementById('offlineAlertBanner');
-    if (offlineBanner) offlineBanner.style.display = 'block';
     return handleLocalMockCall(endpoint, method, body);
+  } finally {
+    if (dedupeKey) _pendingRequests.delete(dedupeKey);
   }
+  })();
+
+  if (dedupeKey) _pendingRequests.set(dedupeKey, requestPromise);
+  return requestPromise;
 }
 
 // ===== LOCAL SIMULATION DATABASE (OFFLINE MODE) =====
@@ -417,91 +455,134 @@ const MOCK_STAFF = [
 ];
 
 const roomTypeByCodeMap = {
-  'R6A-0505': '1 ngủ', 'R6A-2806': '1 ngủ', 'S1-0405': '1 ngủ', 'S1-0505': '1 ngủ', 'S1-0905': '1 ngủ',
-  'S1-1105': '1 ngủ', 'S1-1605': '1 ngủ', 'S1-1705': '1 ngủ', 'S1-1905': '1 ngủ', 'S1-2105': '1 ngủ',
-  'S1-2305': '1 ngủ', 'S1-2405': '1 ngủ', 'S1-2505': '1 ngủ', 'S1-2705': '1 ngủ', 'S1-3105': '1 ngủ',
-  'S2-0610': '1 ngủ', 'S2-1110': '1 ngủ', 'S2-1111': '1 ngủ', 'S2-1512': '1 ngủ', 'S2-1712': '1 ngủ',
-  'S2-2512': '1 ngủ', 'S2-2810': '1 ngủ', 'S2-3210': '1 ngủ', 'S2-3810': '1 ngủ', 'S2-3812': '1 ngủ',
-  'S3-0511': '1 ngủ', 'S3-1012': '1 ngủ', 'S3-15A12': '1 ngủ', 'S3-1811': '1 ngủ', 'S3-2012': '1 ngủ',
-  'S3-2412': '1 ngủ', 'S3-2712': '1 ngủ', 'S3-2911': '1 ngủ', 'S3-3411': '1 ngủ', 'S3-3512': '1 ngủ',
-  'R4-2519': '2 ngủ', 'R5-2423': '2 ngủ', 'S1-2405A': '2 ngủ', 'S1-2505A': '2 ngủ', 'S1-2809': '2 ngủ',
-  'S2-0401': '2 ngủ', 'S2-0501': '2 ngủ', 'S2-0715': '2 ngủ', 'S2-0908': '2 ngủ', 'S2-11A11': '2 ngủ',
-  'S2-1511A': '2 ngủ', 'S2-1808': '2 ngủ', 'S2-1901': '2 ngủ', 'S2-2117': '2 ngủ', 'S2-2211A': '2 ngủ',
-  'S2-2411': '2 ngủ', 'S2-2811A': '2 ngủ', 'S2-2916': '2 ngủ', 'S2-3301': '2 ngủ', 'S2-3316': '2 ngủ',
-  'S2-3411A': '2 ngủ', 'S2-3501': '2 ngủ', 'S2-3517': '2 ngủ', 'S2-3608': '2 ngủ', 'S2-3708': '2 ngủ',
-  'S2-3811A': '2 ngủ', 'S2-3816': '2 ngủ', 'S2-3908': '2 ngủ', 'S3-0715': '2 ngủ', 'S3-0810': '2 ngủ',
-  'S3-0908': '2 ngủ', 'S3-1001': '2 ngủ', 'S3-15A08A': '2 ngủ', 'S3-1616': '2 ngủ', 'S3-1701': '2 ngủ',
-  'S3-1901': '2 ngủ', 'S3-2301': '2 ngủ', 'S3-3001': '2 ngủ', 'S3-3015': '2 ngủ', 'S3-3316': '2 ngủ',
-  'B-2102': '3 ngủ', 'S1-0508': '3 ngủ', 'S2-1220': '3 ngủ', 'S3-2406': '3 ngủ', 'S3-2909': '3 ngủ',
-  'S2-3420': '3 ngủ', 'S3-3702': '3 ngủ', 'S3-3906': '3 ngủ',
-  'S2-2106': '4 ngủ', 'S3-3918': '4 ngủ'
+  'S1-0405': '1 ngủ', 'S1-0505': '1 ngủ', 'S1-0905': '1 ngủ', 'S1-1105': '1 ngủ', 'S1-1605': '1 ngủ',
+  'S1-1705': '1 ngủ', 'S1-1905': '1 ngủ', 'S1-2105': '1 ngủ', 'S1-2305': '1 ngủ', 'S1-2405': '1 ngủ',
+  'S1-2505': '1 ngủ', 'S1-2705': '1 ngủ', 'S1-3105': '1 ngủ',
+  'S1-2405A': '2 ngủ', 'S1-2505A': '2 ngủ', 'S1-2809': '2 ngủ', 'S1-1208A': '2 ngủ',
+  'S1-0508': '3 ngủ',
+  'S2-0401': '2 ngủ', 'S2-0501': '2 ngủ', 'S2-0610': '1 ngủ', 'S2-0715': '2 ngủ', 'S2-0908': '2 ngủ',
+  'S2-1110': '1 ngủ', 'S2-1111': '1 ngủ', 'S2-11A11': '2 ngủ', 'S2-11A12': '1 ngủ', 'S2-11A08': '2 ngủ',
+  'S2-1209': '2 ngủ', 'S2-1220': '3 ngủ', 'S2-1511A': '2 ngủ', 'S2-1512': '1 ngủ', 'S2-15A11': '2 ngủ',
+  'S2-1712': '1 ngủ', 'S2-1808': '2 ngủ', 'S2-1901': '2 ngủ', 'S2-2106': '4 ngủ', 'S2-2117': '2 ngủ',
+  'S2-2211A': '2 ngủ', 'S2-2411': '2 ngủ', 'S2-2512': '1 ngủ', 'S2-2810': '1 ngủ', 'S2-2811A': '2 ngủ',
+  'S2-2916': '2 ngủ', 'S2-3210': '1 ngủ', 'S2-3301': '2 ngủ', 'S2-3316': '2 ngủ', 'S2-3411A': '2 ngủ',
+  'S2-3420': '3 ngủ', 'S2-3501': '2 ngủ', 'S2-3517': '2 ngủ', 'S2-3608': '2 ngủ', 'S2-3612': '1 ngủ',
+  'S2-3708': '2 ngủ', 'S2-3810': '1 ngủ', 'S2-3811A': '2 ngủ', 'S2-3812': '1 ngủ', 'S2-3816': '2 ngủ',
+  'S2-3908': '2 ngủ',
+  'S3-0511': '1 ngủ', 'S3-0715': '2 ngủ', 'S3-0810': '2 ngủ', 'S3-0908': '2 ngủ', 'S3-1001': '2 ngủ',
+  'S3-1012': '1 ngủ', 'S3-15A08A': '2 ngủ', 'S3-15A12': '1 ngủ', 'S3-1616': '2 ngủ', 'S3-1701': '2 ngủ',
+  'S3-1811': '1 ngủ', 'S3-1901': '2 ngủ', 'S3-2012': '1 ngủ', 'S3-2301': '2 ngủ', 'S3-2406': '3 ngủ',
+  'S3-2412': '1 ngủ', 'S3-2712': '1 ngủ', 'S3-2909': '3 ngủ', 'S3-2911': '1 ngủ', 'S3-3001': '2 ngủ',
+  'S3-3015': '2 ngủ', 'S3-3316': '2 ngủ', 'S3-3409': '1 ngủ', 'S3-3411': '1 ngủ', 'S3-3511': '1 ngủ',
+  'S3-3512': '1 ngủ', 'S3-3612': '1 ngủ', 'S3-3702': '3 ngủ', 'S3-3808A': '2 ngủ', 'S3-3906': '3 ngủ',
+  'S3-3918': '4 ngủ',
+  'B-2102': '3 ngủ',
+  'R4-2519': '2 ngủ', 'R5-2423': '2 ngủ', 'R6A-0505': '1 ngủ', 'R6A-2806': '1 ngủ'
 };
 
 const PROVIDED_ROOMS = [
-  { id: 1, code: 'S1-0505', building: 'S1', password: '000555', is_samsung: true, status: 'available' },
-  { id: 2, code: 'S1-0508', building: 'S1', password: '585868', is_samsung: true, status: 'available' },
-  { id: 3, code: 'S1-0905', building: 'S1', password: '730399', is_samsung: true, status: 'available' },
-  { id: 4, code: 'S1-1105', building: 'S1', password: '220704', is_samsung: false, status: 'available' },
-  { id: 5, code: 'S1-1605', building: 'S1', password: '166.666', is_samsung: false, status: 'available' },
-  { id: 6, code: 'S1-1705', building: 'S1', password: '356835', is_samsung: false, status: 'available' },
-  { id: 7, code: 'S1-1905', building: 'S1', password: '199.999', is_samsung: true, status: 'available' },
-  { id: 8, code: 'S1-2105', building: 'S1', password: '222111', is_samsung: false, status: 'available' },
-  { id: 9, code: 'S1-2305', building: 'S1', password: '160.524', is_samsung: false, status: 'available' },
-  { id: 10, code: 'S1-2405', building: 'S1', password: '122.537', is_samsung: true, status: 'available' },
-  { id: 11, code: 'S1-2405A', building: 'S1', password: '456789', is_samsung: true, status: 'available' },
-  { id: 12, code: 'S1-2505A', building: 'S1', password: '000555', is_samsung: true, status: 'available' },
-  { id: 13, code: 'S1-2705', building: 'S1', password: '222777', is_samsung: true, status: 'available' },
-  { id: 14, code: 'S1-3105', building: 'S1', password: '333555', is_samsung: true, status: 'available' },
+  // Tòa S1
+  { id: 1, code: 'S1-0405', building: 'S1', password: '040505', is_samsung: false, status: 'available' },
+  { id: 2, code: 'S1-0505', building: 'S1', password: '000555', is_samsung: true, status: 'available' },
+  { id: 3, code: 'S1-0508', building: 'S1', password: '585868', is_samsung: true, status: 'available' },
+  { id: 4, code: 'S1-0905', building: 'S1', password: '730399', is_samsung: true, status: 'available' },
+  { id: 5, code: 'S1-1105', building: 'S1', password: '220704', is_samsung: false, status: 'available' },
+  { id: 6, code: 'S1-1605', building: 'S1', password: '166.666', is_samsung: false, status: 'available' },
+  { id: 7, code: 'S1-1705', building: 'S1', password: '356835', is_samsung: false, status: 'available' },
+  { id: 8, code: 'S1-1905', building: 'S1', password: '199.999', is_samsung: true, status: 'available' },
+  { id: 9, code: 'S1-2105', building: 'S1', password: '222111', is_samsung: false, status: 'available' },
+  { id: 10, code: 'S1-2305', building: 'S1', password: '160.524', is_samsung: false, status: 'available' },
+  { id: 11, code: 'S1-2405', building: 'S1', password: '122.537', is_samsung: true, status: 'available' },
+  { id: 12, code: 'S1-2405A', building: 'S1', password: '456789', is_samsung: true, status: 'available' },
+  { id: 13, code: 'S1-2505', building: 'S1', password: '123456', is_samsung: true, status: 'available' },
+  { id: 14, code: 'S1-2505A', building: 'S1', password: '000555', is_samsung: true, status: 'available' },
+  { id: 15, code: 'S1-2705', building: 'S1', password: '222777', is_samsung: true, status: 'available' },
+  { id: 16, code: 'S1-2809', building: 'S1', password: '280900', is_samsung: false, status: 'available' },
+  { id: 17, code: 'S1-3105', building: 'S1', password: '333555', is_samsung: true, status: 'available' },
+  { id: 18, code: 'S1-1208A', building: 'S1', password: '123456', is_samsung: false, status: 'available' },
 
-  { id: 15, code: 'S2-0610', building: 'S2', password: '760.200', is_samsung: true, status: 'available' },
-  { id: 16, code: 'S2-0715', building: 'S2', password: '686868', is_samsung: false, status: 'available' },
-  { id: 17, code: 'S2-1110', building: 'S2', password: '101010', is_samsung: true, status: 'available' },
-  { id: 18, code: 'S2-1111', building: 'S2', password: '838688', is_samsung: true, status: 'available' },
-  { id: 19, code: 'S2-11A11', building: 'S2', password: '111168', is_samsung: false, status: 'available' },
-  { id: 20, code: 'S2-1220', building: 'S2', password: '111222', is_samsung: false, status: 'available' },
-  { id: 21, code: 'S2-1511A', building: 'S2', password: '688688', is_samsung: true, status: 'available' },
-  { id: 22, code: 'S2-1512', building: 'S2', password: '111222', is_samsung: true, status: 'available' },
-  { id: 23, code: 'S2-1712', building: 'S2', password: '320.500', is_samsung: true, status: 'available' },
-  { id: 24, code: 'S2-1901', building: 'S2', password: '009966', is_samsung: false, status: 'available' },
-  { id: 25, code: 'S2-2106', building: 'S2', password: '222111', is_samsung: false, status: 'available' },
-  { id: 26, code: 'S2-2211A', building: 'S2', password: '668868', is_samsung: true, status: 'available' },
-  { id: 27, code: 'S2-2411', building: 'S2', password: '135246#', is_samsung: true, status: 'available' },
-  { id: 28, code: 'S2-2512', building: 'S2', password: '225588', is_samsung: true, status: 'available' },
-  { id: 29, code: 'S2-2916', building: 'S2', password: '929268', is_samsung: true, status: 'available' },
-  { id: 30, code: 'S2-3210', building: 'S2', password: '333222', is_samsung: true, status: 'available' },
-  { id: 31, code: 'S2-3301', building: 'S2', password: '333111', is_samsung: false, status: 'available' },
-  { id: 32, code: 'S2-3316', building: 'S2', password: '333366', is_samsung: true, status: 'available' },
-  { id: 33, code: 'S2-3411A', building: 'S2', password: '201099', is_samsung: false, status: 'available' },
-  { id: 34, code: 'S2-3420', building: 'S2', password: '202002', is_samsung: false, status: 'available' },
-  { id: 35, code: 'S2-3517', building: 'S2', password: '353568', is_samsung: true, status: 'available' },
-  { id: 36, code: 'S2-3608', building: 'S2', password: '363636', is_samsung: false, status: 'available' },
-  { id: 37, code: 'S2-3810', building: 'S2', password: '383838', is_samsung: true, status: 'available' },
-  { id: 38, code: 'S2-3812', building: 'S2', password: '101615', is_samsung: true, status: 'available' },
-  { id: 39, code: 'S2-3816', building: 'S2', password: '383883', is_samsung: true, status: 'available' },
-  { id: 40, code: 'S2-3908', building: 'S2', password: '999888', is_samsung: false, status: 'available' },
+  // Tòa S2
+  { id: 19, code: 'S2-0401', building: 'S2', password: '040100', is_samsung: false, status: 'available' },
+  { id: 20, code: 'S2-0501', building: 'S2', password: '050100', is_samsung: false, status: 'available' },
+  { id: 21, code: 'S2-0610', building: 'S2', password: '760.200', is_samsung: true, status: 'available' },
+  { id: 22, code: 'S2-0715', building: 'S2', password: '686868', is_samsung: false, status: 'available' },
+  { id: 23, code: 'S2-0908', building: 'S2', password: '090800', is_samsung: false, status: 'available' },
+  { id: 24, code: 'S2-1110', building: 'S2', password: '101010', is_samsung: true, status: 'available' },
+  { id: 25, code: 'S2-1111', building: 'S2', password: '838688', is_samsung: true, status: 'available' },
+  { id: 26, code: 'S2-11A08', building: 'S2', password: '123456', is_samsung: false, status: 'available' },
+  { id: 27, code: 'S2-11A11', building: 'S2', password: '111168', is_samsung: false, status: 'available' },
+  { id: 28, code: 'S2-11A12', building: 'S2', password: '123456', is_samsung: false, status: 'available' },
+  { id: 29, code: 'S2-1209', building: 'S2', password: '123456', is_samsung: false, status: 'available' },
+  { id: 30, code: 'S2-1220', building: 'S2', password: '111222', is_samsung: false, status: 'available' },
+  { id: 31, code: 'S2-1511A', building: 'S2', password: '688688', is_samsung: true, status: 'available' },
+  { id: 32, code: 'S2-1512', building: 'S2', password: '111222', is_samsung: true, status: 'available' },
+  { id: 33, code: 'S2-15A11', building: 'S2', password: '123456', is_samsung: false, status: 'available' },
+  { id: 34, code: 'S2-1712', building: 'S2', password: '320.500', is_samsung: true, status: 'available' },
+  { id: 35, code: 'S2-1808', building: 'S2', password: '180800', is_samsung: false, status: 'available' },
+  { id: 36, code: 'S2-1901', building: 'S2', password: '009966', is_samsung: false, status: 'available' },
+  { id: 37, code: 'S2-2106', building: 'S2', password: '222111', is_samsung: false, status: 'available' },
+  { id: 38, code: 'S2-2117', building: 'S2', password: '211700', is_samsung: false, status: 'available' },
+  { id: 39, code: 'S2-2211A', building: 'S2', password: '668868', is_samsung: true, status: 'available' },
+  { id: 40, code: 'S2-2411', building: 'S2', password: '135246#', is_samsung: true, status: 'available' },
+  { id: 41, code: 'S2-2512', building: 'S2', password: '225588', is_samsung: true, status: 'available' },
+  { id: 42, code: 'S2-2810', building: 'S2', password: '281000', is_samsung: false, status: 'available' },
+  { id: 43, code: 'S2-2811A', building: 'S2', password: '281100', is_samsung: false, status: 'available' },
+  { id: 44, code: 'S2-2916', building: 'S2', password: '929268', is_samsung: true, status: 'available' },
+  { id: 45, code: 'S2-3210', building: 'S2', password: '333222', is_samsung: true, status: 'available' },
+  { id: 46, code: 'S2-3301', building: 'S2', password: '333111', is_samsung: false, status: 'available' },
+  { id: 47, code: 'S2-3316', building: 'S2', password: '333366', is_samsung: true, status: 'available' },
+  { id: 48, code: 'S2-3411A', building: 'S2', password: '201099', is_samsung: false, status: 'available' },
+  { id: 49, code: 'S2-3420', building: 'S2', password: '202002', is_samsung: false, status: 'available' },
+  { id: 50, code: 'S2-3501', building: 'S2', password: '350100', is_samsung: false, status: 'available' },
+  { id: 51, code: 'S2-3517', building: 'S2', password: '353568', is_samsung: true, status: 'available' },
+  { id: 52, code: 'S2-3608', building: 'S2', password: '363636', is_samsung: false, status: 'available' },
+  { id: 53, code: 'S2-3612', building: 'S2', password: '123456', is_samsung: false, status: 'available' },
+  { id: 54, code: 'S2-3708', building: 'S2', password: '370800', is_samsung: false, status: 'available' },
+  { id: 55, code: 'S2-3810', building: 'S2', password: '383838', is_samsung: true, status: 'available' },
+  { id: 56, code: 'S2-3811A', building: 'S2', password: '381100', is_samsung: false, status: 'available' },
+  { id: 57, code: 'S2-3812', building: 'S2', password: '101615', is_samsung: true, status: 'available' },
+  { id: 58, code: 'S2-3816', building: 'S2', password: '383883', is_samsung: true, status: 'available' },
+  { id: 59, code: 'S2-3908', building: 'S2', password: '999888', is_samsung: false, status: 'available' },
 
-  { id: 41, code: 'S3-0908', building: 'S3', password: '999888', is_samsung: false, status: 'available' },
-  { id: 42, code: 'S3-15A12', building: 'S3', password: '111555', is_samsung: true, status: 'available' },
-  { id: 43, code: 'S3-1701', building: 'S3', password: '240302', is_samsung: false, status: 'available' },
-  { id: 44, code: 'S3-1616', building: 'S3', password: '382838', is_samsung: false, status: 'available' },
-  { id: 45, code: 'S3-1811', building: 'S3', password: '333666', is_samsung: true, status: 'available' },
-  { id: 46, code: 'S3-1901', building: 'S3', password: '111119', is_samsung: false, status: 'available' },
-  { id: 47, code: 'S3-2012', building: 'S3', password: '111222', is_samsung: true, status: 'available' },
-  { id: 48, code: 'S3-2412', building: 'S3', password: '333666', is_samsung: true, status: 'available' },
-  { id: 49, code: 'S3-2909', building: 'S3', password: '000999', is_samsung: false, status: 'available' },
-  { id: 50, code: 'S3-3015', building: 'S3', password: '305305', is_samsung: true, status: 'available' },
-  { id: 51, code: 'S3-3409', building: 'S3', password: '399999', is_samsung: false, status: 'available' },
-  { id: 52, code: 'S3-3411', building: 'S3', password: '123468', is_samsung: true, status: 'available' },
-  { id: 53, code: 'S3-3511', building: 'S3', password: '351168', is_samsung: true, status: 'available' },
-  { id: 54, code: 'S3-3512', building: 'S3', password: '333.222', is_samsung: true, status: 'available' },
-  { id: 55, code: 'S3-3612', building: 'S3', password: '363663', is_samsung: true, status: 'available' },
-  { id: 56, code: 'S3-3906', building: 'S3', password: '336699', is_samsung: false, status: 'available' },
-  { id: 57, code: 'S3-3918', building: 'S3', password: '838386', is_samsung: false, status: 'available' },
+  // Tòa S3
+  { id: 60, code: 'S3-0511', building: 'S3', password: '051100', is_samsung: false, status: 'available' },
+  { id: 61, code: 'S3-0715', building: 'S3', password: '071500', is_samsung: false, status: 'available' },
+  { id: 62, code: 'S3-0810', building: 'S3', password: '081000', is_samsung: false, status: 'available' },
+  { id: 63, code: 'S3-0908', building: 'S3', password: '999888', is_samsung: false, status: 'available' },
+  { id: 64, code: 'S3-1001', building: 'S3', password: '100100', is_samsung: false, status: 'available' },
+  { id: 65, code: 'S3-1012', building: 'S3', password: '101200', is_samsung: false, status: 'available' },
+  { id: 66, code: 'S3-15A08A', building: 'S3', password: '150808', is_samsung: false, status: 'available' },
+  { id: 67, code: 'S3-15A12', building: 'S3', password: '111555', is_samsung: true, status: 'available' },
+  { id: 68, code: 'S3-1616', building: 'S3', password: '382838', is_samsung: false, status: 'available' },
+  { id: 69, code: 'S3-1701', building: 'S3', password: '240302', is_samsung: false, status: 'available' },
+  { id: 70, code: 'S3-1811', building: 'S3', password: '333666', is_samsung: true, status: 'available' },
+  { id: 71, code: 'S3-1901', building: 'S3', password: '111119', is_samsung: false, status: 'available' },
+  { id: 72, code: 'S3-2012', building: 'S3', password: '111222', is_samsung: true, status: 'available' },
+  { id: 73, code: 'S3-2301', building: 'S3', password: '230100', is_samsung: false, status: 'available' },
+  { id: 74, code: 'S3-2406', building: 'S3', password: '240600', is_samsung: false, status: 'available' },
+  { id: 75, code: 'S3-2412', building: 'S3', password: '333666', is_samsung: true, status: 'available' },
+  { id: 76, code: 'S3-2712', building: 'S3', password: '271200', is_samsung: false, status: 'available' },
+  { id: 77, code: 'S3-2909', building: 'S3', password: '000999', is_samsung: false, status: 'available' },
+  { id: 78, code: 'S3-2911', building: 'S3', password: '291100', is_samsung: false, status: 'available' },
+  { id: 79, code: 'S3-3001', building: 'S3', password: '300100', is_samsung: false, status: 'available' },
+  { id: 80, code: 'S3-3015', building: 'S3', password: '305305', is_samsung: true, status: 'available' },
+  { id: 81, code: 'S3-3316', building: 'S3', password: '331600', is_samsung: false, status: 'available' },
+  { id: 82, code: 'S3-3409', building: 'S3', password: '399999', is_samsung: false, status: 'available' },
+  { id: 83, code: 'S3-3411', building: 'S3', password: '123468', is_samsung: true, status: 'available' },
+  { id: 84, code: 'S3-3511', building: 'S3', password: '351168', is_samsung: true, status: 'available' },
+  { id: 85, code: 'S3-3512', building: 'S3', password: '333.222', is_samsung: true, status: 'available' },
+  { id: 86, code: 'S3-3612', building: 'S3', password: '363663', is_samsung: true, status: 'available' },
+  { id: 87, code: 'S3-3702', building: 'S3', password: '370200', is_samsung: false, status: 'available' },
+  { id: 88, code: 'S3-3808A', building: 'S3', password: '123456', is_samsung: false, status: 'available' },
+  { id: 89, code: 'S3-3906', building: 'S3', password: '336699', is_samsung: false, status: 'available' },
+  { id: 90, code: 'S3-3918', building: 'S3', password: '838386', is_samsung: false, status: 'available' },
 
-  { id: 58, code: 'B-2102', building: 'B', password: '456456*', is_samsung: false, status: 'available' },
-
-  { id: 59, code: 'R6A-0505', building: 'R6A', password: '111.000.222.33', is_samsung: false, status: 'available' },
-  { id: 60, code: 'R6A-2806', building: 'R6A', password: '2222.333.333', is_samsung: false, status: 'available' }
+  // Tòa khác
+  { id: 91, code: 'B-2102', building: 'B', password: '456456*', is_samsung: false, status: 'available' },
+  { id: 92, code: 'R4-2519', building: 'HCM', password: '251900', is_samsung: false, status: 'available' },
+  { id: 93, code: 'R5-2423', building: 'HCM', password: '242300', is_samsung: false, status: 'available' },
+  { id: 94, code: 'R6A-0505', building: 'R6A', password: '111.000.222.33', is_samsung: false, status: 'available' },
+  { id: 95, code: 'R6A-2806', building: 'R6A', password: '2222.333.333', is_samsung: false, status: 'available' }
 ].map(r => ({ ...r, room_type: roomTypeByCodeMap[r.code] || '2 ngủ' }));
 
 function getLocalData(key, defaultVal) {
@@ -517,36 +598,18 @@ function saveLocalData(key, data) {
   localStorage.setItem(key, JSON.stringify(data));
 }
 
-// Generate remaining 90 placeholder rooms to reach 150 total rooms
 function initMockDatabase() {
   getLocalData('vistay_mock_staff', MOCK_STAFF);
 
   let currentRooms = getLocalData('vistay_mock_apartments', []);
-  // Refresh if stale (missing room_type on first item)
-  if (currentRooms.length > 0 && !currentRooms[0].room_type) {
+  // Refresh if stale (missing room_type on first item) or wrong count
+  if (currentRooms.length > 0 && (!currentRooms[0].room_type || currentRooms.length !== PROVIDED_ROOMS.length)) {
     localStorage.removeItem('vistay_mock_apartments');
     currentRooms = [];
   }
 
   if (currentRooms.length === 0) {
-    const allMockRooms = [...PROVIDED_ROOMS];
-    const missing = 150 - allMockRooms.length;
-    const buildingsList = ['S1', 'S2', 'S3'];
-    const roomTypeDistribution = ['1 ngủ', '1 ngủ', '2 ngủ', '2 ngủ', '2 ngủ', '3 ngủ', '4 ngủ'];
-    for (let i = 1; i <= missing; i++) {
-      const b = buildingsList[(i - 1) % buildingsList.length];
-      const rType = roomTypeDistribution[(i - 1) % roomTypeDistribution.length];
-      allMockRooms.push({
-        id: 60 + i,
-        code: `${b}-P${String(i).padStart(3, '0')}`,
-        building: b,
-        password: '???',
-        is_samsung: false,
-        status: 'available',
-        room_type: rType
-      });
-    }
-    saveLocalData('vistay_mock_apartments', allMockRooms);
+    saveLocalData('vistay_mock_apartments', [...PROVIDED_ROOMS]);
   }
 
   getLocalData('vistay_mock_work', []);
@@ -601,7 +664,7 @@ function handleLocalMockCall(endpoint, method, body) {
       // Mock status history data
       const params = new URLSearchParams(endpoint.split('?')[1] || '');
       const mode = params.get('mode') || 'hourly';
-      const total = localRooms.length || 150;
+      const total = localRooms.length || PROVIDED_ROOMS.length;
       const mockData = [];
       if (mode === 'hourly') {
         for (let h = 24; h >= 0; h--) {
@@ -3222,22 +3285,19 @@ async function initializePage() {
       headers: { 'Authorization': `Bearer ${token}` },
       cache: 'no-store'
     }).then(res => {
-      if (res.ok) {
-        console.log("Server is online. Switching back to backend mode.");
-        localStorage.setItem('vistay_mode', 'backend');
-        const offlineBanner = document.getElementById('offlineAlertBanner');
-        if (offlineBanner) offlineBanner.style.display = 'none';
-        
-        if (token === 'local_fallback_token') {
-          localStorage.removeItem('vistay_token');
-          localStorage.removeItem('vistay_user');
-          window.location.href = 'index.html';
-        } else {
-          // Khởi chạy lại để lấy dữ liệu backend trực tiếp mà không cần reload trang
-          initializePage();
-        }
+      // Server responded (even with error) — it's reachable
+      console.log("Server is reachable (status " + res.status + "). Switching back to backend mode.");
+      localStorage.setItem('vistay_mode', 'backend');
+      const offlineBanner = document.getElementById('offlineAlertBanner');
+      if (offlineBanner) offlineBanner.style.display = 'none';
+      
+      if (token === 'local_fallback_token') {
+        localStorage.removeItem('vistay_token');
+        localStorage.removeItem('vistay_user');
+        localStorage.removeItem('vistay_mode');
+        window.location.href = 'index.html';
       } else {
-        console.log("Server returned error. Staying in local mode.");
+        initializePage();
       }
     }).catch(err => {
       console.log("Server is offline. Staying in local mode.");
@@ -4755,11 +4815,15 @@ const activityFeed = [];
 
 async function loadDashboardTab() {
   try {
-    const [apartments, stats, workToday] = await Promise.all([
+    const [apartmentsResult, statsResult, workTodayResult] = await Promise.allSettled([
       apiCall('/apartments'),
       apiCall('/apartments/stats'),
       apiCall('/work/today')
     ]);
+
+    const apartments = apartmentsResult.status === 'fulfilled' ? apartmentsResult.value : [];
+    const stats = statsResult.status === 'fulfilled' ? statsResult.value : { totals: {}, byBuilding: [] };
+    const workToday = workTodayResult.status === 'fulfilled' ? workTodayResult.value : [];
 
     // Stats cards
     const available = apartments.filter(r => r.status === 'available').length;

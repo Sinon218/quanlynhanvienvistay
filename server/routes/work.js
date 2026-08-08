@@ -9,6 +9,7 @@ const { recordStatusSnapshot } = require('../statusHistory');
 const { sendEventToAll } = require('../sse');
 const path = require('path');
 const { deletePhotosByDate, deletePhotosByDateRange, deletePhotosByStaff } = require('../services/photoCleanup');
+const { getLocalDate, ensureNotificationsTable } = require('../utils');
 
 const router = express.Router();
 
