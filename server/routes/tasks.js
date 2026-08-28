@@ -2,13 +2,23 @@
 // Tasks Routes — Custom Task Assignment
 // ===================================================================
 const express = require('express');
-const { sql, getPool, queryDb } = require('../db');
+const { sql, getPool, queryDb, runQuery } = require('../db');
 const { authenticate, requireAdmin, requireManagerOrAdmin } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const { sendEventToAll } = require('../sse');
 const { getLocalDate } = require('../utils');
 
 const router = express.Router();
+
+// Middleware: Validate :id là số nguyên hợp lệ
+function validateId(req, res, next) {
+  const id = parseInt(req.params.id);
+  if (isNaN(id) || id <= 0) {
+    return res.status(400).json({ error: 'ID không hợp lệ.' });
+  }
+  req.params.id = id;
+  next();
+}
 
 const { TECH_PRICES } = require('../config');
 const TECH_LEVEL_PRICES = TECH_PRICES;
@@ -25,7 +35,7 @@ router.post('/', authenticate, requireManagerOrAdmin, async (req, res) => {
     const level = tech_level ? parseInt(tech_level) : null;
     const price = level ? (TECH_LEVEL_PRICES[level] || null) : null;
 
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       await pool.request()
         .input('staffId', sql.Int, staff_id)
         .input('title', sql.NVarChar, title.trim())
@@ -59,14 +69,14 @@ router.post('/self-assign', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Tài khoản không liên kết với nhân viên.' });
     }
 
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       // Kiểm tra NV có tech_role >= 1 không
       const staffCheck = await pool.request()
         .input('staffId', sql.Int, req.user.staffId)
         .query('SELECT tech_role FROM Staff WHERE id = @staffId');
 
       if (staffCheck.recordset.length === 0 || staffCheck.recordset[0].tech_role < 1) {
-        return res.status(403).json({ error: 'Chỉ nhân viên kỹ thuật mới có thể tự giao việc.' });
+        throw Object.assign(new Error('Chỉ nhân viên kỹ thuật mới có thể tự giao việc.'), { statusCode: 403 });
       }
 
       const date = getLocalDate();
@@ -91,7 +101,8 @@ router.post('/self-assign', authenticate, async (req, res) => {
     res.json({ message: 'Tạo công việc kỹ thuật thành công.' });
   } catch (err) {
     console.error('Self-assign task error:', err);
-    res.status(500).json({ error: 'Lỗi server.' });
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ error: statusCode === 500 ? 'Lỗi server.' : err.message });
   }
 });
 
@@ -100,7 +111,7 @@ router.get('/today', authenticate, async (req, res) => {
   try {
     const date = getLocalDate();
 
-    const result = await queryDb(async (pool) => {
+    const result = await runQuery(async (pool) => {
       const request = pool.request();
       let query = `
         SELECT t.*, s.name as staff_name
@@ -129,7 +140,7 @@ router.get('/today', authenticate, async (req, res) => {
 
 // Helper check task ownership
 async function checkOwnership(taskId, staffId, res) {
-  const result = await queryDb(async (pool) => {
+  const result = await runQuery(async (pool) => {
     return await pool.request()
       .input('id', sql.Int, taskId)
       .input('staffId', sql.Int, staffId)
@@ -144,7 +155,7 @@ async function checkOwnership(taskId, staffId, res) {
 }
 
 // PUT /api/tasks/:id/accept — Chấp nhận nhận việc
-router.put('/:id/accept', authenticate, async (req, res) => {
+router.put('/:id/accept', authenticate, validateId, async (req, res) => {
   try {
     const isEmployee = req.user.role === 'employee';
     if (isEmployee) {
@@ -152,7 +163,7 @@ router.put('/:id/accept', authenticate, async (req, res) => {
       if (!ok) return;
     }
 
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       await pool.request()
         .input('id', sql.Int, req.params.id)
         .query("UPDATE Tasks SET status = 'accepted' WHERE id = @id");
@@ -167,7 +178,7 @@ router.put('/:id/accept', authenticate, async (req, res) => {
 });
 
 // PUT /api/tasks/:id/reject — Từ chối nhận việc
-router.put('/:id/reject', authenticate, async (req, res) => {
+router.put('/:id/reject', authenticate, validateId, async (req, res) => {
   try {
     const isEmployee = req.user.role === 'employee';
     if (isEmployee) {
@@ -175,7 +186,7 @@ router.put('/:id/reject', authenticate, async (req, res) => {
       if (!ok) return;
     }
 
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       await pool.request()
         .input('id', sql.Int, req.params.id)
         .query("UPDATE Tasks SET status = 'rejected' WHERE id = @id");
@@ -191,7 +202,7 @@ router.put('/:id/reject', authenticate, async (req, res) => {
 
 // PUT /api/tasks/:id/start — Bắt đầu làm việc
 // Nếu task tự giao (is_self_assigned=1) → BẮT BUỘC chụp ảnh lỗi (before_image)
-router.put('/:id/start', authenticate, upload.single('before_photo'), async (req, res) => {
+router.put('/:id/start', authenticate, validateId, upload.single('before_photo'), async (req, res) => {
   try {
     const isEmployee = req.user.role === 'employee';
     let task = null;
@@ -202,7 +213,7 @@ router.put('/:id/start', authenticate, upload.single('before_photo'), async (req
 
     // Nếu chưa lấy task info (admin), lấy để kiểm tra is_self_assigned
     if (!task) {
-      const taskRes = await queryDb(async (pool) => {
+      const taskRes = await runQuery(async (pool) => {
         return await pool.request()
           .input('id', sql.Int, req.params.id)
           .query('SELECT id, status, is_self_assigned FROM Tasks WHERE id = @id');
@@ -220,7 +231,7 @@ router.put('/:id/start', authenticate, upload.single('before_photo'), async (req
       }
 
       const beforeImagePath = `/uploads/${req.file.filename}`;
-      await queryDb(async (pool) => {
+      await runQuery(async (pool) => {
         await pool.request()
           .input('id', sql.Int, req.params.id)
           .input('beforeImage', sql.NVarChar, beforeImagePath)
@@ -232,7 +243,7 @@ router.put('/:id/start', authenticate, upload.single('before_photo'), async (req
     }
 
     // Task thường → không cần ảnh
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       await pool.request()
         .input('id', sql.Int, req.params.id)
         .query("UPDATE Tasks SET status = 'in-progress' WHERE id = @id");
@@ -247,7 +258,7 @@ router.put('/:id/start', authenticate, upload.single('before_photo'), async (req
 });
 
 // PUT /api/tasks/:id/complete — Đã làm xong + Upload ảnh minh chứng
-router.put('/:id/complete', authenticate, upload.single('proof'), async (req, res) => {
+router.put('/:id/complete', authenticate, validateId, upload.single('proof'), async (req, res) => {
   try {
     const isEmployee = req.user.role === 'employee';
     if (isEmployee) {
@@ -261,7 +272,7 @@ router.put('/:id/complete', authenticate, upload.single('proof'), async (req, re
 
     const imagePath = `/uploads/${req.file.filename}`;
 
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       await pool.request()
         .input('id', sql.Int, req.params.id)
         .input('proofImage', sql.NVarChar, imagePath)
@@ -290,7 +301,7 @@ router.get('/stats/:staffId', authenticate, async (req, res) => {
 
     const date = getLocalDate();
 
-    const result = await queryDb(async (pool) => {
+    const result = await runQuery(async (pool) => {
       // Số việc đã hoàn thành hôm nay (completed hoặc approved)
       const today = await pool.request()
         .input('staffId', sql.Int, staffId)
@@ -361,19 +372,19 @@ router.get('/stats/:staffId', authenticate, async (req, res) => {
 });
 
 // PUT /api/tasks/:id/approve — Phê duyệt công việc hoàn thành (Admin/Manager only)
-router.put('/:id/approve', authenticate, requireManagerOrAdmin, async (req, res) => {
+router.put('/:id/approve', authenticate, requireManagerOrAdmin, validateId, async (req, res) => {
   try {
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       const check = await pool.request()
         .input('id', sql.Int, req.params.id)
         .query('SELECT status FROM Tasks WHERE id = @id');
         
       if (check.recordset.length === 0) {
-        return res.status(404).json({ error: 'Không tìm thấy công việc.' });
+        throw Object.assign(new Error('Không tìm thấy công việc.'), { statusCode: 404 });
       }
       
       if (check.recordset[0].status !== 'completed') {
-        return res.status(400).json({ error: 'Chỉ có thể duyệt những công việc đã báo hoàn thành.' });
+        throw Object.assign(new Error('Chỉ có thể duyệt những công việc đã báo hoàn thành.'), { statusCode: 400 });
       }
       
       await pool.request()
@@ -385,29 +396,30 @@ router.put('/:id/approve', authenticate, requireManagerOrAdmin, async (req, res)
     res.json({ message: 'Đã phê duyệt hoàn thành công việc.' });
   } catch (err) {
     console.error('Approve task error:', err);
-    res.status(500).json({ error: 'Lỗi server.' });
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ error: statusCode === 500 ? 'Lỗi server.' : err.message });
   }
 });
 
 // PUT /api/tasks/:id/reject-completed — Từ chối phê duyệt công việc hoàn thành (Admin/Manager only)
-router.put('/:id/reject-completed', authenticate, requireManagerOrAdmin, async (req, res) => {
+router.put('/:id/reject-completed', authenticate, requireManagerOrAdmin, validateId, async (req, res) => {
   try {
     const { reason } = req.body;
     if (!reason || !reason.trim()) {
       return res.status(400).json({ error: 'Vui lòng cung cấp lý do không phê duyệt.' });
     }
 
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       const check = await pool.request()
         .input('id', sql.Int, req.params.id)
         .query('SELECT status FROM Tasks WHERE id = @id');
         
       if (check.recordset.length === 0) {
-        return res.status(404).json({ error: 'Không tìm thấy công việc.' });
+        throw Object.assign(new Error('Không tìm thấy công việc.'), { statusCode: 404 });
       }
       
       if (check.recordset[0].status !== 'completed') {
-        return res.status(400).json({ error: 'Chỉ có thể từ chối những công việc đã báo hoàn thành.' });
+        throw Object.assign(new Error('Chỉ có thể từ chối những công việc đã báo hoàn thành.'), { statusCode: 400 });
       }
       
       // Đặt lại trạng thái về 'accepted' để nhân viên sửa và làm lại
@@ -421,14 +433,15 @@ router.put('/:id/reject-completed', authenticate, requireManagerOrAdmin, async (
     res.json({ message: 'Đã từ chối phê duyệt công việc và gửi lý do phản hồi.' });
   } catch (err) {
     console.error('Reject completed task error:', err);
-    res.status(500).json({ error: 'Lỗi server.' });
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ error: statusCode === 500 ? 'Lỗi server.' : err.message });
   }
 });
 
 // DELETE /api/tasks/:id — Admin/Manager xóa task
-router.delete('/:id', authenticate, requireManagerOrAdmin, async (req, res) => {
+router.delete('/:id', authenticate, requireManagerOrAdmin, validateId, async (req, res) => {
   try {
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       await pool.request()
         .input('id', sql.Int, req.params.id)
         .query('DELETE FROM Tasks WHERE id = @id');

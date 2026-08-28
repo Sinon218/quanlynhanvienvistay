@@ -52,15 +52,15 @@ async function getPool() {
     try {
       const newPool = new sql.ConnectionPool(config);
       newPool.on('error', err => {
-        console.warn('📡 SQL Pool error:', err.message);
+        console.warn('SQL Pool error:', err.message);
         pool = null;
       });
       await newPool.connect();
-      console.log('✅ Connected to SQL Server:', process.env.DB_NAME);
+      console.log('Connected to SQL Server:', process.env.DB_NAME);
       pool = newPool;
       return pool;
     } catch (err) {
-      console.warn(`⚠️ SQL connect attempt ${attempt}/5 failed: ${err.message}`);
+      console.warn(`SQL connect attempt ${attempt}/5 failed: ${err.message}`);
       if (attempt < 5) await new Promise(r => setTimeout(r, 2000 * attempt));
     }
   }
@@ -82,12 +82,55 @@ async function queryDb(queryFn) {
         err.code === 'ECONNRESET'
       );
       if (isConnErr && attempt === 1) {
-        console.warn('📡 Connection lost, reconnecting...');
+        console.warn('Connection lost, reconnecting...');
         pool = null;
         continue;
       }
       throw err;
     }
+  }
+}
+
+// ===================================================================
+// runQuery() — Safe wrapper that prevents double-response crashes
+// ===================================================================
+// Usage in route handlers:
+//
+//   const { runQuery } = require('../db');
+//
+//   router.get('/:id', authenticate, async (req, res) => {
+//     try {
+//       const data = await runQuery(async (pool) => {
+//         const result = await pool.request()
+//           .input('id', sql.Int, req.params.id)
+//           .query('SELECT * FROM Table WHERE id = @id');
+//         if (result.recordset.length === 0) {
+//           throw Object.assign(new Error('Not found'), { statusCode: 404 });
+//         }
+//         return result.recordset[0];
+//       });
+//       res.json(data);
+//     } catch (err) {
+//       res.status(err.statusCode || 500).json({ error: err.message });
+//     }
+//   });
+//
+// RULES:
+//   1. NEVER call res.status().json() inside the runQuery callback
+//   2. THROW errors with statusCode: throw Object.assign(new Error('msg'), { statusCode: 400 })
+//   3. Return data from callback — it becomes the resolved value of runQuery()
+//   4. Catch errors in the route handler and send response there
+// ===================================================================
+async function runQuery(fn) {
+  try {
+    return await queryDb(fn);
+  } catch (err) {
+    // If already has statusCode, re-throw as-is
+    if (err.statusCode) throw err;
+    // Wrap unexpected errors as 500
+    const wrapped = new Error(err.message || 'Lỗi server.');
+    wrapped.statusCode = 500;
+    throw wrapped;
   }
 }
 
@@ -98,4 +141,4 @@ async function closePool() {
   }
 }
 
-module.exports = { sql, getPool, queryDb, closePool };
+module.exports = { sql, getPool, queryDb, runQuery, closePool };

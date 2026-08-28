@@ -101,16 +101,177 @@ body::before {
 .app-container {
   position: relative;
   z-index: 1;
-  max-width: 1200px;
-  margin: 0 auto;
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ===== SIDEBAR ===== */
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 240px;
+  height: 100vh;
+  background: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  z-index: 100;
+  transition: width var(--transition-normal), transform var(--transition-normal);
+  overflow: hidden;
+}
+
+.sidebar.collapsed {
+  width: 64px;
+}
+
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border-color);
+  min-height: 64px;
+}
+
+.sidebar-logo-img {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  object-fit: contain;
+}
+
+.sidebar-logo-fallback {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+}
+
+.sidebar-logo-text {
+  font-size: 1.2rem;
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--text-primary), var(--accent-purple));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  white-space: nowrap;
+}
+
+.sidebar.collapsed .sidebar-logo-text {
+  display: none;
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+}
+
+.sidebar-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+  text-align: left;
+  width: 100%;
+}
+
+.sidebar-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.sidebar-btn.active {
+  background: rgba(139, 92, 246, 0.15);
+  color: var(--accent-purple);
+  box-shadow: inset 3px 0 0 var(--accent-purple);
+}
+
+.sidebar-icon {
+  font-size: 1.1rem;
+  min-width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.sidebar-label {
+  white-space: nowrap;
+}
+
+.sidebar.collapsed .sidebar-label {
+  display: none;
+}
+
+.sidebar.collapsed .sidebar-btn {
+  justify-content: center;
+  padding: 10px;
+}
+
+/* ===== MAIN CONTENT ===== */
+.main-content {
+  flex: 1;
+  margin-left: 240px;
   padding: 24px 20px 60px;
+  transition: margin-left var(--transition-normal);
+  min-width: 0;
+}
+
+.sidebar.collapsed ~ .main-content {
+  margin-left: 64px;
+}
+
+/* ===== HAMBURGER BUTTON ===== */
+.hamburger-btn {
+  display: none;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  padding: 6px;
+  flex-shrink: 0;
+}
+
+.hamburger-btn span {
+  display: block;
+  width: 100%;
+  height: 2px;
+  background: var(--text-primary);
+  border-radius: 2px;
+  transition: all var(--transition-fast);
+}
+
+.hamburger-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
 }
 
 /* ===== HEADER ===== */
 .app-header {
-  text-align: center;
-  margin-bottom: 40px;
-  padding: 32px 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding: 16px 20px;
   background: var(--bg-card);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -118,6 +279,8 @@ body::before {
   border-radius: var(--radius-xl);
   position: relative;
   overflow: hidden;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .app-header::before {
@@ -137,27 +300,28 @@ body::before {
   50% { background-position: 100% 50%; }
 }
 
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .app-header h1 {
-  font-size: 1.75rem;
+  font-size: 1.4rem;
   font-weight: 800;
   letter-spacing: -0.02em;
-  margin-bottom: 8px;
+  margin-bottom: 0;
   background: linear-gradient(135deg, var(--text-primary), var(--accent-purple));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
-.app-header h1 .icon {
-  -webkit-text-fill-color: initial;
-  margin-right: 8px;
-}
-
 .header-meta {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 20px;
+  justify-content: flex-start;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
@@ -801,16 +965,43 @@ body::before {
 
 /* ===== RESPONSIVE ===== */
 @media (max-width: 768px) {
-  .app-container {
+  .sidebar {
+    transform: translateX(-100%);
+    width: 240px;
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar.collapsed {
+    width: 240px;
+    transform: translateX(-100%);
+  }
+
+  .sidebar.collapsed.open {
+    transform: translateX(0);
+  }
+
+  .main-content {
+    margin-left: 0;
     padding: 16px 12px 40px;
   }
 
+  .sidebar.collapsed ~ .main-content {
+    margin-left: 0;
+  }
+
+  .hamburger-btn {
+    display: flex;
+  }
+
   .app-header {
-    padding: 24px 16px;
+    padding: 12px 14px;
   }
 
   .app-header h1 {
-    font-size: 1.35rem;
+    font-size: 1.1rem;
   }
 
   .staff-grid {
@@ -829,6 +1020,23 @@ body::before {
   .modal {
     max-width: 360px;
   }
+
+}
+
+/* ===== SIDEBAR OVERLAY (all screen sizes) ===== */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 99;
+  opacity: 0;
+  transition: opacity var(--transition-normal);
+}
+
+.sidebar-overlay.active {
+  display: block;
+  opacity: 1;
 }
 
 @media (max-width: 480px) {
@@ -844,6 +1052,11 @@ body::before {
 
   .role-options {
     gap: 6px;
+  }
+
+  .header-user-actions {
+    flex-wrap: wrap;
+    gap: 8px;
   }
 }
 
@@ -1337,45 +1550,9 @@ body::before {
   box-shadow: 0 6px 20px rgba(139, 92, 246, 0.35);
 }
 
-/* ===== ADMIN TABS ===== */
+/* ===== ADMIN TABS (kept for backward compat, hidden in sidebar mode) ===== */
 .admin-tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 24px;
-  background: var(--bg-card);
-  padding: 6px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.admin-tabs::-webkit-scrollbar { display: none; }
-
-.tab-btn {
-  flex: 1;
-  padding: 10px 16px;
-  background: transparent;
-  border: none;
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  font-family: inherit;
-  font-size: 0.85rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-  white-space: nowrap;
-}
-
-.tab-btn:hover {
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.03);
-}
-
-.tab-btn.active {
-  background: rgba(255, 255, 255, 0.07);
-  color: var(--text-primary);
-  box-shadow: var(--shadow-sm);
+  display: none;
 }
 
 .tab-content {
@@ -1393,19 +1570,11 @@ body::before {
   text-align: left;
 }
 
-.app-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  text-align: left;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
 .header-user-actions {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .user-greeting {
@@ -1629,15 +1798,11 @@ body::before {
 }
 
 @media (max-width: 600px) {
-  .app-header {
-    flex-direction: column;
-    align-items: flex-start;
-  }
   .header-user-actions {
     width: 100%;
     justify-content: space-between;
     border-top: 1px solid var(--border-color);
-    padding-top: 12px;
+    padding-top: 8px;
   }
 }
 
@@ -2302,6 +2467,27 @@ body::before {
   --shadow-glow-blue: 0 0 20px rgba(59, 130, 246, 0.08);
 }
 
+.light-theme .sidebar {
+  background: #ffffff;
+  border-right-color: rgba(15, 23, 42, 0.08);
+}
+
+.light-theme .sidebar-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.light-theme .sidebar-btn.active {
+  background: rgba(139, 92, 246, 0.1);
+}
+
+.light-theme .hamburger-btn {
+  border-color: rgba(15, 23, 42, 0.12);
+}
+
+.light-theme .hamburger-btn span {
+  background: #0f172a;
+}
+
 .light-theme body::before {
   background:
     radial-gradient(ellipse at 20% 20%, rgba(139, 92, 246, 0.05) 0%, transparent 50%),
@@ -2377,8 +2563,7 @@ body, .app-container, .app-header, .task-form-card, .room-card, .stat-item,
 }
 
 .light-theme .admin-tabs {
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.04);
+  display: none;
 }
 
 .light-theme .tab-btn:hover {

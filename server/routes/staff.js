@@ -2,15 +2,25 @@
 // Staff Routes — CRUD + Role Assignment
 // ===================================================================
 const express = require('express');
-const { sql, getPool, queryDb } = require('../db');
+const { sql, getPool, queryDb, runQuery } = require('../db');
 const { authenticate, requireAdmin, requireManagerOrAdmin } = require('../middleware/auth');
 
 const router = express.Router();
 
+// Middleware: Validate :id là số nguyên hợp lệ
+function validateId(req, res, next) {
+  const id = parseInt(req.params.id);
+  if (isNaN(id) || id <= 0) {
+    return res.status(400).json({ error: 'ID không hợp lệ.' });
+  }
+  req.params.id = id;
+  next();
+}
+
 // GET /api/staff — Danh sách tất cả nhân viên
 router.get('/', authenticate, async (req, res) => {
   try {
-    const result = await queryDb(async (pool) => {
+    const result = await runQuery(async (pool) => {
       // Nếu là employee, chỉ trả về info của bản thân
       if (req.user.role === 'employee') {
         return await pool.request()
@@ -31,9 +41,9 @@ router.get('/', authenticate, async (req, res) => {
 });
 
 // GET /api/staff/:id — Chi tiết 1 nhân viên
-router.get('/:id', authenticate, async (req, res) => {
+router.get('/:id', authenticate, validateId, async (req, res) => {
   try {
-    const result = await queryDb(async (pool) => {
+    const result = await runQuery(async (pool) => {
       return await pool.request()
         .input('id', sql.Int, req.params.id)
         .query('SELECT * FROM Staff WHERE id = @id');
@@ -56,7 +66,7 @@ router.get('/:id', authenticate, async (req, res) => {
 });
 
 // PUT /api/staff/:id/role — Cập nhật vai trò (Admin/Manager)
-router.put('/:id/role', authenticate, requireManagerOrAdmin, async (req, res) => {
+router.put('/:id/role', authenticate, requireManagerOrAdmin, validateId, async (req, res) => {
   try {
     let { room_role, tech_role } = req.body;
 
@@ -68,7 +78,7 @@ router.put('/:id/role', authenticate, requireManagerOrAdmin, async (req, res) =>
       tech_role = 0; // Buồng phòng chính → Kỹ thuật = 0
     }
 
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       await pool.request()
         .input('id', sql.Int, req.params.id)
         .input('roomRole', sql.Int, room_role)
@@ -84,23 +94,23 @@ router.put('/:id/role', authenticate, requireManagerOrAdmin, async (req, res) =>
 });
 
 // PUT /api/staff/:id/name — Đổi tên part-time (Admin/Manager)
-router.put('/:id/name', authenticate, requireManagerOrAdmin, async (req, res) => {
+router.put('/:id/name', authenticate, requireManagerOrAdmin, validateId, async (req, res) => {
   try {
     const { name } = req.body;
 
-    const result = await queryDb(async (pool) => {
+    const result = await runQuery(async (pool) => {
       // Kiểm tra nhân viên là part-time
       const check = await pool.request()
         .input('id', sql.Int, req.params.id)
         .query('SELECT type, default_name FROM Staff WHERE id = @id');
 
       if (check.recordset.length === 0) {
-        return res.status(404).json({ error: 'Không tìm thấy nhân viên.' });
+        throw Object.assign(new Error('Không tìm thấy nhân viên.'), { statusCode: 404 });
       }
 
       const staff = check.recordset[0];
       if (staff.type !== 'part-time') {
-        return res.status(400).json({ error: 'Chỉ có thể đổi tên nhân viên part-time.' });
+        throw Object.assign(new Error('Chỉ có thể đổi tên nhân viên part-time.'), { statusCode: 400 });
       }
 
       const newName = name && name.trim() ? name.trim() : staff.default_name;
@@ -115,14 +125,15 @@ router.put('/:id/name', authenticate, requireManagerOrAdmin, async (req, res) =>
     res.json({ message: 'Đổi tên thành công.', name: result.newName });
   } catch (err) {
     console.error('Update name error:', err);
-    res.status(500).json({ error: 'Lỗi server.' });
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ error: statusCode === 500 ? 'Lỗi server.' : err.message });
   }
 });
 
 // POST /api/staff/reset-names — Reset tên tất cả part-time (Admin only)
 router.post('/reset-names', authenticate, requireAdmin, async (req, res) => {
   try {
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       await pool.request()
         .query("UPDATE Staff SET name = default_name WHERE type = 'part-time'");
     });

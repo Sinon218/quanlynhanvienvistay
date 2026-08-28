@@ -117,7 +117,7 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 const server = app.listen(PORT, () => {
   console.log('====================================================');
-  console.log(`🚀 ViStay Server is running on: http://localhost:${PORT}`);
+  console.log(`🚀 Vistay Server is running on: http://localhost:${PORT}`);
   console.log(`📦 Environment: ${process.env.NODE_ENV || 'development'}`);
   console.log(`📁 Static files: ${path.join(__dirname, '..')}`);
   console.log(`📸 Uploads: ${uploadDir}`);

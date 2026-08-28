@@ -3,7 +3,7 @@
 // Cấu trúc 3 tầng: App Layer (Business Logic)
 // ===================================================================
 const express = require('express');
-const { sql, getPool, queryDb } = require('../db');
+const { sql, getPool, queryDb, runQuery } = require('../db');
 const { authenticate, requireAdmin, requireSelfOrAdmin } = require('../middleware/auth');
 
 const router = express.Router();
@@ -29,7 +29,7 @@ function getBaseSalaryForStaff(staffName, dbBaseSalary) {
 
 // Helper to calculate room shares dynamically
 async function calculateDynamicRooms(month, year) {
-  const res = await queryDb(async (pool) => {
+  const res = await runQuery(async (pool) => {
     return await pool.request()
       .input('month', sql.Int, month)
       .input('year', sql.Int, year)
@@ -122,7 +122,7 @@ router.get('/', authenticate, requireAdmin, async (req, res) => {
 
     const staffRooms = await calculateDynamicRooms(currentMonth, currentYear);
 
-    const salaryResult = await queryDb(async (pool) => {
+    const salaryResult = await runQuery(async (pool) => {
       // Fetch tech task salary for all staff members
       const techSalaryRes = await pool.request()
         .input('month', sql.Int, currentMonth)
@@ -225,7 +225,7 @@ router.get('/:staffId', authenticate, requireSelfOrAdmin, async (req, res) => {
 
     const staffRooms = await calculateDynamicRooms(currentMonth, currentYear);
 
-    const salaryResult = await queryDb(async (pool) => {
+    const salaryResult = await runQuery(async (pool) => {
       // Fetch tech task salary for this staff member
       const techSalaryRes = await pool.request()
         .input('staffId', sql.Int, staffId)
@@ -327,7 +327,7 @@ router.post('/save', authenticate, requireAdmin, async (req, res) => {
     const bon = bonus || 0;
     const ded = deductions || 0;
 
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       // Fetch tech task salary for this staff member
       const techSalaryRes = await pool.request()
         .input('staffId', sql.Int, staff_id)

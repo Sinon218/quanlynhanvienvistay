@@ -2,7 +2,7 @@
 // Tech Tasks Routes — Quản lý Công việc Kỹ thuật Bảo trì
 // ===================================================================
 const express = require('express');
-const { sql, getPool, queryDb } = require('../db');
+const { sql, getPool, queryDb, runQuery } = require('../db');
 const { authenticate, requireManagerOrAdmin } = require('../middleware/auth');
 const { sendEventToAll } = require('../sse');
 const multer = require('multer');
@@ -10,6 +10,38 @@ const path = require('path');
 const fs = require('fs');
 
 const router = express.Router();
+
+// Middleware: Validate :id là số nguyên hợp lệ
+function validateId(req, res, next) {
+  const id = parseInt(req.params.id);
+  if (isNaN(id) || id <= 0) {
+    return res.status(400).json({ error: 'ID không hợp lệ.' });
+  }
+  req.params.id = id;
+  next();
+}
+
+// Helper: check if a table exists, return false if DB query fails (migration not run)
+async function tableExists(pool, tableName) {
+  try {
+    const r = await pool.request()
+      .input('tbl', sql.NVarChar, tableName)
+      .query("SELECT 1 FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = @tbl");
+    return r.recordset.length > 0;
+  } catch { return false; }
+}
+
+// Helper: wrap a query fn — if table missing, return empty array instead of 500
+async function safeQuery(pool, fn) {
+  try {
+    return await fn(pool);
+  } catch (err) {
+    if (err.message && (err.message.includes('Invalid object name') || err.message.includes('Cannot find the object'))) {
+      return { recordset: [] };
+    }
+    throw err;
+  }
+}
 
 // ===== Upload config for tech tasks (2 photos + 1 video) =====
 const techUploadDir = path.join(__dirname, '..', '..', 'ảnh dọn phòng của nhân viên', 'tech');
@@ -148,14 +180,14 @@ function analyzeDescription(description) {
 // ============================================================
 router.get('/categories', authenticate, async (req, res) => {
   try {
-    const result = await queryDb(async (pool) => {
-      return await pool.request()
+    const result = await runQuery(async (pool) => {
+      return await safeQuery(pool, (p) => p.request()
         .query(`
           SELECT id, name, difficulty_level, difficulty_label, is_custom
           FROM TechIssueCategories
           WHERE is_active = 1
           ORDER BY difficulty_level ASC, name ASC
-        `);
+        `));
     });
     res.json(result.recordset);
   } catch (err) {
@@ -177,7 +209,7 @@ router.post('/categories', authenticate, requireManagerOrAdmin, async (req, res)
     const level = parseInt(difficulty_level) || 1;
     const levelLabels = { 1: 'Dễ', 2: 'Trung bình', 3: 'Khó', 4: 'Cần chuyên môn' };
 
-    const result = await queryDb(async (pool) => {
+    const result = await runQuery(async (pool) => {
       return await pool.request()
         .input('name', sql.NVarChar, name.trim())
         .input('level', sql.Int, level)
@@ -203,7 +235,7 @@ router.get('/tasks', authenticate, async (req, res) => {
   try {
     const { status, staff_id } = req.query;
 
-    const result = await queryDb(async (pool) => {
+    const result = await runQuery(async (pool) => {
       let query = `
         SELECT t.*, 
           c.name AS category_name, c.difficulty_label,
@@ -235,7 +267,13 @@ router.get('/tasks', authenticate, async (req, res) => {
 
       query += ' ORDER BY t.created_at DESC';
 
-      return await request.query(query);
+      return await safeQuery(pool, (p) => {
+        const r = p.request();
+        if (status) r.input('status', sql.VarChar, status);
+        if (staff_id) r.input('staffId', sql.Int, parseInt(staff_id));
+        if (req.user.role === 'employee' && req.user.staffId) r.input('myStaffId', sql.Int, req.user.staffId);
+        return r.query(query);
+      });
     });
 
     res.json(result.recordset);
@@ -293,8 +331,8 @@ router.post('/tasks', authenticate, requireManagerOrAdmin, (req, res) => {
 
       const level = parseInt(difficulty_level) || 1;
 
-      const result = await queryDb(async (pool) => {
-        return await pool.request()
+      const result = await runQuery(async (pool) => {
+        return await safeQuery(pool, (p) => p.request()
           .input('apartmentCode', sql.VarChar, apartment_code)
           .input('issueCategoryId', sql.Int, issue_category_id ? parseInt(issue_category_id) : null)
           .input('customIssueName', sql.NVarChar, custom_issue_name || null)
@@ -314,11 +352,15 @@ router.post('/tasks', authenticate, requireManagerOrAdmin, (req, res) => {
             VALUES 
               (@apartmentCode, @issueCategoryId, @customIssueName, @description, @difficultyLevel,
                @photo1, @photo2, @video, @priority, 'pending', @assignedStaffId, @createdByUserId)
-          `);
+          `));
       });
 
-      sendEventToAll({ type: 'TECH_TASK_UPDATE', action: 'create', taskId: result.recordset[0].id });
-      res.json({ message: 'Tạo công việc kỹ thuật thành công.', id: result.recordset[0].id });
+      const newId = result.recordset && result.recordset[0] ? result.recordset[0].id : null;
+      if (!newId) {
+        return res.status(500).json({ error: 'Không thể tạo công việc kỹ thuật. Bảng TechTasks có thể chưa tồn tại.' });
+      }
+      sendEventToAll({ type: 'TECH_TASK_UPDATE', action: 'create', taskId: newId });
+      res.json({ message: 'Tạo công việc kỹ thuật thành công.', id: newId });
     } catch (err) {
       console.error('Create tech task error:', err);
       res.status(500).json({ error: 'Lỗi server khi tạo công việc.' });
@@ -329,7 +371,7 @@ router.post('/tasks', authenticate, requireManagerOrAdmin, (req, res) => {
 // ============================================================
 // PUT /api/tech/tasks/:id/status — Cập nhật trạng thái
 // ============================================================
-router.put('/tasks/:id/status', authenticate, async (req, res) => {
+router.put('/tasks/:id/status', authenticate, validateId, async (req, res) => {
   try {
     const { id } = req.params;
     const { status } = req.body;
@@ -339,16 +381,16 @@ router.put('/tasks/:id/status', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Trạng thái không hợp lệ.' });
     }
 
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       // Check if employee is assigned to this task
       if (req.user.role === 'employee') {
-        const check = await pool.request()
+        const check = await safeQuery(pool, (p) => p.request()
           .input('id', sql.Int, parseInt(id))
           .input('staffId', sql.Int, req.user.staffId)
-          .query('SELECT id FROM TechTasks WHERE id = @id AND assigned_staff_id = @staffId');
+          .query('SELECT id FROM TechTasks WHERE id = @id AND assigned_staff_id = @staffId'));
         
         if (check.recordset.length === 0) {
-          return res.status(403).json({ error: 'Bạn không có quyền cập nhật công việc này.' });
+          throw Object.assign(new Error('Bạn không có quyền cập nhật công việc này.'), { statusCode: 403 });
         }
       }
 
@@ -356,31 +398,32 @@ router.put('/tasks/:id/status', authenticate, async (req, res) => {
       if (status === 'in_progress') extraFields = ', started_at = GETDATE()';
       if (status === 'completed') extraFields = ', completed_at = GETDATE()';
 
-      await pool.request()
+      await safeQuery(pool, (p) => p.request()
         .input('id', sql.Int, parseInt(id))
         .input('status', sql.VarChar, status)
-        .query(`UPDATE TechTasks SET status = @status ${extraFields} WHERE id = @id`);
+        .query(`UPDATE TechTasks SET status = @status ${extraFields} WHERE id = @id`));
     });
 
     sendEventToAll({ type: 'TECH_TASK_UPDATE', action: 'status_change', taskId: parseInt(id), status });
     res.json({ message: 'Cập nhật trạng thái thành công.' });
   } catch (err) {
     console.error('Update tech task status error:', err);
-    res.status(500).json({ error: 'Lỗi server.' });
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ error: statusCode === 500 ? 'Lỗi server.' : err.message });
   }
 });
 
 // ============================================================
 // DELETE /api/tech/tasks/:id — Xoá công việc kỹ thuật
 // ============================================================
-router.delete('/tasks/:id', authenticate, requireManagerOrAdmin, async (req, res) => {
+router.delete('/tasks/:id', authenticate, requireManagerOrAdmin, validateId, async (req, res) => {
   try {
     const { id } = req.params;
 
-    await queryDb(async (pool) => {
-      await pool.request()
+    await runQuery(async (pool) => {
+      await safeQuery(pool, (p) => p.request()
         .input('id', sql.Int, parseInt(id))
-        .query('DELETE FROM TechTasks WHERE id = @id');
+        .query('DELETE FROM TechTasks WHERE id = @id'));
     });
 
     sendEventToAll({ type: 'TECH_TASK_UPDATE', action: 'delete', taskId: parseInt(id) });
@@ -410,7 +453,7 @@ router.post('/ai-detect', authenticate, async (req, res) => {
 
     // If AI found matches, also try to find matching category IDs from DB
     if (analysis.matched) {
-      await queryDb(async (pool) => {
+      await runQuery(async (pool) => {
         for (const suggestion of analysis.suggestions) {
           const dbResult = await pool.request()
             .input('name', sql.NVarChar, suggestion.issueName)
@@ -441,8 +484,8 @@ router.post('/ai-detect', authenticate, async (req, res) => {
 // ============================================================
 router.get('/stats', authenticate, async (req, res) => {
   try {
-    const result = await queryDb(async (pool) => {
-      return await pool.request().query(`
+    const result = await runQuery(async (pool) => {
+      return await safeQuery(pool, (p) => p.request().query(`
         SELECT 
           COUNT(*) AS total,
           SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending,
@@ -450,9 +493,9 @@ router.get('/stats', authenticate, async (req, res) => {
           SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
           SUM(CASE WHEN status = 'cancelled' THEN 1 ELSE 0 END) AS cancelled
         FROM TechTasks
-      `);
+      `));
     });
-    res.json(result.recordset[0]);
+    res.json(result.recordset[0] || { total: 0, pending: 0, in_progress: 0, completed: 0, cancelled: 0 });
   } catch (err) {
     console.error('Tech stats error:', err);
     res.status(500).json({ error: 'Lỗi server.' });
@@ -475,29 +518,29 @@ router.post('/auto-suggest', authenticate, async (req, res) => {
     let history = [];
     let allCategories = [];
 
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       // 1. Lấy thông tin căn hộ
       const aptResult = await pool.request()
         .input('code', sql.VarChar, apartment_code)
         .query('SELECT id, code, building, room_type, status FROM Apartments WHERE code = @code');
 
       if (aptResult.recordset.length === 0) {
-        return res.status(404).json({ error: 'Không tìm thấy căn hộ.' });
+        throw Object.assign(new Error('Không tìm thấy căn hộ.'), { statusCode: 404 });
       }
       apartment = aptResult.recordset[0];
 
-      // 2. Lấy thông tin kỹ thuật viên (nếu có)
+      // 2. Lấy thông tin kỹ thuật viên (nếu có) — safe if tech_level column missing
       if (staff_id) {
-        const techResult = await pool.request()
+        const techResult = await safeQuery(pool, (p) => p.request()
           .input('staffId', sql.Int, parseInt(staff_id))
-          .query('SELECT id, name, tech_role, tech_level FROM Staff WHERE id = @staffId');
+          .query('SELECT id, name, tech_role, tech_level FROM Staff WHERE id = @staffId'));
         if (techResult.recordset.length > 0) {
           technician = techResult.recordset[0];
         }
       }
 
-      // 3. Lấy lịch sử lỗi kỹ thuật của căn hộ này (gần nhất)
-      const historyResult = await pool.request()
+      // 3. Lấy lịch sử lỗi kỹ thuật của căn hộ này (gần nhất) — safe if table missing
+      const historyResult = await safeQuery(pool, (p) => p.request()
         .input('apartmentCode', sql.VarChar, apartment_code)
         .query(`
           SELECT TOP 5 
@@ -507,17 +550,17 @@ router.post('/auto-suggest', authenticate, async (req, res) => {
           LEFT JOIN TechIssueCategories c ON t.issue_category_id = c.id
           WHERE t.apartment_code = @apartmentCode AND t.status = 'completed'
           ORDER BY t.created_at DESC
-        `);
+        `));
       history = historyResult.recordset;
 
-      // 4. Lấy tất cả danh mục active
-      const categoriesResult = await pool.request()
+      // 4. Lấy tất cả danh mục active — safe if table missing
+      const categoriesResult = await safeQuery(pool, (p) => p.request()
         .query(`
           SELECT id, name, difficulty_level, difficulty_label 
           FROM TechIssueCategories 
           WHERE is_active = 1 AND is_custom = 0
           ORDER BY difficulty_level ASC, name ASC
-        `);
+        `));
       allCategories = categoriesResult.recordset;
     });
 
@@ -654,7 +697,8 @@ router.post('/auto-suggest', authenticate, async (req, res) => {
     });
   } catch (err) {
     console.error('Auto-suggest error:', err);
-    res.status(500).json({ error: 'Lỗi server khi gợi ý tự động.' });
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ error: statusCode === 500 ? 'Lỗi server khi gợi ý tự động.' : err.message });
   }
 });
 

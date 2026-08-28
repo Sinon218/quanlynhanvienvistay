@@ -4,7 +4,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const { sql, getPool, queryDb } = require('../db');
+const { sql, getPool, queryDb, runQuery } = require('../db');
 const { authenticate } = require('../middleware/auth');
 
 const router = express.Router();
@@ -17,7 +17,7 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Vui lòng nhập tên đăng nhập và mật khẩu.' });
     }
 
-    const result = await queryDb(async (pool) => {
+    const result = await runQuery(async (pool) => {
       return await pool.request()
         .input('username', sql.VarChar, username)
         .query(`
@@ -76,7 +76,7 @@ router.post('/login', async (req, res) => {
 // GET /api/auth/me
 router.get('/me', authenticate, async (req, res) => {
   try {
-    const result = await queryDb(async (pool) => {
+    const result = await runQuery(async (pool) => {
       return await pool.request()
         .input('id', sql.Int, req.user.id)
         .query(`
@@ -112,7 +112,7 @@ router.put('/change-password', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Mật khẩu mới phải có ít nhất 6 ký tự.' });
     }
 
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       const result = await pool.request()
         .input('id', sql.Int, req.user.id)
         .query('SELECT password_hash FROM Users WHERE id = @id');
@@ -120,7 +120,7 @@ router.put('/change-password', authenticate, async (req, res) => {
       const user = result.recordset[0];
       const isMatch = await bcrypt.compare(currentPassword, user.password_hash);
       if (!isMatch) {
-        return res.status(401).json({ error: 'Mật khẩu hiện tại không đúng.' });
+        throw Object.assign(new Error('Mật khẩu hiện tại không đúng.'), { statusCode: 401 });
       }
 
       const hash = await bcrypt.hash(newPassword, 10);
@@ -133,7 +133,8 @@ router.put('/change-password', authenticate, async (req, res) => {
     res.json({ message: 'Đổi mật khẩu thành công.' });
   } catch (err) {
     console.error('Change password error:', err);
-    res.status(500).json({ error: 'Lỗi server.' });
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ error: statusCode === 500 ? 'Lỗi server.' : err.message });
   }
 });
 
@@ -146,7 +147,7 @@ router.post('/migrate-offline', authenticate, async (req, res) => {
   try {
     const { staff, apartments, work, tasks } = req.body;
 
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       // 1. Migrate Staff
       if (staff && staff.length > 0) {
         for (const s of staff) {

@@ -2,7 +2,7 @@
 // Work Assignments Routes
 // ===================================================================
 const express = require('express');
-const { sql, getPool, queryDb } = require('../db');
+const { sql, getPool, queryDb, runQuery } = require('../db');
 const { authenticate, requireAdmin, requireManagerOrAdmin } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const { recordStatusSnapshot } = require('../statusHistory');
@@ -12,6 +12,16 @@ const { deletePhotosByDate, deletePhotosByDateRange, deletePhotosByStaff } = req
 const { getLocalDate, ensureNotificationsTable } = require('../utils');
 
 const router = express.Router();
+
+// Middleware: Validate :id là số nguyên hợp lệ
+function validateId(req, res, next) {
+  const id = parseInt(req.params.id);
+  if (isNaN(id) || id <= 0) {
+    return res.status(400).json({ error: 'ID không hợp lệ.' });
+  }
+  req.params.id = id;
+  next();
+}
 
 // DELETE /api/work/photos/delete-by-date — Xóa tất cả ảnh dọn phòng theo ngày (Admin/Manager)
 router.delete('/photos/delete-by-date', authenticate, requireManagerOrAdmin, async (req, res) => {
@@ -89,14 +99,14 @@ router.post('/assign', authenticate, requireManagerOrAdmin, async (req, res) => 
 
     const date = assigned_date || getLocalDate();
 
-    await queryDb(async (pool) => {
+    const result = await runQuery(async (pool) => {
       // 0. Lấy thông tin loại phòng để xác định giới hạn dọn dẹp
       const aptRes = await pool.request()
         .input('apartmentId', sql.Int, apartment_id)
         .query('SELECT room_type FROM Apartments WHERE id = @apartmentId');
 
       if (aptRes.recordset.length === 0) {
-        return res.status(404).json({ error: 'Không tìm thấy căn hộ.' });
+        throw Object.assign(new Error('Không tìm thấy căn hộ.'), { statusCode: 404 });
       }
 
       // 1. Kiểm tra trùng lặp cho nhân viên này
@@ -110,7 +120,7 @@ router.post('/assign', authenticate, requireManagerOrAdmin, async (req, res) => 
         `);
 
       if (check.recordset.length > 0) {
-        return res.status(400).json({ error: 'Căn hộ này đã được giao cho nhân viên này trong ngày.' });
+        throw Object.assign(new Error('Căn hộ này đã được giao cho nhân viên này trong ngày.'), { statusCode: 400 });
       }
 
       // 3. Lấy room_role hiện tại của nhân viên trong bảng Staff để lưu vào assigned_role
@@ -156,19 +166,22 @@ router.post('/assign', authenticate, requireManagerOrAdmin, async (req, res) => 
         .input('msg', sql.NVarChar, msg)
         .query('INSERT INTO Notifications (message) VALUES (@msg)');
 
-      sendEventToAll({ type: 'WORK_UPDATE', action: 'assign', staff_id, message: msg });
-      res.json({ message: msg });
+      return { message: msg };
     });
+
+    sendEventToAll({ type: 'WORK_UPDATE', action: 'assign', staff_id, message: result.message });
+    res.json({ message: result.message });
   } catch (err) {
     console.error('Assign work error:', err);
-    res.status(500).json({ error: 'Lỗi server.' });
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ error: statusCode === 500 ? 'Lỗi server.' : err.message });
   }
 });
 
 // DELETE /api/work/:id — Hủy phân công (Admin/Manager)
-router.delete('/:id', authenticate, requireManagerOrAdmin, async (req, res) => {
+router.delete('/:id', authenticate, requireManagerOrAdmin, validateId, async (req, res) => {
   try {
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       await pool.request()
         .input('id', sql.Int, req.params.id)
         .query('DELETE FROM WorkAssignments WHERE id = @id');
@@ -183,7 +196,7 @@ router.delete('/:id', authenticate, requireManagerOrAdmin, async (req, res) => {
 
 // Helper check assignment ownership
 async function checkOwnership(assignmentId, staffId, res) {
-  const result = await queryDb(async (pool) => {
+  const result = await runQuery(async (pool) => {
     const check = await pool.request()
       .input('id', sql.Int, assignmentId)
       .input('staffId', sql.Int, staffId)
@@ -199,7 +212,7 @@ async function checkOwnership(assignmentId, staffId, res) {
 }
 
 // PUT /api/work/:id/accept — Chấp nhận nhận việc
-router.put('/:id/accept', authenticate, async (req, res) => {
+router.put('/:id/accept', authenticate, validateId, async (req, res) => {
   try {
     const isEmployee = req.user.role === 'employee';
     if (isEmployee) {
@@ -207,7 +220,7 @@ router.put('/:id/accept', authenticate, async (req, res) => {
       if (!ok) return;
     }
 
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       await pool.request()
         .input('id', sql.Int, req.params.id)
         .query("UPDATE WorkAssignments SET status = 'accepted' WHERE id = @id");
@@ -222,7 +235,7 @@ router.put('/:id/accept', authenticate, async (req, res) => {
 });
 
 // PUT /api/work/:id/reject — Từ chối nhận việc
-router.put('/:id/reject', authenticate, async (req, res) => {
+router.put('/:id/reject', authenticate, validateId, async (req, res) => {
   try {
     const isEmployee = req.user.role === 'employee';
     if (isEmployee) {
@@ -230,7 +243,7 @@ router.put('/:id/reject', authenticate, async (req, res) => {
       if (!ok) return;
     }
 
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       await pool.request()
         .input('id', sql.Int, req.params.id)
         .query("UPDATE WorkAssignments SET status = 'rejected' WHERE id = @id");
@@ -268,7 +281,7 @@ router.put('/:id/reject', authenticate, async (req, res) => {
 });
 
 // PUT /api/work/:id/start — Bắt đầu làm việc
-router.put('/:id/start', authenticate, async (req, res) => {
+router.put('/:id/start', authenticate, validateId, async (req, res) => {
   try {
     const isEmployee = req.user.role === 'employee';
     if (isEmployee) {
@@ -276,7 +289,7 @@ router.put('/:id/start', authenticate, async (req, res) => {
       if (!ok) return;
     }
 
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       await pool.request()
         .input('id', sql.Int, req.params.id)
         .query("UPDATE WorkAssignments SET status = 'in-progress' WHERE id = @id");
@@ -291,7 +304,7 @@ router.put('/:id/start', authenticate, async (req, res) => {
 });
 
 // PUT /api/work/:id/complete — Đã làm xong + Upload ảnh minh chứng (chỉ bắt buộc cho hệ số 1)
-router.put('/:id/complete', authenticate, upload.single('proof'), async (req, res) => {
+router.put('/:id/complete', authenticate, validateId, upload.single('proof'), async (req, res) => {
   try {
     const isEmployee = req.user.role === 'employee';
     if (isEmployee) {
@@ -311,21 +324,21 @@ router.put('/:id/complete', authenticate, upload.single('proof'), async (req, re
       partnerWorked = (req.body.partner_worked === 'true' || req.body.partner_worked === '1' || req.body.partner_worked === true) ? 1 : 0;
     }
 
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       // Kiểm tra assigned_role
       const checkRole = await pool.request()
         .input('id', sql.Int, req.params.id)
         .query('SELECT assigned_role FROM WorkAssignments WHERE id = @id');
         
       if (checkRole.recordset.length === 0) {
-        return res.status(404).json({ error: 'Không tìm thấy phân công dọn phòng.' });
+        throw Object.assign(new Error('Không tìm thấy phân công dọn phòng.'), { statusCode: 404 });
       }
       
       const assignedRole = checkRole.recordset[0].assigned_role;
       const needsPhoto = assignedRole === 1;
 
       if (needsPhoto && !imagePath) {
-        return res.status(400).json({ error: 'Vui lòng chụp hoặc tải ảnh lên làm minh chứng hoàn thành công việc.' });
+        throw Object.assign(new Error('Vui lòng chụp hoặc tải ảnh lên làm minh chứng hoàn thành công việc.'), { statusCode: 400 });
       }
 
       await pool.request()
@@ -343,7 +356,8 @@ router.put('/:id/complete', authenticate, upload.single('proof'), async (req, re
     res.json({ message: 'Đã hoàn thành dọn phòng.', proof_image: imagePath });
   } catch (err) {
     console.error('Complete work error:', err);
-    res.status(500).json({ error: 'Lỗi server.' });
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ error: statusCode === 500 ? 'Lỗi server.' : err.message });
   }
 });
 
@@ -352,7 +366,7 @@ router.get('/today', authenticate, async (req, res) => {
   try {
     const date = getLocalDate();
 
-    const result = await queryDb(async (pool) => {
+    const result = await runQuery(async (pool) => {
       const request = pool.request();
       let query = `
         SELECT wa.*, a.code, a.building, a.is_samsung, s.name as staff_name,
@@ -396,7 +410,7 @@ router.get('/stats/:staffId', authenticate, async (req, res) => {
 
     const date = getLocalDate();
 
-    const result = await queryDb(async (pool) => {
+    const result = await runQuery(async (pool) => {
       // Số căn đã duyệt hôm nay
       const today = await pool.request()
         .input('staffId', sql.Int, staffId)
@@ -449,7 +463,7 @@ router.get('/all-stats', authenticate, requireManagerOrAdmin, async (req, res) =
   try {
     const date = getLocalDate();
 
-    const result = await queryDb(async (pool) => {
+    const result = await runQuery(async (pool) => {
       return await pool.request()
         .input('date', sql.Date, date)
         .query(`
@@ -505,22 +519,22 @@ router.get('/all-stats', authenticate, requireManagerOrAdmin, async (req, res) =
 });
 
 // PUT /api/work/:id/approve — Phê duyệt công việc hoàn thành (Admin/Manager only)
-router.put('/:id/approve', authenticate, requireManagerOrAdmin, async (req, res) => {
+router.put('/:id/approve', authenticate, requireManagerOrAdmin, validateId, async (req, res) => {
   try {
     let wa;
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       // Kiểm tra xem phân công có tồn tại và đang ở trạng thái completed không
       const check = await pool.request()
         .input('id', sql.Int, req.params.id)
         .query('SELECT status, apartment_id FROM WorkAssignments WHERE id = @id');
         
       if (check.recordset.length === 0) {
-        return res.status(404).json({ error: 'Không tìm thấy phân công.' });
+        throw Object.assign(new Error('Không tìm thấy phân công.'), { statusCode: 404 });
       }
       
       wa = check.recordset[0];
       if (wa.status !== 'completed') {
-        return res.status(400).json({ error: 'Chỉ có thể duyệt những công việc đã báo hoàn thành.' });
+        throw Object.assign(new Error('Chỉ có thể duyệt những công việc đã báo hoàn thành.'), { statusCode: 400 });
       }
       
       // Cập nhật trạng thái thành approved và căn hộ thành available
@@ -541,7 +555,8 @@ router.put('/:id/approve', authenticate, requireManagerOrAdmin, async (req, res)
     recordStatusSnapshot(wa.apartment_id, 'available').catch(e => console.error('Snapshot error:', e.message));
   } catch (err) {
     console.error('Approve work error:', err);
-    res.status(500).json({ error: 'Lỗi server.' });
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ error: statusCode === 500 ? 'Lỗi server.' : err.message });
   }
 });
 

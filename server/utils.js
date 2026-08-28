@@ -3,10 +3,13 @@
 // Cấu trúc 3 tầng: App Layer (Shared Utilities)
 // ===================================================================
 
+let _notificationsTableChecked = false;
+
 /**
- * Đảm bảo bảng Notifications tồn tại
+ * Đảm bảo bảng Notifications tồn tại (cached - chỉ check 1 lần/server lifecycle)
  */
 async function ensureNotificationsTable(pool) {
+  if (_notificationsTableChecked) return;
   await pool.request().query(`
     IF NOT EXISTS (SELECT * FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_NAME = 'Notifications')
     BEGIN
@@ -17,6 +20,7 @@ async function ensureNotificationsTable(pool) {
       );
     END
   `);
+  _notificationsTableChecked = true;
 }
 
 /**

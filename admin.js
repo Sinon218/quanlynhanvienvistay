@@ -33,6 +33,9 @@ let selectedStaffId = null;
 let selectedRoomId = null;
 let selectedSalaryId = null;
 
+// Lazy-load state
+let _apartmentsLoaded = false;
+
 // Bảng giá theo cấp độ kỹ thuật
 let TECH_LEVEL_PRICES = { 1: 50000, 2: 100000, 3: 150000, 4: 250000 };
 const TECH_LEVEL_NAMES = { 1: 'Dễ', 2: 'Trung bình', 3: 'Khó', 4: 'Cực khó' };
@@ -1072,18 +1075,50 @@ function showToast(message, type = 'success') {
   }, 2500);
 }
 
+// ===== SIDEBAR TOGGLE =====
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.querySelector('.sidebar-overlay');
+  
+  if (window.innerWidth <= 768) {
+    // Mobile: toggle open/close with overlay
+    sidebar.classList.toggle('open');
+    if (overlay) overlay.classList.toggle('active');
+  } else {
+    // Desktop: toggle collapsed state
+    sidebar.classList.toggle('collapsed');
+  }
+}
+
+function closeSidebarMobile() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.querySelector('.sidebar-overlay');
+  if (sidebar) sidebar.classList.remove('open');
+  if (overlay) overlay.classList.remove('active');
+}
+
+// Create sidebar overlay for mobile
+function createSidebarOverlay() {
+  if (!document.querySelector('.sidebar-overlay')) {
+    const overlay = document.createElement('div');
+    overlay.className = 'sidebar-overlay';
+    overlay.onclick = closeSidebarMobile;
+    document.body.appendChild(overlay);
+  }
+}
+
 // ===== TAB SWITCHING =====
 function switchTab(e, tabId) {
-  document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+  // Update sidebar active state
+  document.querySelectorAll('.sidebar-btn').forEach(btn => btn.classList.remove('active'));
   document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
 
+  // Find and activate the clicked sidebar button
   if (e && e.currentTarget) {
     e.currentTarget.classList.add('active');
-  } else if (window.event && window.event.currentTarget) {
-    window.event.currentTarget.classList.add('active');
   } else {
-    // Fallback: active tab button based on tabId
-    const btn = Array.from(document.querySelectorAll('.tab-btn')).find(b => {
+    // Fallback: find button by tabId
+    const btn = Array.from(document.querySelectorAll('.sidebar-btn')).find(b => {
       const onclick = b.getAttribute('onclick') || '';
       return onclick.includes(`'${tabId}'`) || onclick.includes(`"${tabId}"`);
     });
@@ -1093,47 +1128,63 @@ function switchTab(e, tabId) {
   const activeTab = document.getElementById(`tab-${tabId}`);
   if (activeTab) activeTab.classList.add('active');
 
-  // Trigger loads based on active tab
-  if (tabId === 'dashboard') loadDashboardTab();
-  if (tabId === 'assignment') loadAssignmentTab();
-  if (tabId === 'apartments') loadApartmentsTab();
-  if (tabId === 'tasks') loadTasksTab();
-  if (tabId === 'stats') loadStatsTab();
-  if (tabId === 'salary') loadSalaryTab();
-  if (tabId === 'tech') loadTechTasksTab();
+  // Close sidebar on mobile after selection
+  if (window.innerWidth <= 768) {
+    closeSidebarMobile();
+  }
+
+  // Lazy-load tab data only when user navigates to that tab
+  switch (tabId) {
+    case 'dashboard': loadDashboardTab(); break;
+    case 'assignment': loadAssignmentTab(); break;
+    case 'apartments':
+      _apartmentsLoaded = true;
+      loadApartmentsTab();
+      break;
+    case 'tasks': loadTasksTab(); break;
+    case 'stats': loadStatsTab(); break;
+    case 'salary': loadSalaryTab(); break;
+    case 'tech': loadTechTasksTab(); break;
+  }
 }
 
 // ==================== TAB 1: ASSIGNMENT ====================
 async function loadAssignmentTab() {
   console.log("[ASSIGNMENT] loadAssignmentTab started");
   try {
-    console.log("[ASSIGNMENT] fetching staff...");
-    staffList = await apiCall('/staff');
-    console.log("[ASSIGNMENT] rendering staff grids. staffList length:", staffList.length);
-    renderStaffGrids();
+    const [staffResult, workResult, tasksResult] = await Promise.allSettled([
+      apiCall('/staff'),
+      apiCall('/work/today'),
+      apiCall('/tasks/today')
+    ]);
 
-    console.log("[ASSIGNMENT] fetching work/today...");
-    const roomAssignments = await apiCall('/work/today');
-    console.log("[ASSIGNMENT] rendering room assignments. assignments length:", roomAssignments.length);
-    renderRoomAssignmentsTable(roomAssignments);
-    renderRejectedAssignments(roomAssignments);
-
-    try {
-      console.log("[ASSIGNMENT] fetching tasks/today...");
-      const tasks = await apiCall('/tasks/today');
-      console.log("[ASSIGNMENT] rendering active tech tasks. tasks length:", tasks.length);
-      renderActiveTechTasks(tasks);
-    } catch (e) {
-      console.warn("Failed to load tasks for notifications:", e.message);
+    if (staffResult.status === 'fulfilled') {
+      staffList = staffResult.value;
+      console.log("[ASSIGNMENT] staff loaded:", staffList.length);
+      renderStaffGrids();
+    } else {
+      console.warn("[ASSIGNMENT] Failed to load staff:", staffResult.reason?.message);
     }
 
-    console.log("[ASSIGNMENT] populating quick assign selects...");
+    if (workResult.status === 'fulfilled') {
+      const roomAssignments = workResult.value;
+      console.log("[ASSIGNMENT] work today loaded:", roomAssignments.length);
+      renderRoomAssignmentsTable(roomAssignments);
+      renderRejectedAssignments(roomAssignments);
+    } else {
+      console.warn("[ASSIGNMENT] Failed to load work/today:", workResult.reason?.message);
+    }
+
+    if (tasksResult.status === 'fulfilled') {
+      console.log("[ASSIGNMENT] tasks loaded:", tasksResult.value.length);
+      renderActiveTechTasks(tasksResult.value);
+    } else {
+      console.warn("[ASSIGNMENT] Failed to load tasks/today:", tasksResult.reason?.message);
+    }
+
     populateQuickAssignSelects();
-
-    // Populate staff select for photo deletion
     populatePhotoDeleteStaffSelect();
-
-    console.log("[ASSIGNMENT] loadAssignmentTab completed successfully");
+    console.log("[ASSIGNMENT] loadAssignmentTab completed");
   } catch (err) {
     console.error("[ASSIGNMENT] loadAssignmentTab error:", err);
     showToast(err.message, 'warning');
@@ -3250,8 +3301,11 @@ async function initializePage() {
   initTheme();
   console.log("[INIT] initializePage started");
   checkAuth();
-  await loadGlobalConfig();
+  loadGlobalConfig().catch(() => {});
   setupRealtimeEvents();
+  
+  // Initialize sidebar overlay for mobile
+  createSidebarOverlay();
 
   // Khởi động hệ thống kiểm tra thông báo đổi mật khẩu
   checkNewNotifications();
@@ -3297,7 +3351,7 @@ async function initializePage() {
         localStorage.removeItem('vistay_mode');
         window.location.href = 'index.html';
       } else {
-        initializePage();
+        loadAssignmentTab();
       }
     }).catch(err => {
       console.log("Server is offline. Staying in local mode.");
@@ -3324,24 +3378,32 @@ async function initializePage() {
 
   document.getElementById('currentDate').textContent = formatDate();
 
-  // Load first tab data
-  if (document.getElementById('tab-dashboard')) loadDashboardTab();
-  loadAssignmentTab();
+  // Load first tab data — stagger to avoid blocking UI
+  requestAnimationFrame(() => {
+    switchTab(null, 'assignment');
+  });
 
-  // Search & Filter event listeners
+  // Search & Filter event listeners — lazy-load apartments only when user interacts
+  function ensureApartmentsLoaded() {
+    if (!_apartmentsLoaded) {
+      _apartmentsLoaded = true;
+      loadApartmentsTab();
+    }
+  }
+
   document.getElementById('roomSearchInput').addEventListener('input', (e) => {
     apartmentFilters.search = e.target.value.trim();
-    loadApartmentsTab();
+    if (_apartmentsLoaded) loadApartmentsTab();
   });
 
   document.getElementById('roomStatusFilter').addEventListener('change', (e) => {
     apartmentFilters.status = e.target.value;
-    loadApartmentsTab();
+    if (_apartmentsLoaded) loadApartmentsTab();
   });
 
   document.getElementById('roomTypeFilter').addEventListener('change', (e) => {
     apartmentFilters.room_type = e.target.value;
-    loadApartmentsTab();
+    if (_apartmentsLoaded) loadApartmentsTab();
   });
 
   // Modal backdrop click closes modal
@@ -3651,8 +3713,11 @@ async function populateQuickAssignSelects() {
   const roomList = document.getElementById('quickRoomList');
   if (roomList) {
     try {
-      const apartments = await apiCall('/apartments?building=all&status=all');
-      const optionsHtml = apartments.map(a => `<option value="${a.code}">${a.code} (${a.room_type})</option>`).join('');
+      // Reuse apartmentList if already loaded, otherwise fetch
+      if (!apartmentList || apartmentList.length === 0) {
+        apartmentList = await apiCall('/apartments?building=all&status=all');
+      }
+      const optionsHtml = apartmentList.map(a => `<option value="${a.code}">${a.code} (${a.room_type})</option>`).join('');
       roomList.innerHTML = optionsHtml;
       
       const stayRoomList = document.getElementById('quickStayRoomList');
@@ -4815,21 +4880,20 @@ const activityFeed = [];
 
 async function loadDashboardTab() {
   try {
-    const [apartmentsResult, statsResult, workTodayResult] = await Promise.allSettled([
-      apiCall('/apartments'),
+    const [statsResult, workTodayResult] = await Promise.allSettled([
       apiCall('/apartments/stats'),
       apiCall('/work/today')
     ]);
 
-    const apartments = apartmentsResult.status === 'fulfilled' ? apartmentsResult.value : [];
     const stats = statsResult.status === 'fulfilled' ? statsResult.value : { totals: {}, byBuilding: [] };
     const workToday = workTodayResult.status === 'fulfilled' ? workTodayResult.value : [];
 
-    // Stats cards
-    const available = apartments.filter(r => r.status === 'available').length;
-    const occupied = apartments.filter(r => r.status === 'occupied').length;
-    const maintenance = apartments.filter(r => r.status === 'maintenance').length;
-    const total = apartments.length;
+    // Stats cards — dùng stats.totals thay vì fetch toàn bộ apartments
+    const totals = stats.totals || {};
+    const total = totals.total || 0;
+    const available = totals.available || 0;
+    const occupied = totals.occupied || 0;
+    const maintenance = totals.maintenance || 0;
     const cleaned = (workToday || []).filter(w => w.status === 'completed' || w.status === 'approved').length;
     const inProgress = (workToday || []).filter(w => w.status === 'in-progress').length;
     const pending = (workToday || []).filter(w => w.status === 'pending' || w.status === 'accepted').length;
@@ -4847,8 +4911,8 @@ async function loadDashboardTab() {
     // Pie chart
     renderDashboardPieChart(available, occupied, maintenance);
 
-    // Bar chart - weekly cleaning data
-    await renderDashboardBarChart();
+    // Bar chart - render async, không block UI
+    renderDashboardBarChart();
 
   } catch (err) {
     console.error('Dashboard load error:', err);
@@ -5009,13 +5073,5 @@ function hideSearchHistory() {
   if (d) d.style.display = 'none';
 }
 
-// ===== INITIALIZATION =====
-document.addEventListener('DOMContentLoaded', async () => {
-  console.log('[ADMIN INIT] DOMContentLoaded fired.');
-  checkAuth();
-  await loadGlobalConfig();
-
-  // Load default tab (Assignment)
-  loadAssignmentTab();
-});
+// ===== INITIALIZATION (handled by initializePage above) =====
 

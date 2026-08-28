@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Admin Dashboard - ViStay Portal</title>
+  <title>Admin Dashboard - Vistay Portal</title>
   <link rel="stylesheet" href="style.css">
   <link rel="manifest" href="/manifest.json">
   <meta name="theme-color" content="#a78bfa">
@@ -19,79 +19,117 @@
 
   <div class="app-container">
 
-
-
-    <!-- ===== HEADER ===== -->
-    <header class="app-header">
-      <div class="header-main-title">
-        <h1><span class="icon">🏨</span> ViStay Admin Portal</h1>
-        <div class="header-meta">
-          <div class="header-date">
-            <span>📅</span>
-            <span id="currentDate">—</span>
-          </div>
-          <button class="btn-reset-all" onclick="resetAllPartTimeNames()">
-            🔄 Reset tên Part-time
-          </button>
+    <!-- ===== SIDEBAR ===== -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-logo">
+        <!-- Thay thế src bằng đường dẫn đến file logo của bạn -->
+        <img src="logo.png" alt="Vistay Logo" class="sidebar-logo-img" 
+             onerror="this.onerror=null; this.style.display='none'; this.nextElementSibling.style.display='flex';">
+        <div class="sidebar-logo-fallback" style="display:none;">
+          <span class="icon">🏨</span>
         </div>
+        <span class="sidebar-logo-text">Vistay</span>
       </div>
-      <div class="header-user-actions">
-        <div class="user-greeting">Xin chào, <strong id="adminName">Admin</strong></div>
-        <button class="theme-toggle-btn" id="themeToggle" onclick="toggleTheme()" title="Chế độ sáng/tối">🌙</button>
-        <button id="btnSyncOffline" class="btn" onclick="syncOfflineData()"
-          style="display: none; padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">🔄
-          Đồng bộ lên Server</button>
-        <button id="btnSwitchToEmployee" class="btn" onclick="window.location.href='employee.html'"
-          style="display: none; padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">📱
-          Giao diện NV</button>
+      <nav class="sidebar-nav">
+        <button class="sidebar-btn active" onclick="switchTab(event, 'dashboard')">
+          <span class="sidebar-icon">📊</span>
+          <span class="sidebar-label">Tổng Quan</span>
+        </button>
+        <button class="sidebar-btn" onclick="switchTab(event, 'assignment')">
+          <span class="sidebar-icon">👥</span>
+          <span class="sidebar-label">Nhân Viên</span>
+        </button>
+        <button class="sidebar-btn" onclick="switchTab(event, 'tasks')">
+          <span class="sidebar-icon">📋</span>
+          <span class="sidebar-label">Giao Việc</span>
+        </button>
+        <button class="sidebar-btn" onclick="switchTab(event, 'apartments')">
+          <span class="sidebar-icon">⚡</span>
+          <span class="sidebar-label">GV Nhanh</span>
+        </button>
+        <button class="sidebar-btn" id="tabBtnStats" onclick="switchTab(event, 'stats')">
+          <span class="sidebar-icon">📈</span>
+          <span class="sidebar-label">Thống Kê</span>
+        </button>
+        <button class="sidebar-btn" id="tabBtnSalary" onclick="switchTab(event, 'salary')">
+          <span class="sidebar-icon">💰</span>
+          <span class="sidebar-label">Bảng lương</span>
+        </button>
+        <button class="sidebar-btn" id="tabBtnTech" onclick="switchTab(event, 'tech')">
+          <span class="sidebar-icon">🛠️</span>
+          <span class="sidebar-label">Kỹ thuật</span>
+        </button>
+      </nav>
+    </aside>
 
-        <!-- Notification Bell -->
-        <div class="noti-bell-container" style="position: relative; display: inline-block;">
-          <button class="noti-bell-btn" onclick="toggleNotiDropdown()"
-            style="background: transparent; border: none; font-size: 1.2rem; cursor: pointer; position: relative; padding: 4px; color: var(--text-primary);">
-            🔔
-            <span class="noti-badge" id="notiCountBadge"
-              style="display: none; position: absolute; top: -2px; right: -2px; background: #ef4444; color: white; font-size: 0.65rem; padding: 1px 5px; border-radius: 50%; font-weight: 700;">0</span>
+    <!-- ===== MAIN CONTENT ===== -->
+    <div class="main-content" id="mainContent">
+
+      <!-- ===== HEADER ===== -->
+      <header class="app-header">
+        <div class="header-left">
+          <button class="hamburger-btn" id="hamburgerBtn" onclick="toggleSidebar()">
+            <span></span><span></span><span></span>
           </button>
-          <div class="noti-dropdown" id="notiDropdown"
-            style="display: none; position: absolute; right: 0; top: 35px; width: 280px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 1000; max-height: 300px; overflow-y: auto; padding: 10px;">
-            <div
-              style="font-weight: 700; font-size: 0.85rem; border-bottom: 1px solid var(--border-color); padding-bottom: 6px; margin-bottom: 6px; color: var(--text-primary); display: flex; justify-content: space-between; align-items: center;">
-              <span>🔔 Thông báo đổi mật khẩu</span>
-              <button onclick="clearNotiBadge()"
-                style="background: transparent; border: none; font-size: 0.72rem; color: var(--accent-teal); cursor: pointer;">Đánh
-                dấu đã đọc</button>
-            </div>
-            <div id="notiList"
-              style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4; text-align: left;">
-              <div style="padding: 10px 0; text-align: center;">Không có thông báo mới</div>
+          <div class="header-main-title">
+            <h1>Vistay Admin Portal</h1>
+            <div class="header-meta">
+              <div class="header-date">
+                <span>📅</span>
+                <span id="currentDate">—</span>
+              </div>
+              <button class="btn-reset-all" onclick="resetAllPartTimeNames()">
+                🔄 Reset tên Part-time
+              </button>
             </div>
           </div>
         </div>
+        <div class="header-user-actions">
+          <div class="user-greeting">Xin chào, <strong id="adminName">Admin</strong></div>
+          <button class="theme-toggle-btn" id="themeToggle" onclick="toggleTheme()" title="Chế độ sáng/tối">🌙</button>
+          <button id="btnSyncOffline" class="btn" onclick="syncOfflineData()"
+            style="display: none; padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">🔄
+            Đồng bộ lên Server</button>
+          <button id="btnSwitchToEmployee" class="btn" onclick="window.location.href='employee.html'"
+            style="display: none; padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: 500;">📱
+            Giao diện NV</button>
 
-        <button class="btn btn-save" onclick="openChangePasswordModal()"
-          style="padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #475569, #334155);">🔑 Đổi
-          MK</button>
-        <button class="btn btn-logout" onclick="handleLogout()">🚪 Đăng xuất</button>
+          <!-- Notification Bell -->
+          <div class="noti-bell-container" style="position: relative; display: inline-block;">
+            <button class="noti-bell-btn" onclick="toggleNotiDropdown()"
+              style="background: transparent; border: none; font-size: 1.2rem; cursor: pointer; position: relative; padding: 4px; color: var(--text-primary);">
+              🔔
+              <span class="noti-badge" id="notiCountBadge"
+                style="display: none; position: absolute; top: -2px; right: -2px; background: #ef4444; color: white; font-size: 0.65rem; padding: 1px 5px; border-radius: 50%; font-weight: 700;">0</span>
+            </button>
+            <div class="noti-dropdown" id="notiDropdown"
+              style="display: none; position: absolute; right: 0; top: 35px; width: 280px; background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.3); z-index: 1000; max-height: 300px; overflow-y: auto; padding: 10px;">
+              <div
+                style="font-weight: 700; font-size: 0.85rem; border-bottom: 1px solid var(--border-color); padding-bottom: 6px; margin-bottom: 6px; color: var(--text-primary); display: flex; justify-content: space-between; align-items: center;">
+                <span>🔔 Thông báo đổi mật khẩu</span>
+                <button onclick="clearNotiBadge()"
+                  style="background: transparent; border: none; font-size: 0.72rem; color: var(--accent-teal); cursor: pointer;">Đánh
+                  dấu đã đọc</button>
+              </div>
+              <div id="notiList"
+                style="font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4; text-align: left;">
+                <div style="padding: 10px 0; text-align: center;">Không có thông báo mới</div>
+              </div>
+            </div>
+          </div>
+
+          <button class="btn btn-save" onclick="openChangePasswordModal()"
+            style="padding: 4px 8px; font-size: 0.75rem; background: linear-gradient(135deg, #475569, #334155);">🔑 Đổi
+            MK</button>
+          <button class="btn btn-logout" onclick="handleLogout()">🚪 Đăng xuất</button>
+        </div>
+      </header>
+
+      <!-- ===== OFFLINE MODE BANNER ===== -->
+      <div id="offlineAlertBanner" style="display: none; background: linear-gradient(135deg, #dc2626, #b91c1c); color: white; padding: 10px 16px; text-align: center; font-weight: 700; font-size: 0.85rem; position: relative; z-index: 100;">
+        ⚠️ CHẾ ĐỘ OFFLINE — Dữ liệu đang dùng là mock, KHÔNG phải database thật. Vui lòng kiểm tra kết nối server!
+        <button onclick="localStorage.removeItem('vistay_mode'); location.reload();" style="margin-left: 12px; background: rgba(255,255,255,0.2); border: 1px solid white; color: white; padding: 2px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem;">Thử kết nối lại</button>
       </div>
-    </header>
-
-    <!-- ===== OFFLINE MODE BANNER ===== -->
-    <div id="offlineAlertBanner" style="display: none; background: linear-gradient(135deg, #dc2626, #b91c1c); color: white; padding: 10px 16px; text-align: center; font-weight: 700; font-size: 0.85rem; position: relative; z-index: 100;">
-      ⚠️ CHẾ ĐỘ OFFLINE — Dữ liệu đang dùng là mock, KHÔNG phải database thật. Vui lòng kiểm tra kết nối server!
-      <button onclick="localStorage.removeItem('vistay_mode'); location.reload();" style="margin-left: 12px; background: rgba(255,255,255,0.2); border: 1px solid white; color: white; padding: 2px 10px; border-radius: 4px; cursor: pointer; font-size: 0.75rem;">Thử kết nối lại</button>
-    </div>
-
-    <!-- ===== NAVIGATION TABS ===== -->
-    <nav class="admin-tabs">
-      <button class="tab-btn active" onclick="switchTab(event, 'dashboard')">📊 Tổng quan</button>
-      <button class="tab-btn" onclick="switchTab(event, 'assignment')">📋 Phân công ngày</button>
-      <button class="tab-btn" onclick="switchTab(event, 'apartments')">🏠 Quản lý buồng phòng & đổi MK căn hộ</button>
-      <button class="tab-btn" onclick="switchTab(event, 'tasks')">📝 Giao việc</button>
-      <button class="tab-btn" id="tabBtnStats" onclick="switchTab(event, 'stats')">📊 Thống kê</button>
-      <button class="tab-btn" id="tabBtnSalary" onclick="switchTab(event, 'salary')">💰 Bảng lương</button>
-      <button class="tab-btn" id="tabBtnTech" onclick="switchTab(event, 'tech')">🛠️ Công việc kỹ thuật</button>
-    </nav>
 
     <!-- ===== GLOBAL SEARCH BAR ===== -->
     <div id="globalSearchContainer" style="margin-bottom: 16px; position: relative;">
@@ -767,7 +805,9 @@
       </div>
     </div>
 
-  </div>
+    </div><!-- /main-content -->
+
+  </div><!-- /app-container -->
 
   <!-- ===== MODAL: TẠO CÔNG VIỆC KỸ THUẬT ===== -->
   <div id="createTechTaskModal" class="modal-overlay">

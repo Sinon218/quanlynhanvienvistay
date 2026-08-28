@@ -2,7 +2,7 @@
 // Apartments Routes — CRUD + Password Management
 // ===================================================================
 const express = require('express');
-const { sql, getPool, queryDb } = require('../db');
+const { sql, getPool, queryDb, runQuery } = require('../db');
 const { authenticate, requireAdmin, requireManagerOrAdmin, requireAdminOrSpecialStaff } = require('../middleware/auth');
 const { recordStatusSnapshot } = require('../statusHistory');
 const { sendEventToAll } = require('../sse');
@@ -10,14 +10,22 @@ const { ensureNotificationsTable } = require('../utils');
 
 const router = express.Router();
 
-
+// Middleware: Validate :id là số nguyên hợp lệ
+function validateId(req, res, next) {
+  const id = parseInt(req.params.id);
+  if (isNaN(id) || id <= 0) {
+    return res.status(400).json({ error: 'ID không hợp lệ.' });
+  }
+  req.params.id = id;
+  next();
+}
 
 // GET /api/apartments — Danh sách căn hộ (Admin: tất cả, Employee: không MK)
 router.get('/', authenticate, async (req, res) => {
   try {
     const { city, building, status, search, room_type } = req.query;
 
-    const result = await queryDb(async (pool) => {
+    const result = await runQuery(async (pool) => {
       let query = 'SELECT * FROM Apartments WHERE 1=1';
       const request = pool.request();
 
@@ -71,7 +79,7 @@ router.get('/', authenticate, async (req, res) => {
 // GET /api/apartments/stats — Thống kê theo tòa
 router.get('/stats', authenticate, async (req, res) => {
   try {
-    const result = await queryDb(async (pool) => {
+    const result = await runQuery(async (pool) => {
       const byBuilding = await pool.request().query(`
         SELECT 
           building,
@@ -112,19 +120,29 @@ router.get('/stats', authenticate, async (req, res) => {
 
 
 // PUT /api/apartments/:id/status — Đổi trạng thái (Tất cả nhân viên đã xác thực)
-router.put('/:id/status', authenticate, async (req, res) => {
+router.put('/:id/status', authenticate, validateId, async (req, res) => {
   try {
     const { status, room_type, checkin_date, checkin_time, checkout_date, checkout_time, maintenance_duration, stays } = req.body;
 
-    await queryDb(async (pool) => {
+    // Validate trước khi vào queryDb
+    if (status) {
+      const validStatuses = ['available', 'occupied', 'maintenance'];
+      if (!validStatuses.includes(status)) {
+        return res.status(400).json({ error: 'Trạng thái không hợp lệ.' });
+      }
+    }
+    if (room_type) {
+      const validTypes = ['1 ngủ', '2 ngủ', '3 ngủ', '4 ngủ'];
+      if (!validTypes.includes(room_type)) {
+        return res.status(400).json({ error: 'Loại phòng không hợp lệ.' });
+      }
+    }
+
+    await runQuery(async (pool) => {
       const request = pool.request().input('id', sql.Int, req.params.id);
       const updates = [];
 
       if (status) {
-        const validStatuses = ['available', 'occupied', 'maintenance'];
-        if (!validStatuses.includes(status)) {
-          return res.status(400).json({ error: 'Trạng thái không hợp lệ.' });
-        }
         updates.push('status = @status');
         request.input('status', sql.VarChar, status);
 
@@ -245,16 +263,12 @@ router.put('/:id/status', authenticate, async (req, res) => {
       }
 
       if (room_type) {
-        const validTypes = ['1 ngủ', '2 ngủ', '3 ngủ', '4 ngủ'];
-        if (!validTypes.includes(room_type)) {
-          return res.status(400).json({ error: 'Loại phòng không hợp lệ.' });
-        }
         updates.push('room_type = @room_type');
         request.input('room_type', sql.NVarChar, room_type);
       }
 
       if (updates.length === 0) {
-        return res.status(400).json({ error: 'Không có trường dữ liệu nào cần cập nhật.' });
+        throw Object.assign(new Error('Không có trường dữ liệu nào cần cập nhật.'), { statusCode: 400 });
       }
 
       const query = `UPDATE Apartments SET ${updates.join(', ')} WHERE id = @id`;
@@ -279,12 +293,13 @@ router.put('/:id/status', authenticate, async (req, res) => {
     res.json({ message: 'Cập nhật căn hộ thành công.' });
   } catch (err) {
     console.error('Update status error:', err);
-    res.status(500).json({ error: 'Lỗi server.' });
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ error: statusCode === 500 ? 'Lỗi server.' : err.message });
   }
 });
 
 // PUT /api/apartments/:id/password — Đổi MK căn hộ (Chỉ Admin, Lộc, Diệu)
-router.put('/:id/password', authenticate, requireAdminOrSpecialStaff, async (req, res) => {
+router.put('/:id/password', authenticate, requireAdminOrSpecialStaff, validateId, async (req, res) => {
   try {
     const { password } = req.body;
     if (!password || !password.trim()) {
@@ -292,14 +307,14 @@ router.put('/:id/password', authenticate, requireAdminOrSpecialStaff, async (req
     }
 
     let roomCode;
-    await queryDb(async (pool) => {
+    await runQuery(async (pool) => {
       // Lấy MK cũ để ghi audit
       const current = await pool.request()
         .input('id', sql.Int, req.params.id)
         .query('SELECT password, code FROM Apartments WHERE id = @id');
 
       if (current.recordset.length === 0) {
-        return res.status(404).json({ error: 'Không tìm thấy căn hộ.' });
+        throw Object.assign(new Error('Không tìm thấy căn hộ.'), { statusCode: 404 });
       }
 
       const oldPassword = current.recordset[0].password;
@@ -337,7 +352,8 @@ router.put('/:id/password', authenticate, requireAdminOrSpecialStaff, async (req
     });
   } catch (err) {
     console.error('Update password error:', err);
-    res.status(500).json({ error: 'Lỗi server.' });
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ error: statusCode === 500 ? 'Lỗi server.' : err.message });
   }
 });
 
@@ -367,7 +383,7 @@ router.get('/status-history', authenticate, async (req, res) => {
 
     if (apartmentId) {
       // 1. Biểu đồ lịch sử riêng của MỘT căn hộ (trạng thái nhị phân)
-      const result = await queryDb(async (pool) => {
+      const result = await runQuery(async (pool) => {
         const historyRes = await pool.request()
           .input('apartmentId', sql.Int, apartmentId)
           .query(`
@@ -382,7 +398,7 @@ router.get('/status-history', authenticate, async (req, res) => {
           .query('SELECT status FROM Apartments WHERE id = @apartmentId');
         
         if (currentRes.recordset.length === 0) {
-          return res.status(404).json({ error: 'Không tìm thấy căn hộ.' });
+          throw Object.assign(new Error('Không tìm thấy căn hộ.'), { statusCode: 404 });
         }
         const currentStatus = currentRes.recordset[0].status;
 
@@ -413,7 +429,7 @@ router.get('/status-history', authenticate, async (req, res) => {
     } else {
       // 2. Biểu đồ lịch sử tổng hợp của NHIỀU căn hộ (theo tòa hoặc tất cả)
       // Loại bỏ các căn chưa có mã căn (tại HCM) và các căn có mã SSTN
-      const dbResult = await queryDb(async (pool) => {
+      const dbResult = await runQuery(async (pool) => {
         let queryApartments = `
           SELECT id, status, building 
           FROM Apartments 
@@ -504,7 +520,8 @@ router.get('/status-history', authenticate, async (req, res) => {
     }
   } catch (err) {
     console.error('Get status history error:', err);
-    res.status(500).json({ error: 'Lỗi server.' });
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ error: statusCode === 500 ? 'Lỗi server.' : err.message });
   }
 });
 
@@ -569,7 +586,7 @@ router.get('/status-timeline', authenticate, async (req, res) => {
       }
     }
 
-    const dbResult = await queryDb(async (pool) => {
+    const dbResult = await runQuery(async (pool) => {
       let queryApartments = `
         SELECT id, code, building, room_type, status, checkin_date, checkin_time, checkout_date, checkout_time, maintenance_duration
         FROM Apartments
@@ -818,7 +835,7 @@ router.get('/status-timeline', authenticate, async (req, res) => {
 // GET /api/apartments/notifications — Tải danh sách thông báo thay đổi mật khẩu (20 tin mới nhất)
 router.get('/notifications', authenticate, async (req, res) => {
   try {
-    const result = await queryDb(async (pool) => {
+    const result = await runQuery(async (pool) => {
       await ensureNotificationsTable(pool);
       return await pool.request().query(`
         SELECT TOP 20 id, message, created_at 
@@ -834,9 +851,9 @@ router.get('/notifications', authenticate, async (req, res) => {
 });
 
 // GET /api/apartments/:id/stays — Lấy danh sách các khoảng thời gian có khách của căn hộ
-router.get('/:id/stays', authenticate, async (req, res) => {
+router.get('/:id/stays', authenticate, validateId, async (req, res) => {
   try {
-    const result = await queryDb(async (pool) => {
+    const result = await runQuery(async (pool) => {
       return await pool.request()
         .input('aptId', sql.Int, req.params.id)
         .query('SELECT checkin_date, checkin_time, checkout_date, checkout_time FROM ApartmentStays WHERE apartment_id = @aptId ORDER BY checkin_date ASC, checkin_time ASC');
@@ -866,13 +883,13 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
     const validTypes = ['1 ngủ', '2 ngủ', '3 ngủ', '4 ngủ'];
     const type = room_type && validTypes.includes(room_type) ? room_type : '2 ngủ';
 
-    const result = await queryDb(async (pool) => {
+    const result = await runQuery(async (pool) => {
       // Check duplicate code
       const dupCheck = await pool.request()
         .input('code', sql.VarChar, code.trim())
         .query('SELECT id FROM Apartments WHERE code = @code');
       if (dupCheck.recordset.length > 0) {
-        return res.status(400).json({ error: `Mã căn hộ "${code.trim()}" đã tồn tại.` });
+        throw Object.assign(new Error(`Mã căn hộ "${code.trim()}" đã tồn tại.`), { statusCode: 400 });
       }
 
       const rates = { '1 ngủ': 30000, '2 ngủ': 60000, '3 ngủ': 100000, '4 ngủ': 120000 };
@@ -899,22 +916,23 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
     res.json({ message: `Đã thêm căn hộ ${code.trim()} thành công.`, id: newId });
   } catch (err) {
     console.error('Create apartment error:', err);
-    res.status(500).json({ error: 'Lỗi server.' });
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ error: statusCode === 500 ? 'Lỗi server.' : err.message });
   }
 });
 
 // DELETE /api/apartments/:id — Xóa căn hộ (Admin only)
-router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
+router.delete('/:id', authenticate, requireAdmin, validateId, async (req, res) => {
   try {
     const id = parseInt(req.params.id);
 
-    const code = await queryDb(async (pool) => {
+    const code = await runQuery(async (pool) => {
       const check = await pool.request()
         .input('id', sql.Int, id)
         .query('SELECT code FROM Apartments WHERE id = @id');
 
       if (check.recordset.length === 0) {
-        return res.status(404).json({ error: 'Không tìm thấy căn hộ.' });
+        throw Object.assign(new Error('Không tìm thấy căn hộ.'), { statusCode: 404 });
       }
 
       const code = check.recordset[0].code;
@@ -925,7 +943,7 @@ router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
         .query('SELECT COUNT(*) as cnt FROM WorkAssignments WHERE apartment_id = @id');
 
       if (workCheck.recordset[0].cnt > 0) {
-        return res.status(400).json({ error: `Không thể xóa căn ${code} vì đã có lịch sử phân công dọn phòng.` });
+        throw Object.assign(new Error(`Không thể xóa căn ${code} vì đã có lịch sử phân công dọn phòng.`), { statusCode: 400 });
       }
 
       await pool.request()
@@ -940,7 +958,8 @@ router.delete('/:id', authenticate, requireAdmin, async (req, res) => {
     res.json({ message: `Đã xóa căn hộ ${code} thành công.` });
   } catch (err) {
     console.error('Delete apartment error:', err);
-    res.status(500).json({ error: 'Lỗi server.' });
+    const statusCode = err.statusCode || 500;
+    res.status(statusCode).json({ error: statusCode === 500 ? 'Lỗi server.' : err.message });
   }
 });
 
