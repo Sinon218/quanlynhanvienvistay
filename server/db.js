@@ -22,12 +22,12 @@ const config = {
     useUTC: true,
   },
   pool: {
-    max: 5,
-    min: 0,
-    idleTimeoutMillis: 15000,
+    max: 10,
+    min: 1,
+    idleTimeoutMillis: 30000,
   },
-  connectionTimeout: 15000,
-  requestTimeout: 20000,
+  connectionTimeout: 8000,
+  requestTimeout: 10000,
 };
 
 if (!config.port && instanceName) {
@@ -141,4 +141,15 @@ async function closePool() {
   }
 }
 
-module.exports = { sql, getPool, queryDb, runQuery, closePool };
+// Pre-warm: tạo connection pool sẵn khi server khởi động
+async function warmUp() {
+  try {
+    const p = await getPool();
+    await p.request().query('SELECT 1');
+    console.log('✅ Database pool warmed up successfully.');
+  } catch (err) {
+    console.warn('⚠️ Database warm-up failed:', err.message);
+  }
+}
+
+module.exports = { sql, getPool, queryDb, runQuery, closePool, warmUp };

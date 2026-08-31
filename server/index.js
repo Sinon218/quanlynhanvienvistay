@@ -115,7 +115,9 @@ app.use((err, req, res, next) => {
 
 // ===== Start Server =====
 const PORT = process.env.PORT || 3000;
-const server = app.listen(PORT, () => {
+const { warmUp } = require('./db');
+
+const server = app.listen(PORT, async () => {
   console.log('====================================================');
   console.log(`🚀 Vistay Server is running on: http://localhost:${PORT}`);
   console.log(`📦 Environment: ${process.env.NODE_ENV || 'development'}`);
@@ -123,10 +125,11 @@ const server = app.listen(PORT, () => {
   console.log(`📸 Uploads: ${uploadDir}`);
   console.log('====================================================');
 
-  // Khởi tạo bảng lịch sử trạng thái phòng và seed dữ liệu nếu cần (delayed to avoid startup race)
-  setTimeout(() => {
-    initStatusHistory().catch(err => console.error('Init status history failed:', err.message));
-  }, 2000);
+  // Pre-warm DB pool ngay khi server start — giảm delay cho request đầu tiên
+  await warmUp();
+
+  // Khởi tạo bảng lịch sử trạng thái phòng và seed dữ liệu nếu cần
+  initStatusHistory().catch(err => console.error('Init status history failed:', err.message));
 
   // Tự động kiểm tra & dọn dẹp ảnh dọn phòng của nhân viên buồng phòng quá 30 ngày
   autoCleanHousekeepingPhotosOlderThan30Days().catch(err => console.error('Auto photo cleanup failed:', err.message));

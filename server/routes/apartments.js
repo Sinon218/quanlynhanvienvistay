@@ -76,11 +76,27 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/apartments/stats — Thống kê theo tòa
+// Server-side cache cho /stats — endpoint được gọi rất thường xuyên
+let _statsCache = null;
+let _statsCacheTs = 0;
+const _STATS_CACHE_TTL = 5000; // 5 giây
+
+function invalidateStatsCache() {
+  _statsCache = null;
+  _statsCacheTs = 0;
+}
+
+// GET /api/apartments/stats — Thống kê theo tòa (cached)
 router.get('/stats', authenticate, async (req, res) => {
   try {
+    // Trả cache nếu còn fresh
+    if (_statsCache && Date.now() - _statsCacheTs < _STATS_CACHE_TTL) {
+      return res.json(_statsCache);
+    }
+
     const result = await runQuery(async (pool) => {
-      const byBuilding = await pool.request().query(`
+      // Gộp 2 query thành 1 để giảm round-trip tới DB
+      const combined = await pool.request().query(`
         SELECT 
           building,
           COUNT(*) as total,
@@ -90,25 +106,26 @@ router.get('/stats', authenticate, async (req, res) => {
           SUM(CASE WHEN is_samsung = 1 THEN 1 ELSE 0 END) as samsung_count
         FROM Apartments
         GROUP BY building
-        ORDER BY building
-      `);
+        ORDER BY building;
 
-      // Tổng cộng
-      const totals = await pool.request().query(`
         SELECT 
           COUNT(*) as total,
           SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) as available,
           SUM(CASE WHEN status = 'occupied' THEN 1 ELSE 0 END) as occupied,
           SUM(CASE WHEN status = 'maintenance' THEN 1 ELSE 0 END) as maintenance,
           SUM(CASE WHEN is_samsung = 1 THEN 1 ELSE 0 END) as samsung_count
-        FROM Apartments
+        FROM Apartments;
       `);
 
       return {
-        byBuilding: byBuilding.recordset,
-        totals: totals.recordset[0],
+        byBuilding: combined.recordsets[0],
+        totals: combined.recordsets[1][0],
       };
     });
+
+    // Lưu cache
+    _statsCache = result;
+    _statsCacheTs = Date.now();
 
     res.json(result);
   } catch (err) {
@@ -276,6 +293,7 @@ router.put('/:id/status', authenticate, validateId, async (req, res) => {
     });
 
     if (status) {
+      invalidateStatsCache(); // Xóa cache stats khi status phòng đổi
       recordStatusSnapshot(req.params.id, status).catch(e => console.error('Snapshot error:', e.message));
     }
 

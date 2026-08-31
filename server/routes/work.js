@@ -370,15 +370,19 @@ router.get('/today', authenticate, async (req, res) => {
       const request = pool.request();
       let query = `
         SELECT wa.*, a.code, a.building, a.is_samsung, s.name as staff_name,
-               (SELECT COUNT(*) FROM WorkAssignments wa2 
-                WHERE wa2.apartment_id = wa.apartment_id 
-                  AND wa2.assigned_date = wa.assigned_date 
-                  AND wa2.staff_id <> wa.staff_id 
-                  AND wa2.assigned_role = 2
-                  AND wa2.status <> 'rejected') as has_role2_partner
+               CASE 
+                 WHEN wa.assigned_role = 1 THEN ISNULL(r2.role2_count, 0)
+                 ELSE (CASE WHEN ISNULL(r2.role2_count, 0) > 1 THEN ISNULL(r2.role2_count, 0) - 1 ELSE 0 END)
+               END as has_role2_partner
         FROM WorkAssignments wa
         JOIN Apartments a ON wa.apartment_id = a.id
         JOIN Staff s ON wa.staff_id = s.id
+        LEFT JOIN (
+          SELECT apartment_id, assigned_date, COUNT(*) as role2_count
+          FROM WorkAssignments
+          WHERE assigned_role = 2 AND status <> 'rejected'
+          GROUP BY apartment_id, assigned_date
+        ) r2 ON r2.apartment_id = wa.apartment_id AND r2.assigned_date = wa.assigned_date
         WHERE wa.assigned_date = @date
       `;
       request.input('date', sql.Date, date);

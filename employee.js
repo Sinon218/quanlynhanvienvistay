@@ -864,14 +864,14 @@ async function loadDashboard() {
   const statsEndpoint = isTechStaff ? `/tasks/stats/${currentUser.staffId}` : `/work/stats/${currentUser.staffId}`;
   const apartmentQuery = new URLSearchParams(apartmentFilters).toString();
 
-  const [tasks, stats, salary, customTasks, apartments, apartmentStats, timelineResult] = await Promise.allSettled([
+  // Giai đoạn 1: Load các API chính (KHÔNG load timeline — nặng, sẽ load riêng sau)
+  const [tasks, stats, salary, customTasks, apartments, apartmentStats] = await Promise.allSettled([
     apiCall('/work/today'),
     apiCall(statsEndpoint),
     apiCall(`/salary/${currentUser.staffId}`),
     apiCall('/tasks/today'),
     apiCall(`/apartments?${apartmentQuery}`),
     apiCall('/apartments/stats'),
-    apiCall(`/apartments/status-timeline?building=all&mode=${empTimelineMode}&days=${empTimelineDays}&month=${empTimelineMonth}&year=${empTimelineYear}`),
   ]);
 
   // Render results that succeeded; skip failures silently
@@ -899,10 +899,17 @@ async function loadDashboard() {
   renderEmployeeApartmentSummaryTable();
   renderEmployeeApartmentGrid();
 
-  // Render timeline
-  if (timelineResult.status === 'fulfilled') {
-    timelineData = timelineResult.value;
-    renderEmpApartmentStatusTimeline(timelineResult.value);
+  // Giai đoạn 2: Load timeline riêng (deferred) — không block giao diện chính
+  loadEmployeeTimeline();
+}
+
+async function loadEmployeeTimeline() {
+  try {
+    const timelineResult = await apiCall(`/apartments/status-timeline?building=all&mode=${empTimelineMode}&days=${empTimelineDays}&month=${empTimelineMonth}&year=${empTimelineYear}`);
+    timelineData = timelineResult;
+    renderEmpApartmentStatusTimeline(timelineResult);
+  } catch (err) {
+    console.warn('Timeline load error:', err.message);
   }
 }
 
@@ -1528,7 +1535,8 @@ async function checkNewNotifications() {
 async function initializePage() {
   initTheme();
   checkAuth();
-  await loadGlobalConfig();
+  // Fire-and-forget: không block page load
+  loadGlobalConfig().catch(() => {});
   setupRealtimeEvents();
 
   // Khởi động hệ thống kiểm tra thông báo đổi mật khẩu
