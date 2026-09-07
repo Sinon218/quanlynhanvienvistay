@@ -59,6 +59,10 @@
           <span class="sidebar-icon">🛠️</span>
           <span class="sidebar-label">Kỹ thuật</span>
         </button>
+        <button class="sidebar-btn" id="tabBtnAttendance" onclick="switchTab(event, 'attendance')">
+          <span class="sidebar-icon">⏰</span>
+          <span class="sidebar-label">Chấm Công PT</span>
+        </button>
       </nav>
     </aside>
 
@@ -803,6 +807,64 @@
       <div id="techTasksContainer" class="tech-tasks-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px;">
         <!-- Rendered by JS -->
       </div>
+    </div>
+
+    <!-- ==================== TAB: ATTENDANCE (CHẤM CÔNG PT) ==================== -->
+    <div id="tab-attendance" class="tab-content">
+      <section class="section">
+        <div class="section-header">
+          <span class="section-icon">⏰</span>
+          <h2 class="section-title" style="color: var(--accent-amber);">Chấm Công Nhân Viên Part-Time</h2>
+          <div class="salary-filters" style="margin-left: auto; display: flex; gap: 8px;">
+            <select id="attendanceMonth" class="room-filter-select" onchange="loadAttendanceData()"></select>
+            <select id="attendanceYear" class="room-filter-select" onchange="loadAttendanceData()"></select>
+            <select id="attendanceStaffFilter" class="room-filter-select" onchange="loadAttendanceData()">
+              <option value="">Tất cả NV Part-Time</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Tổng kết tháng -->
+        <div class="room-stats" style="margin-bottom: 20px;">
+          <div class="stat-item stat-total">
+            <span class="stat-num" id="attTotalStaff">0</span>
+            <span class="stat-label">NV Part-Time</span>
+          </div>
+          <div class="stat-item stat-available">
+            <span class="stat-num" id="attTotalDays">0</span>
+            <span class="stat-label">Ngày chấm công</span>
+          </div>
+          <div class="stat-item" style="border: 1px solid #f59e0b; background: rgba(245, 158, 11, 0.08);">
+            <span class="stat-num" id="attTotalHours" style="color: #f59e0b;">0</span>
+            <span class="stat-label">Tổng giờ làm</span>
+          </div>
+          <div class="stat-item" style="border: 1px solid #10b981; background: rgba(16, 185, 129, 0.08);">
+            <span class="stat-num" id="attTotalSalary" style="color: #10b981;">0</span>
+            <span class="stat-label">Tổng lương ước tính</span>
+          </div>
+        </div>
+
+        <!-- Bảng chấm công -->
+        <div class="stats-table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Nhân viên</th>
+                <th>Ngày</th>
+                <th>Giờ đến</th>
+                <th>Giờ về</th>
+                <th>Tổng giờ</th>
+                <th>Ghi chú</th>
+              </tr>
+            </thead>
+            <tbody id="attendanceTableBody">
+              <tr>
+                <td colspan="6" style="text-align: center; padding: 20px; color: var(--text-muted);">Đang tải dữ liệu...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
 
     </div><!-- /main-content -->

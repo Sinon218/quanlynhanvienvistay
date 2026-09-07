@@ -3305,6 +3305,7 @@ async function initializePage() {
   checkAuth();
   loadGlobalConfig().catch(() => {});
   setupRealtimeEvents();
+  initAttendanceFilters();
   
   // Initialize sidebar overlay for mobile
   createSidebarOverlay();
@@ -5076,4 +5077,96 @@ function hideSearchHistory() {
 }
 
 // ===== INITIALIZATION (handled by initializePage above) =====
+
+// ===================================================================
+// ATTENDANCE MODULE - Chấm Công Part-Time
+// ===================================================================
+
+function initAttendanceFilters() {
+  const monthSelect = document.getElementById('attendanceMonth');
+  const yearSelect = document.getElementById('attendanceYear');
+  if (!monthSelect || !yearSelect) return;
+  
+  const now = new Date();
+  const monthNames = ['Tháng 1', 'Tháng 2', 'Tháng 3', 'Tháng 4', 'Tháng 5', 'Tháng 6',
+    'Tháng 7', 'Tháng 8', 'Tháng 9', 'Tháng 10', 'Tháng 11', 'Tháng 12'];
+
+  monthSelect.innerHTML = '';
+  for (let m = 0; m < 12; m++) {
+    const opt = document.createElement('option');
+    opt.value = m + 1;
+    opt.textContent = monthNames[m];
+    if (m === now.getMonth()) opt.selected = true;
+    monthSelect.appendChild(opt);
+  }
+
+  yearSelect.innerHTML = '';
+  for (let y = now.getFullYear() - 2; y <= now.getFullYear() + 1; y++) {
+    const opt = document.createElement('option');
+    opt.value = y;
+    opt.textContent = y;
+    if (y === now.getFullYear()) opt.selected = true;
+    yearSelect.appendChild(opt);
+  }
+
+  // Populate staff filter with part-time staff only
+  const staffSelect = document.getElementById('attendanceStaffFilter');
+  if (staffSelect && typeof staffList !== 'undefined') {
+    staffSelect.innerHTML = '<option value="">Tất cả NV Part-Time</option>';
+    staffList.filter(s => s.type === 'part-time').forEach(s => {
+      const opt = document.createElement('option');
+      opt.value = s.id;
+      opt.textContent = s.name;
+      staffSelect.appendChild(opt);
+    });
+  }
+}
+
+async function loadAttendanceData() {
+  const month = document.getElementById('attendanceMonth')?.value;
+  const year = document.getElementById('attendanceYear')?.value;
+  const staffId = document.getElementById('attendanceStaffFilter')?.value;
+
+  if (!month || !year) return;
+
+  try {
+    let endpoint = `/attendance/all?month=${month}&year=${year}`;
+    if (staffId) endpoint += `&staff_id=${staffId}`;
+
+    const data = await apiCall(endpoint);
+    const tbody = document.getElementById('attendanceTableBody');
+
+    // Update stats
+    const summary = data.summary || [];
+    const totalHours = summary.reduce((sum, s) => sum + s.total_hours, 0);
+    const hourlyRate = (typeof appConfig !== 'undefined' && appConfig.PARTTIME) ? appConfig.PARTTIME.DEFAULT_HOURLY_RATE : 30000;
+
+    document.getElementById('attTotalStaff').textContent = summary.length;
+    document.getElementById('attTotalDays').textContent = data.records.length;
+    document.getElementById('attTotalHours').textContent = Math.round(totalHours * 100) / 100;
+    document.getElementById('attTotalSalary').textContent = (totalHours * hourlyRate).toLocaleString('vi-VN') + 'đ';
+
+    if (data.records.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: var(--text-muted);">Không có dữ liệu chấm công tháng này</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = data.records.map(r => {
+      const date = new Date(r.work_date);
+      const dateStr = `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+      return `
+        <tr>
+          <td style="font-weight: 600;">${r.staff_name}</td>
+          <td>${dateStr}</td>
+          <td style="font-weight: 600; color: #10b981;">${r.check_in_rounded || '--:--'}</td>
+          <td style="font-weight: 600; color: #f59e0b;">${r.check_out_rounded || '--:--'}</td>
+          <td style="font-weight: 700;">${r.total_hours ? r.total_hours + 'h' : '--'}</td>
+          <td style="color: var(--text-muted); font-size: 0.85rem;">${r.notes || ''}</td>
+        </tr>
+      `;
+    }).join('');
+  } catch (err) {
+    console.error('Load attendance data error:', err);
+  }
+}
 
