@@ -204,7 +204,7 @@ function handleLogout() {
 // In-flight request deduplication & short cache for GET requests
 const _pendingRequests = new Map();
 const _getCache = new Map();
-const _CACHE_TTL = 3000; // 3s cache for identical GET requests
+const _CACHE_TTL = 10000;
 
 async function apiCall(endpoint, method = 'GET', body = null) {
   let mode = localStorage.getItem('vistay_mode') || 'backend';
@@ -1615,7 +1615,8 @@ async function initializePage() {
   }
 
   document.getElementById('currentDate').textContent = formatDate();
-  loadDashboard();
+  // Stagger initial load:让 DB pool có thời gian establish trên request đầu tiên
+  setTimeout(loadDashboard, 100);
   // Auto-refresh every 30s (debounced to prevent rapid re-renders)
   let _dashTimer = null;
   setInterval(() => {

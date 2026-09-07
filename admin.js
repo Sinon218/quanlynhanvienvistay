@@ -352,7 +352,7 @@ function handleLogout() {
 // ===== API REQUEST HELPER WITH OFFLINE FALLBACK =====
 const _pendingRequests = new Map();
 const _getCache = new Map();
-const _CACHE_TTL = 3000;
+const _CACHE_TTL = 10000;
 
 async function apiCall(endpoint, method = 'GET', body = null) {
   let mode = localStorage.getItem('vistay_mode') || 'backend';
@@ -3376,9 +3376,9 @@ async function initializePage() {
 
   document.getElementById('currentDate').textContent = formatDate();
 
-  // Load first tab data — stagger to avoid blocking UI
+  // Load first tab data — stagger to avoid blocking UI & let DB pool establish
   requestAnimationFrame(() => {
-    switchTab(null, 'assignment');
+    setTimeout(() => switchTab(null, 'assignment'), 100);
   });
 
   // Search & Filter event listeners — lazy-load apartments only when user interacts

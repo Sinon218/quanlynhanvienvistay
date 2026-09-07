@@ -20,14 +20,15 @@ const config = {
     trustServerCertificate: true,
     enableArithAbort: true,
     useUTC: true,
+    tcpKeepAlive: true,
   },
   pool: {
     max: 10,
-    min: 1,
-    idleTimeoutMillis: 30000,
+    min: 2,
+    idleTimeoutMillis: 60000,
   },
-  connectionTimeout: 8000,
-  requestTimeout: 10000,
+  connectionTimeout: 15000,
+  requestTimeout: 15000,
 };
 
 if (!config.port && instanceName) {
@@ -47,7 +48,7 @@ async function getPool() {
     pool = null;
   }
 
-  // Create fresh pool with retry
+  // Create fresh pool with retry (faster retries: 1s, 1.5s, 2s, 2.5s)
   for (let attempt = 1; attempt <= 5; attempt++) {
     try {
       const newPool = new sql.ConnectionPool(config);
@@ -61,7 +62,7 @@ async function getPool() {
       return pool;
     } catch (err) {
       console.warn(`SQL connect attempt ${attempt}/5 failed: ${err.message}`);
-      if (attempt < 5) await new Promise(r => setTimeout(r, 2000 * attempt));
+      if (attempt < 5) await new Promise(r => setTimeout(r, 1000 + 500 * attempt));
     }
   }
   throw new Error('Cannot connect to SQL Server after 5 attempts');
