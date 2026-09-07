@@ -15,6 +15,7 @@ const workRoutes = require('./routes/work');
 const salaryRoutes = require('./routes/salary');
 const taskRoutes = require('./routes/tasks');
 const techRoutes = require('./routes/tech');
+const attendanceRoutes = require('./routes/attendance');
 const { initStatusHistory } = require('./statusHistory');
 const { sseMiddleware } = require('./sse');
 const { autoCleanHousekeepingPhotosOlderThan30Days } = require('./services/photoCleanup');
@@ -60,6 +61,7 @@ app.use('/api/work', workRoutes);
 app.use('/api/salary', salaryRoutes);
 app.use('/api/tasks', taskRoutes);
 app.use('/api/tech', techRoutes);
+app.use('/api/attendance', attendanceRoutes);
 
 // ===== Real-time Event Stream =====
 app.get('/api/events', sseMiddleware);

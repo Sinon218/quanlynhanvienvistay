@@ -277,6 +277,10 @@ async function seed() {
       if (s.name === 'Lộc' || s.name === 'Diệu') {
         role = 'manager';
       }
+      // Part-time dùng role 'parttime'
+      if (s.type === 'part-time') {
+        role = 'parttime';
+      }
 
       await pool.request()
         .input('username', sql.VarChar, username)
@@ -413,7 +417,8 @@ async function seed() {
     console.log('🔐 Tài khoản đăng nhập hệ thống:');
     console.log('1. Admin: vistay / 12345678');
     console.log('2. Manager: loc / 12345678, dieu / 12345678');
-    console.log('3. NV: lien, thien, chien, van, hoan, parttime1-5 / 12345678');
+    console.log('3. NV: lien, thien, chien, van, hoan / 12345678');
+    console.log('4. PT: parttime1-5 / 12345678 (role: parttime)');
     console.log('====================================================');
   } catch (err) {
     console.error('❌ SEED ERROR:', err);

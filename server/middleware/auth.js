@@ -50,6 +50,14 @@ function requireSelfOrAdmin(req, res, next) {
   }
 }
 
+// Check parttime role
+function requireParttime(req, res, next) {
+  if (req.user.role !== 'parttime') {
+    return res.status(403).json({ error: 'Chức năng này chỉ dành cho nhân viên part-time.' });
+  }
+  next();
+}
+
 // Check if user is admin or special staff (Lộc, Diệu) for password/info management
 function requireAdminOrSpecialStaff(req, res, next) {
   const allowedUsernames = ['vistay', 'loc', 'dieu'];
@@ -64,4 +72,4 @@ function requireAdminOrSpecialStaff(req, res, next) {
   }
 }
 
-module.exports = { authenticate, requireAdmin, requireManagerOrAdmin, requireSelfOrAdmin, requireAdminOrSpecialStaff };
+module.exports = { authenticate, requireAdmin, requireManagerOrAdmin, requireSelfOrAdmin, requireAdminOrSpecialStaff, requireParttime };

@@ -36,6 +36,10 @@ const CONFIG = {
     2: 100000,  // Trung bình
     3: 150000,  // Khó
     4: 250000   // Cần chuyên môn
+  },
+  PARTTIME: {
+    DEFAULT_HOURLY_RATE: 30000,        // Đơn giá mặc định/giờ (VND)
+    ROUND_INTERVAL_MINUTES: 15,        // Làm tròn mỗi 15 phút
   }
 };
 
