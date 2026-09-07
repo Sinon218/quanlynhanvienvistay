@@ -451,12 +451,7 @@ const MOCK_STAFF = [
   { id: 4, name: 'Vân', default_name: 'Vân', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 5000000, per_room_rate: 50000 },
   { id: 5, name: 'Diệu', default_name: 'Diệu', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 7000000, per_room_rate: 50000 },
   { id: 6, name: 'Hoàn', default_name: 'Hoàn', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 5000000, per_room_rate: 50000 },
-  { id: 7, name: 'Lộc', default_name: 'Lộc', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 7000000, per_room_rate: 50000 },
-  { id: 8, name: 'Nhân viên Part-time 1', default_name: 'Nhân viên Part-time 1', type: 'part-time', room_role: 2, tech_role: 0, base_salary: 5000000, per_room_rate: 50000 },
-  { id: 9, name: 'Nhân viên Part-time 2', default_name: 'Nhân viên Part-time 2', type: 'part-time', room_role: 2, tech_role: 0, base_salary: 5000000, per_room_rate: 50000 },
-  { id: 10, name: 'Nhân viên Part-time 3', default_name: 'Nhân viên Part-time 3', type: 'part-time', room_role: 2, tech_role: 0, base_salary: 5000000, per_room_rate: 50000 },
-  { id: 11, name: 'Nhân viên Part-time 4', default_name: 'Nhân viên Part-time 4', type: 'part-time', room_role: 2, tech_role: 0, base_salary: 5000000, per_room_rate: 50000 },
-  { id: 12, name: 'Nhân viên Part-time 5', default_name: 'Nhân viên Part-time 5', type: 'part-time', room_role: 2, tech_role: 0, base_salary: 5000000, per_room_rate: 50000 }
+  { id: 7, name: 'Lộc', default_name: 'Lộc', type: 'full-time', room_role: 1, tech_role: 0, base_salary: 7000000, per_room_rate: 50000 }
 ];
 
 const roomTypeByCodeMap = {
@@ -5167,6 +5162,68 @@ async function loadAttendanceData() {
     }).join('');
   } catch (err) {
     console.error('Load attendance data error:', err);
+  }
+}
+
+// ===================================================================
+// ADD STAFF MODULE - Thêm Nhân Viên Mới
+// ===================================================================
+
+function openAddStaffModal() {
+  document.getElementById('addStaffModal').style.display = 'flex';
+  document.getElementById('addStaffName').value = '';
+  document.getElementById('addStaffHourlyRate').value = CONFIG?.PARTTIME?.DEFAULT_HOURLY_RATE || 30000;
+  document.getElementById('addStaffHourlyRateGroup').style.display = 'none';
+  
+  // Reset radio buttons
+  document.querySelector('input[name="addStaffType"][value="full-time"]').checked = true;
+  document.querySelector('input[name="addStaffRoomRole"][value="2"]').checked = true;
+  
+  updateAddStaffPreview();
+  
+  // Listen for type changes
+  document.querySelectorAll('input[name="addStaffType"]').forEach(radio => {
+    radio.onchange = () => {
+      const isParttime = document.querySelector('input[name="addStaffType"]:checked').value === 'part-time';
+      document.getElementById('addStaffHourlyRateGroup').style.display = isParttime ? 'block' : 'none';
+    };
+  });
+  
+  document.getElementById('addStaffName').oninput = updateAddStaffPreview;
+}
+
+function closeAddStaffModal() {
+  document.getElementById('addStaffModal').style.display = 'none';
+}
+
+function updateAddStaffPreview() {
+  const name = document.getElementById('addStaffName').value.trim();
+  if (!name) {
+    document.getElementById('addStaffPreviewUsername').textContent = '—';
+    return;
+  }
+  // Remove accents and format as username
+  const username = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[đĐ]/g, 'd').toLowerCase().replace(/\s+/g, '');
+  document.getElementById('addStaffPreviewUsername').textContent = username;
+}
+
+async function saveNewStaff() {
+  const name = document.getElementById('addStaffName').value.trim();
+  const type = document.querySelector('input[name="addStaffType"]:checked').value;
+  const roomRole = parseInt(document.querySelector('input[name="addStaffRoomRole"]:checked').value);
+
+  if (!name) {
+    showToast('Vui lòng nhập tên nhân viên.', 'warning');
+    return;
+  }
+
+  try {
+    const data = await apiCall('/staff', 'POST', { name, type, room_role: roomRole });
+    showToast(`${data.message} Username: ${data.user.username}`, 'success');
+    closeAddStaffModal();
+    loadStaffData(); // Reload staff list
+  } catch (err) {
+    showToast(err.message || 'Lỗi khi thêm nhân viên.', 'error');
   }
 }
 

@@ -4,6 +4,8 @@
 const express = require('express');
 const { sql, getPool, queryDb, runQuery } = require('../db');
 const { authenticate, requireAdmin, requireManagerOrAdmin } = require('../middleware/auth');
+const bcrypt = require('bcryptjs');
+const CONFIG = require('../config');
 
 const router = express.Router();
 
@@ -36,6 +38,86 @@ router.get('/', authenticate, async (req, res) => {
     res.json(result.recordset);
   } catch (err) {
     console.error('Get staff error:', err);
+    res.status(500).json({ error: 'Lỗi server.' });
+  }
+});
+
+// POST /api/staff — Tạo nhân viên mới (Admin only)
+router.post('/', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { name, type, room_role, hourly_rate } = req.body;
+
+    if (!name || !name.trim()) {
+      return res.status(400).json({ error: 'Vui lòng nhập tên nhân viên.' });
+    }
+
+    const staffType = type || 'full-time';
+    const staffRoomRole = room_role !== undefined ? parseInt(room_role) : 2;
+
+    // Tạo username từ tên (bỏ dấu, lowercase, bỏ khoảng trắng)
+    function removeAccents(str) {
+      return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[đĐ]/g, 'd').toLowerCase().replace(/\s+/g, '');
+    }
+
+    let baseUsername = removeAccents(name.trim());
+    
+    // Kiểm tra username tồn tại và thêm số nếu trùng
+    let username = baseUsername;
+    let counter = 1;
+    const defaultPassword = '12345678';
+
+    await runQuery(async (pool) => {
+      // Kiểm tra username trùng
+      while (true) {
+        const check = await pool.request()
+          .input('username', sql.VarChar, username)
+          .query('SELECT id FROM Users WHERE username = @username');
+        if (check.recordset.length === 0) break;
+        username = baseUsername + counter;
+        counter++;
+      }
+
+      // Tạo Staff
+      const staffResult = await pool.request()
+        .input('name', sql.NVarChar, name.trim())
+        .input('defaultName', sql.NVarChar, name.trim())
+        .input('type', sql.VarChar, staffType)
+        .input('roomRole', sql.Int, staffRoomRole)
+        .input('techRole', sql.Int, 0)
+        .input('baseSalary', sql.Decimal(12, 0), CONFIG.SALARY.DEFAULT_BASE_SALARY)
+        .input('perRoomRate', sql.Decimal(10, 0), CONFIG.ROOM_RATES.DEFAULT)
+        .query(`
+          INSERT INTO Staff (name, default_name, type, room_role, tech_role, base_salary, per_room_rate)
+          OUTPUT INSERTED.id
+          VALUES (@name, @defaultName, @type, @roomRole, @techRole, @baseSalary, @perRoomRate)
+        `);
+
+      const staffId = staffResult.recordset[0].id;
+
+      // Tạo User account
+      const hash = await bcrypt.hash(defaultPassword, 10);
+      const userRole = staffType === 'part-time' ? 'parttime' : 'employee';
+      
+      await pool.request()
+        .input('username', sql.VarChar, username)
+        .input('passwordHash', sql.VarChar, hash)
+        .input('role', sql.VarChar, userRole)
+        .input('staffId', sql.Int, staffId)
+        .query(`
+          INSERT INTO Users (username, password_hash, role, staff_id, is_active)
+          VALUES (@username, @passwordHash, @role, @staffId, 1)
+        `);
+
+      return { staffId, username };
+    });
+
+    res.json({
+      message: 'Thêm nhân viên thành công.',
+      staff: { name: name.trim(), type: staffType },
+      user: { username, password: defaultPassword }
+    });
+  } catch (err) {
+    console.error('Create staff error:', err);
     res.status(500).json({ error: 'Lỗi server.' });
   }
 });

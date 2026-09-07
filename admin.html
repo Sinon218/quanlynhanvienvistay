@@ -245,6 +245,10 @@
           <span class="section-icon">🛏️</span>
           <h2 class="section-title">Khu Vực Buồng Phòng</h2>
           <span class="section-badge">Housekeeping</span>
+          <button class="btn" onclick="openAddStaffModal()" 
+            style="margin-left: auto; padding: 6px 14px; font-size: 0.82rem; font-weight: 600; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 6px; cursor: pointer; display: flex; align-items: center; gap: 4px;">
+            ➕ Thêm nhân viên
+          </button>
         </div>
         <div class="staff-grid" id="roomGrid">
           <!-- Rendered by JS -->
@@ -1461,6 +1465,61 @@
       <div class="modal-footer">
         <button class="btn btn-cancel" onclick="closeAddApartmentModal()">Đóng</button>
         <button class="btn btn-save" onclick="saveNewApartment()" style="background: linear-gradient(135deg, #10b981, #059669);">➕ Thêm căn hộ</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== MODAL: THÊM NHÂN VIÊN ===== -->
+  <div id="addStaffModal" class="modal-overlay">
+    <div class="modal" style="max-width: 480px; width: 92%;">
+      <div class="modal-header">
+        <h2>➕ Thêm Nhân Viên Mới</h2>
+        <button class="modal-close" onclick="closeAddStaffModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="rename-input-group" style="margin-bottom: 12px;">
+          <label for="addStaffName">👤 Tên nhân viên <span style="color: #ef4444;">*</span></label>
+          <input type="text" id="addStaffName" placeholder="VD: Nguyễn Văn A" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 0.9rem;">
+        </div>
+        <div class="rename-input-group" style="margin-bottom: 12px;">
+          <label>📋 Loại hình nhân viên</label>
+          <div style="display: flex; gap: 16px; margin-top: 6px;">
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9rem; color: var(--text-primary);">
+              <input type="radio" name="addStaffType" value="full-time" checked> Full-time
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9rem; color: var(--text-primary);">
+              <input type="radio" name="addStaffType" value="part-time"> Part-time
+            </label>
+          </div>
+        </div>
+        <div class="rename-input-group" style="margin-bottom: 12px;">
+          <label>🛏️ Phân công buồng phòng</label>
+          <div style="display: flex; gap: 16px; margin-top: 6px;">
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9rem; color: var(--text-primary);">
+              <input type="radio" name="addStaffRoomRole" value="0"> Không
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9rem; color: var(--text-primary);">
+              <input type="radio" name="addStaffRoomRole" value="1"> Chính
+            </label>
+            <label style="display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 0.9rem; color: var(--text-primary);">
+              <input type="radio" name="addStaffRoomRole" value="2" checked> Phụ
+            </label>
+          </div>
+        </div>
+        <div id="addStaffHourlyRateGroup" class="rename-input-group" style="margin-bottom: 12px; display: none;">
+          <label for="addStaffHourlyRate">💰 Lương/giờ (VNĐ)</label>
+          <input type="number" id="addStaffHourlyRate" value="30000" min="0" step="1000" style="width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: 0.9rem;">
+        </div>
+        <div style="background: rgba(59, 130, 246, 0.08); border: 1px solid #3b82f6; padding: 10px; border-radius: 6px; font-size: 0.83rem; margin-top: 8px;">
+          <div style="font-weight: 700; color: #2563eb; margin-bottom: 4px;">🔐 Tài khoản đăng nhập sẽ tự động tạo:</div>
+          <div style="color: var(--text-primary);">Username: <strong id="addStaffPreviewUsername">—</strong></div>
+          <div style="color: var(--text-primary);">Mật khẩu mặc định: <strong>12345678</strong></div>
+          <div style="color: var(--text-muted); font-size: 0.78rem; margin-top: 4px;">(Nhân viên nên đổi mật khẩu sau khi đăng nhập lần đầu)</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-cancel" onclick="closeAddStaffModal()">Đóng</button>
+        <button class="btn btn-save" onclick="saveNewStaff()" style="background: linear-gradient(135deg, #10b981, #059669);">➕ Thêm nhân viên</button>
       </div>
     </div>
   </div>

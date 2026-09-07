@@ -184,12 +184,7 @@ const staffData = [
   { name: 'Vân',    default_name: 'Vân',    type: 'full-time', room_role: 1, tech_role: 0 },
   { name: 'Diệu',  default_name: 'Diệu',  type: 'full-time', room_role: 1, tech_role: 0 },
   { name: 'Hoàn',   default_name: 'Hoàn',   type: 'full-time', room_role: 1, tech_role: 0 },
-  { name: 'Lộc',    default_name: 'Lộc',    type: 'full-time', room_role: 1, tech_role: 0 },
-  { name: 'Nhân viên Part-time 1', default_name: 'Nhân viên Part-time 1', type: 'part-time', room_role: 2, tech_role: 0 },
-  { name: 'Nhân viên Part-time 2', default_name: 'Nhân viên Part-time 2', type: 'part-time', room_role: 2, tech_role: 0 },
-  { name: 'Nhân viên Part-time 3', default_name: 'Nhân viên Part-time 3', type: 'part-time', room_role: 2, tech_role: 0 },
-  { name: 'Nhân viên Part-time 4', default_name: 'Nhân viên Part-time 4', type: 'part-time', room_role: 2, tech_role: 0 },
-  { name: 'Nhân viên Part-time 5', default_name: 'Nhân viên Part-time 5', type: 'part-time', room_role: 2, tech_role: 0 }
+  { name: 'Lộc',    default_name: 'Lộc',    type: 'full-time', room_role: 1, tech_role: 0 }
 ];
 
 async function seed() {
@@ -259,19 +254,7 @@ async function seed() {
       let username = '';
       let role = 'employee';
       
-      if (s.name.includes('Part-time 1')) {
-        username = 'parttime1';
-      } else if (s.name.includes('Part-time 2')) {
-        username = 'parttime2';
-      } else if (s.name.includes('Part-time 3')) {
-        username = 'parttime3';
-      } else if (s.name.includes('Part-time 4')) {
-        username = 'parttime4';
-      } else if (s.name.includes('Part-time 5')) {
-        username = 'parttime5';
-      } else {
-        username = removeAccents(s.name);
-      }
+      username = removeAccents(s.name);
 
       // Lộc và Diệu là manager
       if (s.name === 'Lộc' || s.name === 'Diệu') {
@@ -417,8 +400,8 @@ async function seed() {
     console.log('🔐 Tài khoản đăng nhập hệ thống:');
     console.log('1. Admin: vistay / 12345678');
     console.log('2. Manager: loc / 12345678, dieu / 12345678');
-    console.log('3. NV: lien, thien, chien, van, hoan / 12345678');
-    console.log('4. PT: parttime1-5 / 12345678 (role: parttime)');
+    console.log('3. NV: lien, thien, chien, van, hoan, loc, dieu / 12345678');
+    console.log('   (Part-time sẽ được tạo từ giao diện admin)');
     console.log('====================================================');
   } catch (err) {
     console.error('❌ SEED ERROR:', err);
