@@ -2,14 +2,13 @@
 // Staff Routes — CRUD + Role Assignment
 // ===================================================================
 const express = require('express');
-const { sql, getPool, queryDb, runQuery } = require('../db');
+const { sql, runQuery } = require('../db');
 const { authenticate, requireAdmin, requireManagerOrAdmin } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
 const CONFIG = require('../config');
 
 const router = express.Router();
 
-// Middleware: Validate :id là số nguyên hợp lệ
 function validateId(req, res, next) {
   const id = parseInt(req.params.id);
   if (isNaN(id) || id <= 0) {
@@ -19,22 +18,21 @@ function validateId(req, res, next) {
   next();
 }
 
+function removeAccents(str) {
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[đĐ]/g, 'd').toLowerCase().replace(/\s+/g, '');
+}
+
 // GET /api/staff — Danh sách tất cả nhân viên
 router.get('/', authenticate, async (req, res) => {
   try {
     const result = await runQuery(async (pool) => {
-      // Nếu là employee hoặc parttime, chỉ trả về info của bản thân
       if (req.user.role === 'employee' || req.user.role === 'parttime') {
         return await pool.request()
           .input('staffId', sql.Int, req.user.staffId)
           .query('SELECT * FROM Staff WHERE id = @staffId');
       }
-
-      // Admin/Manager: trả về tất cả
-      return await pool.request()
-        .query('SELECT * FROM Staff ORDER BY id');
+      return await pool.request().query('SELECT * FROM Staff ORDER BY id');
     });
-
     res.json(result.recordset);
   } catch (err) {
     console.error('Get staff error:', err);
@@ -45,7 +43,7 @@ router.get('/', authenticate, async (req, res) => {
 // POST /api/staff — Tạo nhân viên mới (Admin only)
 router.post('/', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { name, type, room_role, hourly_rate } = req.body;
+    const { name, type, room_role } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Vui lòng nhập tên nhân viên.' });
@@ -53,31 +51,24 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
 
     const staffType = type || 'full-time';
     const staffRoomRole = room_role !== undefined ? parseInt(room_role) : 2;
-
-    // Tạo username từ tên (bỏ dấu, lowercase, bỏ khoảng trắng)
-    function removeAccents(str) {
-      return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[đĐ]/g, 'd').toLowerCase().replace(/\s+/g, '');
-    }
-
-    let baseUsername = removeAccents(name.trim());
-    
-    // Kiểm tra username tồn tại và thêm số nếu trùng
-    let username = baseUsername;
-    let counter = 1;
+    const baseUsername = removeAccents(name.trim());
     const defaultPassword = '12345678';
 
-    await runQuery(async (pool) => {
-      // Kiểm tra username trùng (tối đa 50 lần thử)
-      while (counter <= 50) {
-        const check = await pool.request()
-          .input('username', sql.VarChar, username)
-          .query('SELECT id FROM Users WHERE username = @username');
-        if (check.recordset.length === 0) break;
+    const data = await runQuery(async (pool) => {
+      // Batch query: get all existing usernames with this prefix
+      const existing = await pool.request()
+        .input('prefix', sql.VarChar, baseUsername + '%')
+        .query('SELECT username FROM Users WHERE username LIKE @prefix');
+
+      // Find next available username
+      const taken = new Set(existing.recordset.map(r => r.username));
+      let username = baseUsername;
+      let counter = 1;
+      while (taken.has(username) && counter <= 50) {
         username = baseUsername + counter;
         counter++;
       }
 
-      // Tạo Staff
       const staffResult = await pool.request()
         .input('name', sql.NVarChar, name.trim())
         .input('defaultName', sql.NVarChar, name.trim())
@@ -93,20 +84,15 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
         `);
 
       const staffId = staffResult.recordset[0].id;
-
-      // Tạo User account
       const hash = await bcrypt.hash(defaultPassword, 10);
       const userRole = staffType === 'part-time' ? 'parttime' : 'employee';
-      
+
       await pool.request()
         .input('username', sql.VarChar, username)
         .input('passwordHash', sql.VarChar, hash)
         .input('role', sql.VarChar, userRole)
         .input('staffId', sql.Int, staffId)
-        .query(`
-          INSERT INTO Users (username, password_hash, role, staff_id, is_active)
-          VALUES (@username, @passwordHash, @role, @staffId, 1)
-        `);
+        .query('INSERT INTO Users (username, password_hash, role, staff_id, is_active) VALUES (@username, @passwordHash, @role, @staffId, 1)');
 
       return { staffId, username };
     });
@@ -135,7 +121,6 @@ router.get('/:id', authenticate, validateId, async (req, res) => {
       return res.status(404).json({ error: 'Không tìm thấy nhân viên.' });
     }
 
-    // Employee chỉ xem được bản thân
     if (req.user.role === 'employee' && req.user.staffId !== parseInt(req.params.id)) {
       return res.status(403).json({ error: 'Bạn chỉ có thể xem thông tin của bản thân.' });
     }
@@ -152,13 +137,8 @@ router.put('/:id/role', authenticate, requireManagerOrAdmin, validateId, async (
   try {
     let { room_role, tech_role } = req.body;
 
-    // Auto-role mapper logic (Issue #5)
-    if (tech_role === 1) {
-      room_role = 2; // Kỹ thuật chính → Buồng phòng phụ
-    }
-    if (room_role === 1) {
-      tech_role = 0; // Buồng phòng chính → Kỹ thuật = 0
-    }
+    if (tech_role === 1) room_role = 2;
+    if (room_role === 1) tech_role = 0;
 
     await runQuery(async (pool) => {
       await pool.request()
@@ -181,7 +161,6 @@ router.put('/:id/name', authenticate, requireManagerOrAdmin, validateId, async (
     const { name } = req.body;
 
     const result = await runQuery(async (pool) => {
-      // Kiểm tra nhân viên là part-time
       const check = await pool.request()
         .input('id', sql.Int, req.params.id)
         .query('SELECT type, default_name FROM Staff WHERE id = @id');
@@ -207,8 +186,8 @@ router.put('/:id/name', authenticate, requireManagerOrAdmin, validateId, async (
     res.json({ message: 'Đổi tên thành công.', name: result.newName });
   } catch (err) {
     console.error('Update name error:', err);
-    const statusCode = err.statusCode || 500;
-    res.status(statusCode).json({ error: statusCode === 500 ? 'Lỗi server.' : err.message });
+    const status = err.statusCode || 500;
+    res.status(status).json({ error: status === 500 ? 'Lỗi server.' : err.message });
   }
 });
 

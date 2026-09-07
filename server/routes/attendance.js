@@ -9,26 +9,46 @@ const CONFIG = require('../config');
 
 const router = express.Router();
 
-// ===== HELPER: Làm tròn thời gian theo mốc 15 phút =====
+const ROUND_MINUTES = CONFIG.PARTTIME.ROUND_INTERVAL_MINUTES;
+const VN_OFFSET_MS = 7 * 60 * 60 * 1000;
+
+// ===== HELPERS =====
 function roundToNearest15(date) {
   const hours = date.getHours();
   const minutes = date.getMinutes();
-  const interval = CONFIG.PARTTIME.ROUND_INTERVAL_MINUTES;
-  const rounded = Math.round(minutes / interval) * interval;
+  const rounded = Math.round(minutes / ROUND_MINUTES) * ROUND_MINUTES;
   if (rounded >= 60) {
     return `${String(hours + 1).padStart(2, '0')}:00`;
   }
   return `${String(hours).padStart(2, '0')}:${String(rounded).padStart(2, '0')}`;
 }
 
-// ===== HELPER: Tính tổng giờ làm =====
-function calculateTotalHours(checkInRounded, checkOutRounded) {
-  if (!checkInRounded || !checkOutRounded) return null;
-  const [inH, inM] = checkInRounded.split(':').map(Number);
-  const [outH, outM] = checkOutRounded.split(':').map(Number);
+function getVnDate(date) {
+  return new Date(date.getTime() + VN_OFFSET_MS);
+}
+
+function getWorkDate(date) {
+  return getVnDate(date).toISOString().split('T')[0];
+}
+
+function calculateTotalHours(checkIn, checkOut) {
+  if (!checkIn || !checkOut) return null;
+  const [inH, inM] = checkIn.split(':').map(Number);
+  const [outH, outM] = checkOut.split(':').map(Number);
   const totalMinutes = (outH * 60 + outM) - (inH * 60 + inM);
   if (totalMinutes <= 0) return 0;
   return Math.round((totalMinutes / 60) * 100) / 100;
+}
+
+function getMonthRange(month, year) {
+  const start = new Date(year, month - 1, 1);
+  const end = new Date(year, month, 0, 23, 59, 59);
+  return { start, end };
+}
+
+function parseIntSafe(val, fallback) {
+  const n = parseInt(val);
+  return isNaN(n) ? fallback : n;
 }
 
 // ===== POST /api/attendance/check-in =====
@@ -40,38 +60,29 @@ router.post('/check-in', authenticate, requireParttime, async (req, res) => {
     }
 
     const now = new Date();
-    // Lấy work_date theo timezone Việt Nam (UTC+7)
-    const vnNow = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-    const workDate = vnNow.toISOString().split('T')[0];
+    const workDate = getWorkDate(now);
     const checkInRounded = roundToNearest15(now);
 
-    // Kiểm tra đã check-in hôm nay chưa
-    const existing = await runQuery(async (pool) => {
-      return await pool.request()
+    const result = await runQuery(async (pool) => {
+      const existing = await pool.request()
         .input('staffId', sql.Int, staffId)
         .input('workDate', sql.Date, workDate)
         .query('SELECT id, check_out FROM Attendance WHERE staff_id = @staffId AND work_date = @workDate');
-    });
 
-    if (existing.recordset.length > 0) {
-      const record = existing.recordset[0];
-      if (record.check_out) {
-        return res.status(400).json({ error: 'Bạn đã check-in và check-out hôm nay rồi.' });
+      if (existing.recordset.length > 0) {
+        const record = existing.recordset[0];
+        if (record.check_out) {
+          throw Object.assign(new Error('Bạn đã check-in và check-out hôm nay rồi.'), { statusCode: 400 });
+        }
+        throw Object.assign(new Error('Bạn đã check-in hôm nay rồi. Hãy check-out khi tan ca.'), { statusCode: 400 });
       }
-      return res.status(400).json({ error: 'Bạn đã check-in hôm nay rồi. Hãy check-out khi tan ca.' });
-    }
 
-    // Tạo bản ghi mới
-    await runQuery(async (pool) => {
-      await pool.request()
+      return await pool.request()
         .input('staffId', sql.Int, staffId)
         .input('checkIn', sql.DateTime, now)
         .input('checkInRounded', sql.VarChar, checkInRounded)
         .input('workDate', sql.Date, workDate)
-        .query(`
-          INSERT INTO Attendance (staff_id, check_in, check_in_rounded, work_date)
-          VALUES (@staffId, @checkIn, @checkInRounded, @workDate)
-        `);
+        .query('INSERT INTO Attendance (staff_id, check_in, check_in_rounded, work_date) VALUES (@staffId, @checkIn, @checkInRounded, @workDate)');
     });
 
     res.json({
@@ -81,8 +92,8 @@ router.post('/check-in', authenticate, requireParttime, async (req, res) => {
       work_date: workDate
     });
   } catch (err) {
-    console.error('Check-in error:', err);
-    res.status(500).json({ error: 'Lỗi server.' });
+    const status = err.statusCode || 500;
+    res.status(status).json({ error: status === 500 ? 'Lỗi server.' : err.message });
   }
 });
 
@@ -95,53 +106,44 @@ router.post('/check-out', authenticate, requireParttime, async (req, res) => {
     }
 
     const now = new Date();
-    const vnNow = new Date(now.getTime() + 7 * 60 * 60 * 1000);
-    const workDate = vnNow.toISOString().split('T')[0];
+    const workDate = getWorkDate(now);
     const checkOutRounded = roundToNearest15(now);
 
-    // Tìm bản ghi check-in hôm nay
-    const existing = await runQuery(async (pool) => {
-      return await pool.request()
+    const result = await runQuery(async (pool) => {
+      const existing = await pool.request()
         .input('staffId', sql.Int, staffId)
         .input('workDate', sql.Date, workDate)
         .query('SELECT id, check_in_rounded, check_out_rounded FROM Attendance WHERE staff_id = @staffId AND work_date = @workDate');
-    });
 
-    if (existing.recordset.length === 0) {
-      return res.status(400).json({ error: 'Bạn chưa check-in hôm nay. Hãy check-in trước.' });
-    }
+      if (existing.recordset.length === 0) {
+        throw Object.assign(new Error('Bạn chưa check-in hôm nay. Hãy check-in trước.'), { statusCode: 400 });
+      }
 
-    const record = existing.recordset[0];
-    if (record.check_out_rounded) {
-      return res.status(400).json({ error: 'Bạn đã check-out hôm nay rồi.' });
-    }
+      const record = existing.recordset[0];
+      if (record.check_out_rounded) {
+        throw Object.assign(new Error('Bạn đã check-out hôm nay rồi.'), { statusCode: 400 });
+      }
 
-    const totalHours = calculateTotalHours(record.check_in_rounded, checkOutRounded);
+      const totalHours = calculateTotalHours(record.check_in_rounded, checkOutRounded);
 
-    // Cập nhật check-out
-    await runQuery(async (pool) => {
-      await pool.request()
+      return await pool.request()
         .input('id', sql.Int, record.id)
         .input('checkOut', sql.DateTime, now)
         .input('checkOutRounded', sql.VarChar, checkOutRounded)
         .input('totalHours', sql.Decimal(5, 2), totalHours)
-        .query(`
-          UPDATE Attendance 
-          SET check_out = @checkOut, check_out_rounded = @checkOutRounded, total_hours = @totalHours
-          WHERE id = @id
-        `);
+        .query('UPDATE Attendance SET check_out = @checkOut, check_out_rounded = @checkOutRounded, total_hours = @totalHours WHERE id = @id');
     });
 
     res.json({
       message: 'Check-out thành công!',
       check_out: now.toISOString(),
       check_out_rounded: checkOutRounded,
-      total_hours: totalHours,
+      total_hours: calculateTotalHours(result.recordset?.[0]?.check_in_rounded, checkOutRounded),
       work_date: workDate
     });
   } catch (err) {
-    console.error('Check-out error:', err);
-    res.status(500).json({ error: 'Lỗi server.' });
+    const status = err.statusCode || 500;
+    res.status(status).json({ error: status === 500 ? 'Lỗi server.' : err.message });
   }
 });
 
@@ -149,35 +151,26 @@ router.post('/check-out', authenticate, requireParttime, async (req, res) => {
 router.get('/today', authenticate, requireParttime, async (req, res) => {
   try {
     const staffId = req.user.staffId;
-    const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
-    const workDate = vnNow.toISOString().split('T')[0];
+    const workDate = getWorkDate(new Date());
 
     const result = await runQuery(async (pool) => {
       return await pool.request()
         .input('staffId', sql.Int, staffId)
         .input('workDate', sql.Date, workDate)
-        .query(`
-          SELECT id, check_in, check_in_rounded, check_out, check_out_rounded, 
-                 total_hours, work_date, notes
-          FROM Attendance 
-          WHERE staff_id = @staffId AND work_date = @workDate
-        `);
+        .query('SELECT check_in, check_in_rounded, check_out, check_out_rounded, total_hours FROM Attendance WHERE staff_id = @staffId AND work_date = @workDate');
     });
 
     if (result.recordset.length === 0) {
       return res.json({ checked_in: false, checked_out: false });
     }
 
-    const record = result.recordset[0];
+    const r = result.recordset[0];
     res.json({
       checked_in: true,
-      checked_out: !!record.check_out,
-      check_in: record.check_in,
-      check_in_rounded: record.check_in_rounded,
-      check_out: record.check_out,
-      check_out_rounded: record.check_out_rounded,
-      total_hours: record.total_hours,
-      work_date: record.work_date
+      checked_out: !!r.check_out,
+      check_in_rounded: r.check_in_rounded,
+      check_out_rounded: r.check_out_rounded,
+      total_hours: r.total_hours
     });
   } catch (err) {
     console.error('Get today attendance error:', err);
@@ -189,34 +182,29 @@ router.get('/today', authenticate, requireParttime, async (req, res) => {
 router.get('/history', authenticate, requireParttime, async (req, res) => {
   try {
     const staffId = req.user.staffId;
-    const { month, year } = req.query;
-    const currentMonth = month ? parseInt(month) : new Date().getMonth() + 1;
-    const currentYear = year ? parseInt(year) : new Date().getFullYear();
+    const month = parseIntSafe(req.query.month, new Date().getMonth() + 1);
+    const year = parseIntSafe(req.query.year, new Date().getFullYear());
+    const { start, end } = getMonthRange(month, year);
 
     const result = await runQuery(async (pool) => {
       return await pool.request()
         .input('staffId', sql.Int, staffId)
-        .input('month', sql.Int, currentMonth)
-        .input('year', sql.Int, currentYear)
+        .input('start', sql.Date, start)
+        .input('end', sql.Date, end)
         .query(`
-          SELECT id, check_in, check_in_rounded, check_out, check_out_rounded, 
-                 total_hours, work_date, notes
+          SELECT check_in_rounded, check_out_rounded, total_hours, work_date, notes
           FROM Attendance 
-          WHERE staff_id = @staffId 
-            AND MONTH(work_date) = @month 
-            AND YEAR(work_date) = @year
+          WHERE staff_id = @staffId AND work_date >= @start AND work_date <= @end
           ORDER BY work_date DESC
         `);
     });
 
-    // Tính tổng giờ tháng
     const totalHoursMonth = result.recordset.reduce((sum, r) => sum + (parseFloat(r.total_hours) || 0), 0);
 
     res.json({
       records: result.recordset,
       total_hours_month: Math.round(totalHoursMonth * 100) / 100,
-      month: currentMonth,
-      year: currentYear
+      month, year
     });
   } catch (err) {
     console.error('Get attendance history error:', err);
@@ -227,52 +215,42 @@ router.get('/history', authenticate, requireParttime, async (req, res) => {
 // ===== GET /api/attendance/all — Admin/Manager xem tất cả =====
 router.get('/all', authenticate, requireAdmin, async (req, res) => {
   try {
-    const { month, year, staff_id } = req.query;
-    const currentMonth = month ? parseInt(month) : new Date().getMonth() + 1;
-    const currentYear = year ? parseInt(year) : new Date().getFullYear();
+    const month = parseIntSafe(req.query.month, new Date().getMonth() + 1);
+    const year = parseIntSafe(req.query.year, new Date().getFullYear());
+    const staffId = req.query.staff_id ? parseIntSafe(req.query.staff_id, null) : null;
+    const { start, end } = getMonthRange(month, year);
 
     const result = await runQuery(async (pool) => {
-      let query = `
+      const request = pool.request()
+        .input('start', sql.Date, start)
+        .input('end', sql.Date, end);
+
+      let where = 'AND u.role = \'parttime\'';
+      if (staffId) {
+        where += ' AND a.staff_id = @staffId';
+        request.input('staffId', sql.Int, staffId);
+      }
+
+      return await request.query(`
         SELECT a.id, a.staff_id, s.name as staff_name, 
-               a.check_in, a.check_in_rounded, a.check_out, a.check_out_rounded,
+               a.check_in_rounded, a.check_out_rounded,
                a.total_hours, a.work_date, a.notes
         FROM Attendance a
         JOIN Staff s ON a.staff_id = s.id
         JOIN Users u ON s.id = u.staff_id
-        WHERE MONTH(a.work_date) = @month 
-          AND YEAR(a.work_date) = @year
-          AND u.role = 'parttime'
-      `;
-
-      const request = pool.request()
-        .input('month', sql.Int, currentMonth)
-        .input('year', sql.Int, currentYear);
-
-      if (staff_id) {
-        query += ' AND a.staff_id = @staffId';
-        request.input('staffId', sql.Int, parseInt(staff_id));
-      }
-
-      query += ' ORDER BY a.work_date DESC, s.name ASC';
-      return await request.query(query);
+        WHERE a.work_date >= @start AND a.work_date <= @end ${where}
+        ORDER BY a.work_date DESC, s.name ASC
+      `);
     });
 
-    // Nhóm theo nhân viên
     const staffSummary = {};
     result.recordset.forEach(r => {
       if (!staffSummary[r.staff_id]) {
-        staffSummary[r.staff_id] = {
-          staff_id: r.staff_id,
-          name: r.staff_name,
-          records: [],
-          total_hours: 0
-        };
+        staffSummary[r.staff_id] = { staff_id: r.staff_id, name: r.staff_name, total_hours: 0 };
       }
-      staffSummary[r.staff_id].records.push(r);
       staffSummary[r.staff_id].total_hours += parseFloat(r.total_hours) || 0;
     });
 
-    // Làm tròn tổng giờ
     Object.values(staffSummary).forEach(s => {
       s.total_hours = Math.round(s.total_hours * 100) / 100;
     });
@@ -280,8 +258,7 @@ router.get('/all', authenticate, requireAdmin, async (req, res) => {
     res.json({
       records: result.recordset,
       summary: Object.values(staffSummary),
-      month: currentMonth,
-      year: currentYear
+      month, year
     });
   } catch (err) {
     console.error('Get all attendance error:', err);
@@ -292,24 +269,24 @@ router.get('/all', authenticate, requireAdmin, async (req, res) => {
 // ===== GET /api/attendance/staff/:staffId — Admin xem 1 nhân viên =====
 router.get('/staff/:staffId', authenticate, requireAdmin, async (req, res) => {
   try {
-    const staffId = parseInt(req.params.staffId);
-    const { month, year } = req.query;
-    const currentMonth = month ? parseInt(month) : new Date().getMonth() + 1;
-    const currentYear = year ? parseInt(year) : new Date().getFullYear();
+    const staffId = parseIntSafe(req.params.staffId, 0);
+    if (!staffId) return res.status(400).json({ error: 'ID không hợp lệ.' });
+
+    const month = parseIntSafe(req.query.month, new Date().getMonth() + 1);
+    const year = parseIntSafe(req.query.year, new Date().getFullYear());
+    const { start, end } = getMonthRange(month, year);
 
     const result = await runQuery(async (pool) => {
       return await pool.request()
         .input('staffId', sql.Int, staffId)
-        .input('month', sql.Int, currentMonth)
-        .input('year', sql.Int, currentYear)
+        .input('start', sql.Date, start)
+        .input('end', sql.Date, end)
         .query(`
-          SELECT a.id, a.check_in, a.check_in_rounded, a.check_out, a.check_out_rounded,
+          SELECT a.check_in_rounded, a.check_out_rounded,
                  a.total_hours, a.work_date, a.notes, s.name as staff_name
           FROM Attendance a
           JOIN Staff s ON a.staff_id = s.id
-          WHERE a.staff_id = @staffId 
-            AND MONTH(a.work_date) = @month 
-            AND YEAR(a.work_date) = @year
+          WHERE a.staff_id = @staffId AND a.work_date >= @start AND a.work_date <= @end
           ORDER BY a.work_date DESC
         `);
     });
@@ -321,8 +298,7 @@ router.get('/staff/:staffId', authenticate, requireAdmin, async (req, res) => {
       name: result.recordset.length > 0 ? result.recordset[0].staff_name : '',
       records: result.recordset,
       total_hours_month: Math.round(totalHoursMonth * 100) / 100,
-      month: currentMonth,
-      year: currentYear
+      month, year
     });
   } catch (err) {
     console.error('Get staff attendance error:', err);
