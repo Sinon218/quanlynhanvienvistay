@@ -40,7 +40,9 @@ router.post('/check-in', authenticate, requireParttime, async (req, res) => {
     }
 
     const now = new Date();
-    const workDate = now.toISOString().split('T')[0];
+    // Lấy work_date theo timezone Việt Nam (UTC+7)
+    const vnNow = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+    const workDate = vnNow.toISOString().split('T')[0];
     const checkInRounded = roundToNearest15(now);
 
     // Kiểm tra đã check-in hôm nay chưa
@@ -93,7 +95,8 @@ router.post('/check-out', authenticate, requireParttime, async (req, res) => {
     }
 
     const now = new Date();
-    const workDate = now.toISOString().split('T')[0];
+    const vnNow = new Date(now.getTime() + 7 * 60 * 60 * 1000);
+    const workDate = vnNow.toISOString().split('T')[0];
     const checkOutRounded = roundToNearest15(now);
 
     // Tìm bản ghi check-in hôm nay
@@ -101,7 +104,7 @@ router.post('/check-out', authenticate, requireParttime, async (req, res) => {
       return await pool.request()
         .input('staffId', sql.Int, staffId)
         .input('workDate', sql.Date, workDate)
-        .query('SELECT id, check_in_rounded FROM Attendance WHERE staff_id = @staffId AND work_date = @workDate');
+        .query('SELECT id, check_in_rounded, check_out_rounded FROM Attendance WHERE staff_id = @staffId AND work_date = @workDate');
     });
 
     if (existing.recordset.length === 0) {
@@ -146,7 +149,8 @@ router.post('/check-out', authenticate, requireParttime, async (req, res) => {
 router.get('/today', authenticate, requireParttime, async (req, res) => {
   try {
     const staffId = req.user.staffId;
-    const workDate = new Date().toISOString().split('T')[0];
+    const vnNow = new Date(Date.now() + 7 * 60 * 60 * 1000);
+    const workDate = vnNow.toISOString().split('T')[0];
 
     const result = await runQuery(async (pool) => {
       return await pool.request()
@@ -227,19 +231,19 @@ router.get('/all', authenticate, requireAdmin, async (req, res) => {
     const currentMonth = month ? parseInt(month) : new Date().getMonth() + 1;
     const currentYear = year ? parseInt(year) : new Date().getFullYear();
 
-    let query = `
-      SELECT a.id, a.staff_id, s.name as staff_name, 
-             a.check_in, a.check_in_rounded, a.check_out, a.check_out_rounded,
-             a.total_hours, a.work_date, a.notes
-      FROM Attendance a
-      JOIN Staff s ON a.staff_id = s.id
-      JOIN Users u ON s.id = u.staff_id
-      WHERE MONTH(a.work_date) = @month 
-        AND YEAR(a.work_date) = @year
-        AND u.role = 'parttime'
-    `;
-
     const result = await runQuery(async (pool) => {
+      let query = `
+        SELECT a.id, a.staff_id, s.name as staff_name, 
+               a.check_in, a.check_in_rounded, a.check_out, a.check_out_rounded,
+               a.total_hours, a.work_date, a.notes
+        FROM Attendance a
+        JOIN Staff s ON a.staff_id = s.id
+        JOIN Users u ON s.id = u.staff_id
+        WHERE MONTH(a.work_date) = @month 
+          AND YEAR(a.work_date) = @year
+          AND u.role = 'parttime'
+      `;
+
       const request = pool.request()
         .input('month', sql.Int, currentMonth)
         .input('year', sql.Int, currentYear);

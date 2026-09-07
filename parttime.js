@@ -92,6 +92,65 @@ function showToast(message, type = 'success') {
   }, 3000);
 }
 
+// ===== LOCAL MOCK (OFFLINE MODE) =====
+let _mockAttendance = { records: [], today: null };
+
+function handleLocalMockCall(endpoint, method, body) {
+  const today = new Date().toISOString().split('T')[0];
+  const now = new Date();
+
+  // POST /attendance/check-in
+  if (endpoint === '/attendance/check-in' && method === 'POST') {
+    const existing = _mockAttendance.records.find(r => r.work_date === today);
+    if (existing) {
+      if (existing.check_out) return Promise.reject(new Error('Bạn đã check-in và check-out hôm nay rồi.'));
+      return Promise.reject(new Error('Bạn đã check-in hôm nay rồi.'));
+    }
+    const hours = now.getHours();
+    const mins = Math.round(now.getMinutes() / 15) * 15;
+    const rounded = mins >= 60 ? `${String(hours + 1).padStart(2, '0')}:00` : `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+    _mockAttendance.records.push({ check_in_rounded: rounded, check_out_rounded: null, total_hours: null, work_date: today, notes: '' });
+    return Promise.resolve({ message: 'Check-in thành công!', check_in_rounded: rounded, work_date: today });
+  }
+
+  // POST /attendance/check-out
+  if (endpoint === '/attendance/check-out' && method === 'POST') {
+    const existing = _mockAttendance.records.find(r => r.work_date === today);
+    if (!existing) return Promise.reject(new Error('Bạn chưa check-in hôm nay.'));
+    if (existing.check_out_rounded) return Promise.reject(new Error('Bạn đã check-out hôm nay rồi.'));
+    const hours = now.getHours();
+    const mins = Math.round(now.getMinutes() / 15) * 15;
+    const rounded = mins >= 60 ? `${String(hours + 1).padStart(2, '0')}:00` : `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+    existing.check_out_rounded = rounded;
+    const [inH, inM] = existing.check_in_rounded.split(':').map(Number);
+    const [outH, outM] = rounded.split(':').map(Number);
+    const total = Math.round(((outH * 60 + outM) - (inH * 60 + inM)) / 60 * 100) / 100;
+    existing.total_hours = total;
+    return Promise.resolve({ message: 'Check-out thành công!', check_out_rounded: rounded, total_hours: total, work_date: today });
+  }
+
+  // GET /attendance/today
+  if (endpoint === '/attendance/today' && method === 'GET') {
+    const existing = _mockAttendance.records.find(r => r.work_date === today);
+    if (!existing) return Promise.resolve({ checked_in: false, checked_out: false });
+    return Promise.resolve({
+      checked_in: true,
+      checked_out: !!existing.check_out_rounded,
+      check_in_rounded: existing.check_in_rounded,
+      check_out_rounded: existing.check_out_rounded,
+      total_hours: existing.total_hours,
+      work_date: today
+    });
+  }
+
+  // GET /attendance/history
+  if (endpoint.startsWith('/attendance/history') && method === 'GET') {
+    return Promise.resolve({ records: _mockAttendance.records, total_hours_month: _mockAttendance.records.reduce((s, r) => s + (r.total_hours || 0), 0), month: now.getMonth() + 1, year: now.getFullYear() });
+  }
+
+  return Promise.reject(new Error('Endpoint mock chưa hỗ trợ: ' + endpoint));
+}
+
 // ===== DATE DISPLAY =====
 function updateCurrentDate() {
   const now = new Date();

@@ -23,14 +23,14 @@ function validateId(req, res, next) {
 router.get('/', authenticate, async (req, res) => {
   try {
     const result = await runQuery(async (pool) => {
-      // Nếu là employee, chỉ trả về info của bản thân
-      if (req.user.role === 'employee') {
+      // Nếu là employee hoặc parttime, chỉ trả về info của bản thân
+      if (req.user.role === 'employee' || req.user.role === 'parttime') {
         return await pool.request()
           .input('staffId', sql.Int, req.user.staffId)
           .query('SELECT * FROM Staff WHERE id = @staffId');
       }
 
-      // Admin: trả về tất cả
+      // Admin/Manager: trả về tất cả
       return await pool.request()
         .query('SELECT * FROM Staff ORDER BY id');
     });
@@ -67,8 +67,8 @@ router.post('/', authenticate, requireAdmin, async (req, res) => {
     const defaultPassword = '12345678';
 
     await runQuery(async (pool) => {
-      // Kiểm tra username trùng
-      while (true) {
+      // Kiểm tra username trùng (tối đa 50 lần thử)
+      while (counter <= 50) {
         const check = await pool.request()
           .input('username', sql.VarChar, username)
           .query('SELECT id FROM Users WHERE username = @username');
