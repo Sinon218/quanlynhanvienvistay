@@ -40,7 +40,7 @@ CREATE TABLE Users (
     id INT IDENTITY(1,1) PRIMARY KEY,
     username VARCHAR(50) NOT NULL UNIQUE,
     password_hash VARCHAR(255) NOT NULL,
-    role VARCHAR(20) NOT NULL CONSTRAINT CK_Users_Role CHECK (role IN ('admin', 'employee', 'manager')),
+    role VARCHAR(20) NOT NULL CONSTRAINT CK_Users_Role CHECK (role IN ('admin', 'employee', 'manager', 'parttime')),
     staff_id INT NULL FOREIGN KEY REFERENCES Staff(id),
     is_active BIT NOT NULL DEFAULT 1,
     created_at DATETIME DEFAULT GETDATE()
@@ -180,6 +180,6 @@ CREATE INDEX IX_Tasks_StaffDate ON Tasks(staff_id, assigned_date);
 GO
 
 PRINT N'✅ Schema created successfully!';
-PRINT N'   Bao gồm: Staff, Users(admin/employee/manager), Apartments, WorkAssignments,';
+PRINT N'   Bao gồm: Staff, Users(admin/employee/manager/parttime), Apartments, WorkAssignments,';
 PRINT N'   SalaryRecords, AuditLog, Notifications, Tasks, ApartmentStatusHistory, ApartmentStays';
 GO
