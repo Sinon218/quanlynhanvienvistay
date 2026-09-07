@@ -322,7 +322,9 @@ function checkAuth() {
 
   try {
     currentUser = JSON.parse(userStr);
-    if (currentUser.role !== 'admin' && currentUser.role !== 'manager') {
+    if (currentUser.role === 'parttime') {
+      window.location.href = 'parttime.html';
+    } else if (currentUser.role !== 'admin' && currentUser.role !== 'manager') {
       window.location.href = 'employee.html';
     }
     document.getElementById('adminName').textContent = currentUser.staffName || currentUser.username;

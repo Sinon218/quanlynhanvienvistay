@@ -169,7 +169,9 @@ function checkAuth() {
       currentUser.techRole = 1;
     }
 
-    if (currentUser.role !== 'employee' && currentUser.role !== 'manager') {
+    if (currentUser.role === 'parttime') {
+      window.location.href = 'parttime.html';
+    } else if (currentUser.role !== 'employee' && currentUser.role !== 'manager') {
       window.location.href = 'admin.html';
     }
     document.getElementById('employeeName').textContent = currentUser.staffName || currentUser.username;

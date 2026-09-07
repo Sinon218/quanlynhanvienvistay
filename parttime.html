@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Part-Time Portal - Vistay Portal</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#a78bfa">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⏰</text></svg>">
+</head>
+
+<body>
+
+  <div class="app-container">
+
+    <!-- ===== HEADER ===== -->
+    <header class="app-header">
+      <div class="header-main-title">
+        <h1><span class="icon">⏰</span> Vistay Part-Time Portal</h1>
+        <div class="header-meta">
+          <div class="header-date">
+            <span>📅</span>
+            <span id="currentDate">—</span>
+          </div>
+        </div>
+      </div>
+      <div class="header-user-actions">
+        <div class="user-greeting">Xin chào, <strong id="employeeName">—</strong></div>
+        <button class="btn btn-logout" onclick="handleLogout()">🚪 Đăng xuất</button>
+      </div>
+    </header>
+
+    <!-- ===== OFFLINE MODE BANNER ===== -->
+    <div id="offlineAlertBanner" style="display: none; background: linear-gradient(135deg, #dc2626, #b91c1c); color: white; padding: 10px 16px; text-align: center; font-weight: 700; font-size: 0.85rem; position: relative; z-index: 100;">
+      ⚠️ CHẾ ĐỘ OFFLINE — Dữ liệu mock, KHÔNG phải database thật!
+    </div>
+
+    <!-- ===== CHECK-IN CARD ===== -->
+    <section class="section" style="max-width: 600px; margin: 24px auto;">
+      <div class="task-form-card" style="border-left: 4px solid var(--accent-green); text-align: center; padding: 30px 20px;">
+        <h2 style="font-size: 1.3rem; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;">⏰ Chấm Công Hôm Nay</h2>
+        
+        <!-- Trạng thái hiện tại -->
+        <div id="attendanceStatus" style="margin: 20px 0; padding: 16px; border-radius: 12px; background: rgba(0,0,0,0.05);">
+          <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-muted);" id="statusText">Đang tải...</div>
+          <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;" id="statusTime"></div>
+        </div>
+
+        <!-- Nút Check-in / Check-out -->
+        <div style="display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin-top: 20px;">
+          <button id="btnCheckIn" class="btn" onclick="doCheckIn()"
+            style="padding: 14px 32px; font-size: 1rem; font-weight: 700; background: linear-gradient(135deg, #10b981, #059669); color: white; border: none; border-radius: 12px; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+            🔍 Check In
+          </button>
+          <button id="btnCheckOut" class="btn" onclick="doCheckOut()"
+            style="padding: 14px 32px; font-size: 1rem; font-weight: 700; background: linear-gradient(135deg, #f59e0b, #d97706); color: white; border: none; border-radius: 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; opacity: 0.5; pointer-events: none;">
+            🚪 Check Out
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== THÔNG TIN HÔM NAY ===== -->
+    <section class="section" style="max-width: 600px; margin: 0 auto 24px;">
+      <div class="task-form-card" style="border-left: 4px solid var(--accent-blue);">
+        <h3 style="font-size: 1rem; font-weight: 700; color: var(--accent-blue); margin-bottom: 12px;">📊 Hôm Nay</h3>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; text-align: center;">
+          <div>
+            <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 4px;">Giờ đến</div>
+            <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary);" id="todayCheckIn">--:--</div>
+          </div>
+          <div>
+            <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 4px;">Giờ về</div>
+            <div style="font-size: 1.1rem; font-weight: 700; color: var(--text-primary);" id="todayCheckOut">--:--</div>
+          </div>
+          <div>
+            <div style="font-size: 0.78rem; color: var(--text-muted); margin-bottom: 4px;">Tổng giờ</div>
+            <div style="font-size: 1.1rem; font-weight: 700; color: var(--accent-green);" id="todayTotalHours">--</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== LỊCH SỬ CHẤM CÔNG ===== -->
+    <section class="section" style="max-width: 800px; margin: 0 auto 24px;">
+      <div class="section-header">
+        <span class="section-icon">📋</span>
+        <h2 class="section-title" style="color: var(--accent-purple);">Lịch Sử Chấm Công</h2>
+        <div class="salary-filters" style="margin-left: auto; display: flex; gap: 8px;">
+          <select id="historyMonth" class="room-filter-select" onchange="loadHistory()"></select>
+          <select id="historyYear" class="room-filter-select" onchange="loadHistory()"></select>
+        </div>
+      </div>
+
+      <!-- Tổng giờ tháng -->
+      <div class="task-form-card" style="margin-bottom: 16px; padding: 12px 16px; border-left: 4px solid var(--accent-amber);">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-size: 0.9rem; color: var(--text-muted);">Tổng giờ làm tháng này:</span>
+          <span style="font-size: 1.2rem; font-weight: 700; color: var(--accent-amber);" id="totalHoursMonth">0 giờ</span>
+        </div>
+      </div>
+
+      <div class="stats-table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Ngày</th>
+              <th>Giờ đến</th>
+              <th>Giờ về</th>
+              <th>Tổng giờ</th>
+              <th>Ghi chú</th>
+            </tr>
+          </thead>
+          <tbody id="historyTableBody">
+            <tr>
+              <td colspan="5" style="text-align: center; padding: 20px; color: var(--text-muted);">Chưa có dữ liệu</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+  </div>
+
+  <script src="parttime.js"></script>
+  <!-- ===== TOAST CONTAINER ===== -->
+  <div class="toast-container" id="toastContainer"></div>
+</body>
+
+</html>
